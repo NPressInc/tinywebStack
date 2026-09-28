@@ -43,3 +43,22 @@ a[href^="https://yunohost.org"],
 a[href^="http://yunohost.org"] {
   display: none !important;
 }
+
+/*
+ * Family dashboard sub-permission: YunoHost 12 shows "Synapse (Family home)".
+ * Portal custom CSS cannot change the API label; rewrite visible text on the /family/ tile.
+ */
+a.app-tile[href="/family/"] .app-label,
+a[href="/family/"] .app-label,
+#app-tiles a[href="/family/"] .app-label {
+  font-size: 0 !important;
+  line-height: 1.2;
+}
+a.app-tile[href="/family/"] .app-label::after,
+a[href="/family/"] .app-label::after,
+#app-tiles a[href="/family/"] .app-label::after {
+  content: "Family home";
+  font-size: 0.94em !important;
+  display: block;
+  font-weight: 400;
+}
