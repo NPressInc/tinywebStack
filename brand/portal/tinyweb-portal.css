@@ -35,3 +35,11 @@ input[type="submit"] {
   font-weight: 600;
   color: var(--tw-blue-accent) !important;
 }
+
+/* Hide default YunoHost footer links (Documentation / Support on yunohost.org). */
+footer a[href*="yunohost.org"],
+.portal-footer a[href*="yunohost.org"],
+a[href^="https://yunohost.org"],
+a[href^="http://yunohost.org"] {
+  display: none !important;
+}

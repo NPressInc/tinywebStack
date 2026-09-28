@@ -7,22 +7,11 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${TW_STACK_ROOT}/lib/common.sh"
 # shellcheck source=scripts/lib/matrix-server.sh
 source "${TW_STACK_ROOT}/lib/matrix-server.sh"
+# shellcheck source=scripts/lib/dashboard_env.sh
+source "${TW_STACK_ROOT}/lib/dashboard_env.sh"
 load_config
 
-load_dashboard_env() {
-  local f=/etc/tinywebstack/dashboard.env
-  if [[ -f "$f" ]]; then
-    set -a
-    # shellcheck source=/dev/null
-    source "$f"
-    set +a
-  fi
-  if [[ -z "${TWS_CA_BUNDLE:-}" && -f /etc/tinywebstack/lab-ca.pem ]]; then
-    TWS_CA_BUNDLE=/etc/tinywebstack/lab-ca.pem
-  fi
-}
-
-load_dashboard_env
+load_dashboard_env_selective /etc/tinywebstack/dashboard.env
 
 synapse_curl_opts() {
   SYNAPSE_CURL_OPTS=(-fsS)
@@ -34,21 +23,24 @@ synapse_curl_opts() {
   fi
 }
 
-synapse_admin_put_user() {
-  local mxid=$1 pass=$2
+synapse_admin_activate_user() {
+  local mxid=$1 yunohost_pass=$2
   [[ -s "$SYNAPSE_TOKEN_FILE" ]] || return 1
   local token server host enc url body tmp http
   token="$(tr -d '\n' < "$SYNAPSE_TOKEN_FILE")"
   [[ -n "$token" ]] || return 1
   server="${TWS_SERVER_NAME:-}"
-  if [[ -z "$server" && -f /etc/tinywebstack/dashboard.env ]]; then
-    server="$(grep -E '^TWS_SERVER_NAME=' /etc/tinywebstack/dashboard.env | cut -d= -f2- | tr -d '"')"
-  fi
   [[ -n "$server" ]] || return 1
   host="$(matrix_public_host "$server")"
   enc="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$mxid")"
   url="https://${host}/_synapse/admin/v2/users/${enc}"
-  body="$(python3 -c "import json,sys; print(json.dumps({'password': sys.argv[1], 'deactivated': False}))" "$pass")"
+  body="$(
+    PYTHONPATH="${TW_STACK_ROOT}/family/synapse_module${PYTHONPATH:+:${PYTHONPATH}}" python3 - "$yunohost_pass" <<'PY'
+import json, sys
+from tinywebstack_family.dashboard_env import synapse_admin_user_body
+print(json.dumps(synapse_admin_user_body(yunohost_password=sys.argv[1])))
+PY
+  )"
   synapse_curl_opts
   tmp="$(mktemp)"
   http="$(curl "${SYNAPSE_CURL_OPTS[@]}" -o "$tmp" -w '%{http_code}' -X PUT \
@@ -140,7 +132,7 @@ case "$CMD" in
     fi
     SERVER="${TWS_SERVER_NAME:-$DOMAIN}"
     MXID="@${USER}:${SERVER}"
-    if synapse_admin_put_user "$MXID" "$PASS"; then
+    if synapse_admin_activate_user "$MXID" "$PASS"; then
       printf 'OK user=%s role=%s matrix_reactivated=1\n' "$USER" "$ROLE"
     else
       log "WARN: Synapse activate/update failed for ${MXID} (YunoHost user exists)"
@@ -153,9 +145,6 @@ case "$CMD" in
     USER=$1
     valid_username "$USER" || die "Invalid username"
     SERVER="${TWS_SERVER_NAME:-}"
-    if [[ -z "$SERVER" && -f /etc/tinywebstack/dashboard.env ]]; then
-      SERVER="$(grep -E '^TWS_SERVER_NAME=' /etc/tinywebstack/dashboard.env | cut -d= -f2- | tr -d '"')"
-    fi
     MATRIX_DEACTIVATED=0
     if [[ -n "$SERVER" && -s "$SYNAPSE_TOKEN_FILE" ]]; then
       TOKEN="$(tr -d '\n' < "$SYNAPSE_TOKEN_FILE")"
@@ -199,7 +188,17 @@ PY
     if [[ -f "$HTPASSWD" ]] && grep -q "^${USER}:" "$HTPASSWD" 2>/dev/null; then
       printf '%s\n' "$PASS" | htpasswd -i "$HTPASSWD" "$USER"
     fi
-    printf 'OK password-reset=%s\n' "$USER"
+    SERVER="${TWS_SERVER_NAME:-}"
+    MATRIX_LOCAL_ROTATED=0
+    if [[ -n "$SERVER" ]]; then
+      MXID="@${USER}:${SERVER}"
+      if synapse_admin_activate_user "$MXID" "$PASS"; then
+        MATRIX_LOCAL_ROTATED=1
+      else
+        log "WARN: Synapse local password rotate failed for ${MXID}"
+      fi
+    fi
+    printf 'OK password-reset=%s matrix_local_rotated=%s\n' "$USER" "$MATRIX_LOCAL_ROTATED"
     ;;
 
   synapse-user-status)

@@ -29,6 +29,7 @@ def test_setup_calls_permission_create_with_yunohost12_api():
     created = {c[0][0]: c[1] for c in fake_mod.permission_create.call_args_list}
     assert "synapse.family_dashboard" in created
     assert created["synapse.family_dashboard"]["url"] == "/family"
+    assert created["synapse.family_dashboard"]["show_tile"] is True
 
 
 def test_setup_updates_existing_permission_urls():

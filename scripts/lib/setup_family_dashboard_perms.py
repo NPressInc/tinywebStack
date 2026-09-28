@@ -53,7 +53,7 @@ def setup_family_dashboard_permissions(
         url="/family",
         allowed=[parents_group],
         auth_header=True,
-        show_tile=False,
+        show_tile=True,
         protected=True,
     )
     ensure_permission(

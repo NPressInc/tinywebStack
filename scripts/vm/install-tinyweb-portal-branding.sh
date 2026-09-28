@@ -44,14 +44,16 @@ set_portal feature.portal.show_other_domains_apps "0"
 set_portal feature.portal.portal_user_intro "$USER_INTRO"
 set_portal feature.portal.portal_public_intro "$PUBLIC_INTRO"
 set_portal feature.portal.custom_css "$PORTAL_CSS"
-set_portal feature.portal.portal_logo "@${LOGO_DST}"
+set_portal feature.portal.portal_logo "${LOGO_DST}"
 
-for candidate in synapse.family_dashboard core_family.main; do
-  if yunohost domain config set "$MAIN_DOMAIN" feature.app.default_app -v "$candidate" 2>/dev/null; then
-    log "Default app set to ${candidate} (opens family dashboard when the portal allows)"
-    break
-  fi
-done || log "Set Domains → ${MAIN_DOMAIN} → Default app to the Family entry if parents should skip the app grid"
+default_set=0
+if yunohost domain config set "$MAIN_DOMAIN" feature.app.default_app -v "synapse" 2>/dev/null; then
+  default_set=1
+  log "Default app set to synapse (Matrix app on main domain)"
+fi
+if [[ "$default_set" -eq 0 ]]; then
+  log "Set Domains → ${MAIN_DOMAIN} → Default app to synapse if parents should skip the app grid"
+fi
 
 if command -v yunohost >/dev/null 2>&1; then
   yunohost app ssowatconf 2>/dev/null || true
