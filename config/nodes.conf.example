@@ -1,0 +1,6 @@
+# Node definitions for test cluster. Copy to config/nodes.conf on spark.
+# Format: NAME DOMAIN RAM_MB VCPUS DISK_GB
+# Names become libvirt domain names: tws-${NAME}
+
+family-a  family-a.family.test  4096  2  32
+family-b  family-b.family.test  4096  2  32

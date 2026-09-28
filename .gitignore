@@ -1,0 +1,4 @@
+config/local.env
+config/nodes.conf
+*.partial
+*.tmp
