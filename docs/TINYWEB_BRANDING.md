@@ -29,9 +29,7 @@ This uses `yunohost domain config set` only (no core file patches).
 
 ### After login
 
-The script sets **`feature.app.default_app`** to **`synapse`** (app ID only). Parents reach the family UI via the **Family home** portal tile and the nginx redirect from `/` to `/family/`. If default app cannot be set automatically, use **Domains → your domain → Features → Default app** → synapse in the webadmin.
-
-The **user intro** always includes a clear **Open your family home** link to `/family/`.
+Parents reach the family UI via the **Family home** portal tile (TinyWeb logo) and the nginx redirect from `/` to `/family/`. The **user intro** includes a clear **Open your family home** link to `/family/`.
 
 ## Orchestration
 

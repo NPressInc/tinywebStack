@@ -11,6 +11,8 @@ source "${TW_STACK_ROOT}/lib/domains.sh"
 source "${TW_STACK_ROOT}/lib/matrix-server.sh"
 # shellcheck source=scripts/lib/synapse-admin-token.sh
 source "${TW_STACK_ROOT}/lib/synapse-admin-token.sh"
+# shellcheck source=scripts/lib/portal_tiles.sh
+source "${TW_STACK_ROOT}/lib/portal_tiles.sh"
 load_config
 
 usage() {
@@ -202,7 +204,7 @@ runpy.run_path('${PERMS_PY}', run_name='__main__')
 " || die "YunoHost permission setup failed"
 
 yunohost user permission add "$DASH_PERM" "${TWS_PARENTS_GROUP:-parents}" || true
-yunohost user permission update "$DASH_PERM" --show_tile True --label "Family home" 2>/dev/null \
+configure_family_home_tile "$DASH_PERM" \
   || log "WARN: could not enable Family home portal tile for ${DASH_PERM}"
 
 NGINX_DIR="/etc/nginx/conf.d/${MAIN_DOMAIN}.d"
