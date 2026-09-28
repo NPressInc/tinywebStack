@@ -7,11 +7,13 @@ import re
 import secrets
 import string
 import subprocess
-from typing import Literal, Optional
+from typing import Literal
 
 Role = Literal["parent", "kid"]
 
 _USERNAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{1,30}$")
+class HelperError(RuntimeError):
+    pass
 
 
 def validate_username(username: str) -> str:
@@ -34,7 +36,7 @@ def _helper_cmd() -> list[str]:
     return path.split()
 
 
-def run_helper(*args: str) -> str:
+def run_helper(*args: str, stdin: str | None = None) -> str:
     if os.environ.get("TWS_DASHBOARD_MOCK_YUNOHOST"):
         if args and args[0] == "synapse-user-status":
             local, server = args[1], args[2]
@@ -43,15 +45,29 @@ def run_helper(*args: str) -> str:
             user = args[1]
             return (
                 f"OK user={user} device={user}-phone password=mockpass "
-                f"url=https://loc.test/api/ tid={user[:2]}"
+                f"url=https://loc.test/recorder/pub tid={user[:2]}"
+            )
+        if args and args[0] == "list-users":
+            return os.environ.get(
+                "TWS_DASHBOARD_MOCK_LIST_USERS",
+                '{"users": {}}',
             )
         return f"OK mock {' '.join(args)}"
-    out = subprocess.check_output([*_helper_cmd(), *args], text=True, stderr=subprocess.STDOUT)
-    return out.strip()
+    try:
+        proc = subprocess.run(
+            [*_helper_cmd(), *args],
+            input=stdin,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return proc.stdout.strip()
+    except subprocess.CalledProcessError as exc:
+        raise HelperError(exc.stderr or exc.stdout or str(exc)) from exc
 
 
 def create_member(username: str, full_name: str, role: Role, domain: str, password: str) -> None:
-    run_helper("user-create", username, full_name, role, domain, password)
+    run_helper("user-create", username, full_name, role, domain, stdin=password + "\n")
 
 
 def delete_member(username: str) -> None:
@@ -59,11 +75,14 @@ def delete_member(username: str) -> None:
 
 
 def reset_password(username: str, password: str) -> None:
-    run_helper("password-reset", username, password)
+    run_helper("password-reset", username, stdin=password + "\n")
 
 
 def synapse_user_status(localpart: str, server_name: str) -> dict[str, str]:
-    line = run_helper("synapse-user-status", localpart, server_name)
+    try:
+        line = run_helper("synapse-user-status", localpart, server_name)
+    except HelperError:
+        return {"status": "unknown", "detail": "helper_failed"}
     parts: dict[str, str] = {}
     for token in line.split():
         if "=" in token:

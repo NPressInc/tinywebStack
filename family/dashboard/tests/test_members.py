@@ -40,6 +40,17 @@ def member_client(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("TWS_DASHBOARD_MOCK_GROUPS", json.dumps({"parents": ["parent1"], "kids": ["kid1"]}))
     monkeypatch.setenv("TWS_DASHBOARD_MOCK_YUNOHOST", "1")
+    monkeypatch.setenv(
+        "TWS_DASHBOARD_MOCK_LIST_USERS",
+        json.dumps(
+            {
+                "users": {
+                    "parent1": {"groups": ["parents"]},
+                    "kid1": {"groups": ["kids"]},
+                }
+            }
+        ),
+    )
     cfg = DashboardConfig(
         policy_path=str(policy),
         server_name="family-a.test",
@@ -53,20 +64,20 @@ def member_client(tmp_path, monkeypatch):
 
 def test_members_page(member_client):
     c, _ = member_client
-    r = c.get("/members", headers={"Remote-User": "parent1"})
+    r = c.get("/members", headers={"YNH_USER": "parent1"})
     assert r.status_code == 200
     assert "kid1" in r.text and "parent1" in r.text
 
 
 def test_add_member(member_client):
     c, _ = member_client
-    page = c.get("/members/add", headers={"Remote-User": "parent1"})
+    page = c.get("/members/add", headers={"YNH_USER": "parent1"})
     import re
 
     csrf = re.search(r'name="csrf" value="([^"]+)"', page.text).group(1)
     r = c.post(
         "/members/add",
-        headers={"Remote-User": "parent1"},
+        headers={"YNH_USER": "parent1"},
         data={"csrf": csrf, "username": "sam", "full_name": "Sam", "role": "kid"},
     )
     assert r.status_code == 200
@@ -75,7 +86,7 @@ def test_add_member(member_client):
 
 def test_location_qr(member_client):
     c, _ = member_client
-    r = c.get("/members/kid1/location/qr.png", headers={"Remote-User": "parent1"})
+    r = c.get("/members/kid1/location/qr.png", headers={"YNH_USER": "parent1"})
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/png"
 

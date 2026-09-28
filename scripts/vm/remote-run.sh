@@ -77,9 +77,11 @@ REMOTE_ENV="$(mktemp)"
 
 rsync -az \
   "${TW_STACK_ROOT}/scripts/" \
-  "${TW_STACK_ROOT}/family/" \
   "${TW_STACK_ROOT}/config/defaults.env" \
   "${SSH_TARGET}:~/tinywebstack-staging/"
+rsync -az \
+  "${TW_STACK_ROOT}/family/" \
+  "${SSH_TARGET}:~/tinywebstack-staging/family/"
 rsync -az "$REMOTE_ENV" "${SSH_TARGET}:~/tinywebstack-staging/remote.env"
 
 rm -f "$REMOTE_ENV"
