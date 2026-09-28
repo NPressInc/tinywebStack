@@ -12,6 +12,10 @@ The dashboard writes `/etc/tinywebstack/family-policy.json` for the Synapse modu
 
 Or use `family-init.sh` which runs groups, module, dashboard, and optional test users.
 
+## Branding
+
+Family-facing UI uses **TinyWeb** branding (vendored from [tinyweb.win](https://tinyweb.win)). SSO login theming is applied by `install-tinyweb-portal-branding.sh` — see [TINYWEB_BRANDING.md](TINYWEB_BRANDING.md).
+
 ## Auth
 
 - Protected by **YunoHost SSO** (nginx + SSOwat). Only users in the **`parents`** LDAP group may access (configurable via `TWS_PARENTS_GROUP`).
