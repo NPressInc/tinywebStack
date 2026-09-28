@@ -1,0 +1,37 @@
+/* TinyWeb — YunoHost 12 user portal custom CSS (domain feature.portal.custom_css) */
+:root {
+  --tw-blue-deep: #2e468f;
+  --tw-blue-sky: #45c3f8;
+  --tw-blue-accent: #0085fa;
+  --tw-bg-soft: #ecf4ff;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif !important;
+  background: var(--tw-bg-soft) !important;
+}
+
+/* Soften default portal chrome; exact selectors vary slightly by portal theme */
+header,
+.portal-header,
+[class*="header"] {
+  background: linear-gradient(105deg, var(--tw-blue-deep), var(--tw-blue-sky)) !important;
+}
+
+.portal-title,
+h1 {
+  color: var(--tw-blue-deep) !important;
+}
+
+a.btn-primary,
+button[type="submit"],
+input[type="submit"] {
+  background-color: var(--tw-blue-accent) !important;
+  border-color: var(--tw-blue-deep) !important;
+}
+
+.portal-user-intro a,
+.portal-public-intro a {
+  font-weight: 600;
+  color: var(--tw-blue-accent) !important;
+}

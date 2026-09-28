@@ -48,6 +48,18 @@ read_node_secret() {
   printf '%s\n' "${!key:-}"
 }
 
+# Password for spark-generated test node secrets (see ensure-node-secrets.sh).
+generate_test_password() {
+  if [[ -n "${LAB_PASSWORD:-}" ]]; then
+    if [[ ${#LAB_PASSWORD} -lt 8 ]]; then
+      log "WARN: LAB_PASSWORD is under 8 characters; YunoHost may reject user/admin passwords"
+    fi
+    printf '%s' "$LAB_PASSWORD"
+    return 0
+  fi
+  openssl rand -base64 18
+}
+
 write_node_secret() {
   local node=$1
   local kind=$2

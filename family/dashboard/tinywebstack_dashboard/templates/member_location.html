@@ -1,30 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Location setup — {{ username }}</title>
-  {% include "base_styles.html" %}
-</head>
-<body>
-  <nav><a href="{{ url('/members/' ~ username) }}">← {{ username }}</a></nav>
-  <h1>Location sharing on {{ username }}&rsquo;s phone</h1>
-  <p class="hint">Only parents can see the map on this home server. Scan this code with the <strong>OwnTracks</strong> app on the child&rsquo;s phone (Android or iPhone).</p>
-  {% if not has_config %}
-  <form method="post">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <button type="submit">Create phone setup code</button>
-  </form>
-  {% else %}
-  <div class="card">
-    <p><img src="/members/{{ username }}/location/qr.png" alt="QR code for OwnTracks" width="280" height="280"></p>
-    <p class="hint">In OwnTracks: Preferences → Configuration management → Scan QR code.</p>
-    <p class="hint">Parents view locations at <a href="{{ location_url }}">{{ location_url }}</a> (not shared with children).</p>
-  </div>
-  <form method="post">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <input type="hidden" name="regenerate" value="1">
-    <button type="submit">Generate a new code (invalidates the old phone setup)</button>
-  </form>
-  {% endif %}
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Location · {{ username }}{% endblock %}
+{% block nav %}
+<nav class="tw-nav"><a href="{{ url('/members/' ~ username) }}">← {{ username }}</a></nav>
+{% endblock %}
+{% block content %}
+<h1>Phone location for {{ username }}</h1>
+{% if has_config %}
+<p class="hint">A setup link was created. Scan the QR code on the child’s phone, or use the saved password from when you issued credentials.</p>
+<p><img src="{{ url('/members/' ~ username ~ '/location/qr.png') }}" alt="QR code" style="max-width:100%;height:auto;"></p>
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="regenerate" value="1">
+  <button type="submit">Create new phone credentials</button>
+</form>
+{% else %}
+<p class="hint">Issue a one-time setup for the child’s phone. Parents view the map separately — children do not get the map link.</p>
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <button type="submit">Set up this phone</button>
+</form>
+{% endif %}
+<p class="hint">Parents open the map at <a href="{{ location_url }}">{{ location_url }}</a>.</p>
+{% endblock %}

@@ -82,6 +82,9 @@ rsync -az \
 rsync -az \
   "${TW_STACK_ROOT}/family/" \
   "${SSH_TARGET}:~/tinywebstack-staging/family/"
+rsync -az \
+  "${TW_STACK_ROOT}/brand/" \
+  "${SSH_TARGET}:~/tinywebstack-staging/brand/"
 rsync -az "$REMOTE_ENV" "${SSH_TARGET}:~/tinywebstack-staging/remote.env"
 
 rm -f "$REMOTE_ENV"

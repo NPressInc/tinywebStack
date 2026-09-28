@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}TinyWeb Family{% endblock %}</title>
+  <link rel="icon" href="{{ url('/static/tinyweb/favicon.png') }}" type="image/png">
+  <link rel="stylesheet" href="{{ url('/static/tinyweb/tinyweb.css') }}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+  <header class="tw-header">
+    <div class="tw-header-inner">
+      <img class="tw-logo-icon" src="{{ url('/static/tinyweb/logo-icon.svg') }}" alt="">
+      <img class="tw-logo-text" src="{{ url('/static/tinyweb/logo-text-white.svg') }}" alt="TinyWeb">
+      <p class="tw-header-tagline">Your family’s private home on the web</p>
+    </div>
+  </header>
+  <main class="tw-main">
+    {% block nav %}{% endblock %}
+    {% block content %}{% endblock %}
+    <footer class="tw-footer">TinyWeb · safe, private, ad-free</footer>
+  </main>
+</body>
+</html>

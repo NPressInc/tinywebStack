@@ -1,22 +1,20 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Account created</title>
-  {% include "base_styles.html" %}
-</head>
-<body>
-  <nav><a href="{{ url('/members') }}">← Family members</a></nav>
-  <h1>{{ username }} is ready</h1>
-  <div class="card">
-    <p class="hint">Give them this password once. You can reset it anytime from their profile.</p>
-    <label>Password</label>
-    <textarea rows="2" readonly>{{ password }}</textarea>
-  </div>
-  {% if role == 'kid' %}
-  <p><a href="{{ url('/members/' ~ username ~ '/location') }}">Set up location on their phone</a></p>
-  <p><a href="{{ url('/kid/@' ~ username ~ ':' ~ server_name) }}">Set chat contacts &amp; quiet hours</a></p>
-  {% endif %}
-  <p><a href="{{ url('/members/' ~ username) }}">Manage {{ username }}</a></p>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Account created · TinyWeb{% endblock %}
+{% block nav %}
+<nav class="tw-nav"><a href="{{ url('/members') }}">← Family members</a></nav>
+{% endblock %}
+{% block content %}
+<h1>{{ username }} is ready</h1>
+<p class="hint">Save this password now — it is shown once.</p>
+<div class="card">
+  <p><strong>Username:</strong> {{ username }}</p>
+  <p><strong>Password:</strong> <code>{{ password }}</code></p>
+  <p><strong>Role:</strong> {{ role }}</p>
+  <p class="hint">Chat address: @{{ username }}:{{ server_name }}</p>
+</div>
+{% if role == 'kid' %}
+<p><a href="{{ url('/members/' ~ username ~ '/location') }}">Set up location on their phone</a></p>
+<p><a href="{{ url('/kid/@' ~ username ~ ':' ~ server_name) }}">Set chat contacts &amp; quiet hours</a></p>
+{% endif %}
+<p><a href="{{ url('/members/' ~ username) }}">Manage {{ username }}</a></p>
+{% endblock %}

@@ -1,32 +1,24 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Edit {{ kid_mxid }}</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
-    label { display: block; margin-top: 1rem; font-weight: 600; }
-    textarea, input { width: 100%; font-family: inherit; }
-    button { margin-top: 1.5rem; padding: 0.5rem 1rem; }
-  </style>
-</head>
-<body>
-  <p><a href="{{ url('/') }}">← Back</a></p>
-  <h1>{{ kid_mxid }}</h1>
-  <form method="post">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>Contact allowlist (MXIDs, one per line)</label>
-    <textarea name="allowlist_mxids" rows="6">{{ allowlist_mxids }}</textarea>
-    <label>Trusted domains (whole domain allowed for this kid)</label>
-    <textarea name="allowlist_domains" rows="3">{{ allowlist_domains }}</textarea>
-    <h2>Quiet hours</h2>
-    <label>Start (HH:MM)</label>
-    <input name="qh_start" value="{{ qh_start }}" placeholder="21:00">
-    <label>End (HH:MM)</label>
-    <input name="qh_end" value="{{ qh_end }}" placeholder="07:00">
-    <label>Timezone (IANA)</label>
-    <input name="qh_timezone" value="{{ qh_timezone }}" placeholder="America/Los_Angeles">
-    <button type="submit">Save</button>
-  </form>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Chat rules · TinyWeb{% endblock %}
+{% block nav %}
+<nav class="tw-nav"><a href="{{ url('/') }}">← Home</a></nav>
+{% endblock %}
+{% block content %}
+<h1>{{ kid_mxid }}</h1>
+<p class="hint">Who this child may message, and when messages are paused (quiet hours).</p>
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>Allowed chat partners (one full address per line)</label>
+  <textarea name="allowlist_mxids" rows="6">{{ allowlist_mxids }}</textarea>
+  <label>Trusted other homes (whole domain names)</label>
+  <textarea name="allowlist_domains" rows="3">{{ allowlist_domains }}</textarea>
+  <h2>Quiet hours</h2>
+  <label>Start (HH:MM)</label>
+  <input name="qh_start" value="{{ qh_start }}" placeholder="21:00">
+  <label>End (HH:MM)</label>
+  <input name="qh_end" value="{{ qh_end }}" placeholder="07:00">
+  <label>Timezone</label>
+  <input name="qh_timezone" value="{{ qh_timezone }}" placeholder="America/Los_Angeles">
+  <button type="submit">Save</button>
+</form>
+{% endblock %}
