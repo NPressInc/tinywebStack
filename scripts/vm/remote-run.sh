@@ -123,6 +123,17 @@ fi
 if [[ -f ~/tinywebstack-staging/peers.hosts ]]; then
   sudo install -m 644 ~/tinywebstack-staging/peers.hosts "${REMOTE_ROOT}/peers.hosts"
 fi
-sudo TW_STACK_ROOT="${REMOTE_ROOT}" TW_STACK_IS_REMOTE=1 bash "${REMOTE_ROOT}/vm/${SCRIPT}" "$@"
-sudo rm -f "${REMOTE_ROOT}/remote.env"
+sudo bash -c 'set -euo pipefail
+REMOTE_ROOT="$1"
+SCRIPT="$2"
+shift 2
+cleanup() { rm -f "${REMOTE_ROOT}/remote.env"; }
+trap cleanup EXIT
+set -a
+# shellcheck source=/dev/null
+source "${REMOTE_ROOT}/remote.env"
+set +a
+export TW_STACK_ROOT="${REMOTE_ROOT}" TW_STACK_IS_REMOTE=1
+exec bash "${REMOTE_ROOT}/vm/${SCRIPT}" "$@"
+' _ "${REMOTE_ROOT}" "${SCRIPT}" "$@"
 EOF

@@ -42,6 +42,7 @@ from tinywebstack_dashboard.yunohost_actions import (
     validate_username,
 )
 from tinywebstack_family.invite import create_invite_token, verify_invite_token
+from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -64,7 +65,9 @@ def config_from_env() -> DashboardConfig:
 
 def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     cfg = cfg or config_from_env()
-    app = FastAPI(title="tinywebStack Family Dashboard")
+    root_path = dashboard_root_path()
+    TEMPLATES.env.globals["url"] = lambda path="/": dash_url(path, root_path)
+    app = FastAPI(title="tinywebStack Family Dashboard", root_path=root_path)
     serializer = URLSafeSerializer(cfg.csrf_secret, salt="tws-csrf")
     policy_path = Path(cfg.policy_path)
     pending_path = Path(os.environ.get("TWS_PENDING_INVITES_PATH", "/etc/tinywebstack/pending-invites.json"))
@@ -402,7 +405,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         if not member_role(username):
             raise HTTPException(status_code=404, detail="Not a family member")
         delete_member(username)
-        return RedirectResponse(url="/members?msg=Member+removed", status_code=303)
+        return RedirectResponse(url=dash_url("/members?msg=Member+removed", root_path), status_code=303)
 
     @app.get("/members/{username}/location", response_class=HTMLResponse)
     async def member_location_page(request: Request, username: str, user: str = Depends(current_user)):
@@ -433,7 +436,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Location setup is for child accounts")
         loc_domain = cfg.location_domain or cfg.location_base_url.replace("https://", "").split("/")[0]
         issue_owntracks(username, cfg.server_name, loc_domain)
-        return RedirectResponse(url=f"/members/{username}/location", status_code=303)
+        return RedirectResponse(url=dash_url(f"/members/{username}/location", root_path), status_code=303)
 
     @app.get("/members/{username}/location/qr.png")
     async def member_location_qr(username: str, user: str = Depends(current_user)):
@@ -512,7 +515,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             }
         policy["kids"][kid_mxid] = entry
         save_policy(policy_path, policy)
-        return RedirectResponse(url="/", status_code=303)
+        return RedirectResponse(url=dash_url("/", root_path), status_code=303)
 
     return app
 

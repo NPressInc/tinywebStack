@@ -11,7 +11,7 @@
   </style>
 </head>
 <body>
-  <p><a href="/">← Back</a></p>
+  <p><a href="{{ url('/') }}">← Back</a></p>
   <h1>{{ kid_mxid }}</h1>
   <form method="post">
     <input type="hidden" name="csrf" value="{{ csrf }}">

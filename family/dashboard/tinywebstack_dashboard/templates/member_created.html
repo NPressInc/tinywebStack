@@ -6,7 +6,7 @@
   {% include "base_styles.html" %}
 </head>
 <body>
-  <nav><a href="/members">← Family members</a></nav>
+  <nav><a href="{{ url('/members') }}">← Family members</a></nav>
   <h1>{{ username }} is ready</h1>
   <div class="card">
     <p class="hint">Give them this password once. You can reset it anytime from their profile.</p>
@@ -14,9 +14,9 @@
     <textarea rows="2" readonly>{{ password }}</textarea>
   </div>
   {% if role == 'kid' %}
-  <p><a href="/members/{{ username }}/location">Set up location on their phone</a></p>
-  <p><a href="/kid/@{{ username }}:{{ server_name }}">Set chat contacts &amp; quiet hours</a></p>
+  <p><a href="{{ url('/members/' ~ username ~ '/location') }}">Set up location on their phone</a></p>
+  <p><a href="{{ url('/kid/@' ~ username ~ ':' ~ server_name) }}">Set chat contacts &amp; quiet hours</a></p>
   {% endif %}
-  <p><a href="/members/{{ username }}">Manage {{ username }}</a></p>
+  <p><a href="{{ url('/members/' ~ username) }}">Manage {{ username }}</a></p>
 </body>
 </html>

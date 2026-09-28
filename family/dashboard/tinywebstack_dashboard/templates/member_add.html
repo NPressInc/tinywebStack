@@ -6,7 +6,7 @@
   {% include "base_styles.html" %}
 </head>
 <body>
-  <nav><a href="/members">← Family members</a></nav>
+  <nav><a href="{{ url('/members') }}">← Family members</a></nav>
   <h1>Add someone to your family</h1>
   <p class="hint">This creates their login for chat apps and this website. You can give them the password on paper or reset it anytime.</p>
   {% if error %}

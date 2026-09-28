@@ -9,9 +9,9 @@
   </style>
 </head>
 <body>
-  <p><a href="/">← Back</a></p>
+  <p><a href="{{ url('/') }}">← Back</a></p>
   <h1>Invite another household</h1>
-  <form method="post" action="/invite/create">
+  <form method="post" action="{{ url('/invite/create') }}">
     <input type="hidden" name="csrf" value="{{ csrf }}">
     <button type="submit">Generate one-time invite</button>
   </form>

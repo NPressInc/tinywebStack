@@ -6,7 +6,7 @@
   {% include "base_styles.html" %}
 </head>
 <body>
-  <nav><a href="/members/{{ username }}">← {{ username }}</a></nav>
+  <nav><a href="{{ url('/members/' ~ username) }}">← {{ username }}</a></nav>
   <h1>Location sharing on {{ username }}&rsquo;s phone</h1>
   <p class="hint">Only parents can see the map on this home server. Scan this code with the <strong>OwnTracks</strong> app on the child&rsquo;s phone (Android or iPhone).</p>
   {% if not has_config %}

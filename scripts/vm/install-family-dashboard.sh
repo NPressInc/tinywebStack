@@ -9,6 +9,8 @@ source "${TW_STACK_ROOT}/lib/common.sh"
 source "${TW_STACK_ROOT}/lib/domains.sh"
 # shellcheck source=scripts/lib/matrix-server.sh
 source "${TW_STACK_ROOT}/lib/matrix-server.sh"
+# shellcheck source=scripts/lib/synapse-admin-token.sh
+source "${TW_STACK_ROOT}/lib/synapse-admin-token.sh"
 load_config
 
 usage() {
@@ -32,9 +34,25 @@ MODULE_DASH="${TW_STACK_ROOT}/family/dashboard"
 
 LOC_D="$(location_domain "$MAIN_DOMAIN")"
 MATRIX_HOST="$(matrix_public_host "$MAIN_DOMAIN")"
-DASH_PERM="${TWS_DASHBOARD_PERM:-core_family.main}"
-DASH_PUB_PERM="${TWS_DASHBOARD_PUB_PERM:-core_family.public}"
+SYNAPSE_APP="$(yunohost app list --output-as json 2>/dev/null | python3 -c "
+import json, sys
+data = json.load(sys.stdin)
+apps = data.get('apps', data)
+if isinstance(apps, dict):
+    for aid in sorted(apps):
+        if aid == 'synapse' or 'synapse' in aid.lower():
+            print(aid)
+            break
+    else:
+        print('synapse')
+else:
+    print('synapse')
+" || echo synapse)"
+DASH_PERM="${TWS_DASHBOARD_PERM:-${SYNAPSE_APP}.family_dashboard}"
+DASH_PUB_PERM="${TWS_DASHBOARD_PUB_PERM:-${SYNAPSE_APP}.family_public}"
 LAB_CA="${TW_STACK_ROOT}/lab-certs/lab-ca.crt.pem"
+
+DEBIAN_FRONTEND=noninteractive apt-get install -y -qq apache2-utils
 
 mkdir -p "$DASH_ROOT"
 if [[ ! -x "${VENV}/bin/pip" ]]; then
@@ -44,9 +62,11 @@ fi
 "${VENV}/bin/pip" install -q -e "$MODULE_FAMILY" -e "$MODULE_DASH"
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack
-printf '{}\n' > /etc/tinywebstack/owntracks-kids.json
-chown root:www-data /etc/tinywebstack/owntracks-kids.json
-chmod 640 /etc/tinywebstack/owntracks-kids.json
+if [[ ! -s /etc/tinywebstack/owntracks-kids.json ]]; then
+  printf '{}\n' > /etc/tinywebstack/owntracks-kids.json
+  chown root:www-data /etc/tinywebstack/owntracks-kids.json
+  chmod 640 /etc/tinywebstack/owntracks-kids.json
+fi
 touch /etc/tinywebstack/owntracks-recorder.htpasswd
 chown root:www-data /etc/tinywebstack/owntracks-recorder.htpasswd
 chmod 640 /etc/tinywebstack/owntracks-recorder.htpasswd
@@ -80,6 +100,7 @@ TWS_OWNTRACKS_HTPASSWD=/etc/tinywebstack/owntracks-recorder.htpasswd
 TWS_SYNAPSE_ADMIN_TOKEN_FILE=/etc/tinywebstack/synapse-admin-token
 TWS_DASHBOARD_PERM=${DASH_PERM}
 TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}
+TWS_DASHBOARD_ROOT_PATH=/family
 TWS_LAB_TLS_INSECURE=${TWS_LAB_TLS_INSECURE:-1}
 ${CA_LINE}
 EOF
@@ -99,10 +120,13 @@ else
   fi
 fi
 
-if [[ ! -f /etc/tinywebstack/synapse-admin-token ]]; then
-  install -m 640 /dev/null /etc/tinywebstack/synapse-admin-token
-  chown root:www-data /etc/tinywebstack/synapse-admin-token
-  log "Created empty /etc/tinywebstack/synapse-admin-token (see docs/FAMILY_DASHBOARD.md)"
+install -d -m 775 -o root -g www-data /etc/tinywebstack
+touch /etc/tinywebstack/synapse-admin-token
+chown root:www-data /etc/tinywebstack/synapse-admin-token
+provision_synapse_admin_token "$MAIN_DOMAIN" /etc/tinywebstack/synapse-admin-token || true
+if [[ ! -s /etc/tinywebstack/synapse-admin-token ]]; then
+  chmod 640 /etc/tinywebstack/synapse-admin-token
+  log "Synapse admin token not provisioned — see docs/FAMILY_DASHBOARD.md"
 fi
 
 UNIT="/etc/systemd/system/tinywebstack-family-dashboard.service"
@@ -155,24 +179,45 @@ mv "$TMP_SUDO" "$SUDOERS"
 chmod 440 "$SUDOERS"
 
 yunohost tools shell -c "
-from yunohost.utils.permissions import permission_create, permission_url_add
-for perm, url, auth in [
-    ('${DASH_PERM}', '/family', True),
-    ('${DASH_PUB_PERM}', '/family/api/invite/verify', False),
-]:
-    try:
-        permission_create(perm, {'auth_header': auth, 'show_tile': False})
-    except Exception:
-        pass
-    try:
-        permission_url_add(perm, 'main', {'url': url, 'auth_header': auth})
-    except Exception:
-        pass
-permission_url_add('${DASH_PUB_PERM}', 'wellknown', {'url': '/.well-known/tinywebstack-family.json', 'auth_header': False})
+from yunohost.permission import permission_create, permission_url_add, permission_list
+
+def ensure_perm(name, **kwargs):
+    perms = permission_list()
+    if name not in perms:
+        permission_create(name, **kwargs)
+
+ensure_perm(
+    '${DASH_PERM}',
+    url='/family',
+    allowed=['${TWS_PARENTS_GROUP:-parents}'],
+    auth_header=True,
+    show_tile=False,
+    protected=True,
+)
+ensure_perm(
+    '${DASH_PUB_PERM}',
+    url='/family/api/invite/verify',
+    allowed=['visitors'],
+    auth_header=False,
+    show_tile=False,
+    protected=True,
+    additional_urls=['/.well-known/tinywebstack-family.json'],
+)
+try:
+    permission_url_add('${DASH_PUB_PERM}', 'wellknown', {'url': '/.well-known/tinywebstack-family.json', 'auth_header': False})
+except Exception:
+    pass
+ensure_perm(
+    'owntracks.pub',
+    url='/recorder/pub',
+    allowed=['visitors'],
+    auth_header=False,
+    show_tile=False,
+    protected=True,
+)
 " || die "YunoHost permission setup failed"
 
-yunohost user permission add "$DASH_PERM" "${TWS_PARENTS_GROUP:-parents}"
-yunohost user permission add "$DASH_PUB_PERM" visitors || true
+yunohost user permission add "$DASH_PERM" "${TWS_PARENTS_GROUP:-parents}" || true
 
 NGINX_DIR="/etc/nginx/conf.d/${MAIN_DOMAIN}.d"
 install -d "$NGINX_DIR"
@@ -198,15 +243,31 @@ location /family/ {
     proxy_set_header X-Forwarded-Proto \$scheme;
     proxy_set_header Remote-User "";
 }
-location /recorder/pub {
-    auth_basic "OwnTracks";
-    auth_basic_user_file /etc/tinywebstack/owntracks-recorder.htpasswd;
-    proxy_pass http://127.0.0.1:8085/pub;
-    proxy_set_header Host \$host;
-}
 EOF
 mv "$TMP" "$NGINX_SNIP"
 rm -f /etc/nginx/conf.d/tinywebstack-family-dashboard.conf
+
+OWNTRACKS_PORT="$(yunohost app setting get owntracks port 2>/dev/null | tr -d '[:space:]' || true)"
+if [[ -z "$OWNTRACKS_PORT" && -f /etc/yunohost/apps/owntracks/settings.yml ]]; then
+  OWNTRACKS_PORT="$(grep -E '^[[:space:]]*port:' /etc/yunohost/apps/owntracks/settings.yml | awk '{print $2}' | tr -d '\"' | head -1)"
+fi
+OWNTRACKS_PORT="${OWNTRACKS_PORT:-8085}"
+NGINX_OT_DIR="/etc/nginx/conf.d/${LOC_D}.d"
+install -d "$NGINX_OT_DIR"
+NGINX_OT_SNIP="${NGINX_OT_DIR}/tinywebstack-owntracks-pub.conf"
+TMP_OT="$(mktemp)"
+cat >"$TMP_OT" <<EOF
+# Managed by tinywebStack — basic-auth publish for family kids (survives owntracks_ynh upgrades)
+location /recorder/pub {
+    auth_basic "OwnTracks family";
+    auth_basic_user_file /etc/tinywebstack/owntracks-recorder.htpasswd;
+    proxy_pass http://127.0.0.1:${OWNTRACKS_PORT}/pub;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Limit-U \$remote_user;
+}
+EOF
+mv "$TMP_OT" "$NGINX_OT_SNIP"
+
 yunohost service reload nginx
 
 log "Family dashboard listening on 127.0.0.1:8765 (public https://${MAIN_DOMAIN}/family/)"

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from tinywebstack_family.policy import FamilyPolicy, PolicyStore
@@ -53,7 +54,9 @@ class FamilySpamCheckerModule:
     def _deny(self, msg: str) -> DenyResult:
         log.info("Family policy deny: %s", msg)
         code = Codes.FORBIDDEN if Codes is not None else "M_FORBIDDEN"
-        return (code, {"msg": msg})
+        # SynapseError.json_body() calls cs_error(self.msg, errcode, **additional_fields);
+        # a "msg" key here causes TypeError and hangs the request.
+        return (code, {"tws_reason": msg})
 
     def _policy(self) -> FamilyPolicy:
         p = self.store.policy
@@ -62,17 +65,23 @@ class FamilySpamCheckerModule:
         return p
 
     def _room_is_direct(self, room_config: Any) -> bool:
+        if isinstance(room_config, Mapping):
+            return bool(room_config.get("is_direct"))
         if isinstance(room_config, dict):
-            if room_config.get("is_direct"):
-                return True
-            preset = room_config.get("preset") or room_config.get("creation_content", {}).get(
-                "preset"
-            )
-            if preset in ("trusted_private_chat", "private_chat"):
-                return True
+            return bool(room_config.get("is_direct"))
         if isinstance(room_config, bool):
             return room_config
         return False
+
+    def _kid_invite_count(self, room_config: Any) -> int:
+        if not isinstance(room_config, (dict, Mapping)):
+            return 0
+        invite = room_config.get("invite")
+        if not invite:
+            return 0
+        if isinstance(invite, (list, tuple)):
+            return len(invite)
+        return 1
 
     async def _kids_in_room(self, policy: FamilyPolicy, member_mxids: List[str]) -> List[str]:
         return [m for m in member_mxids if policy.is_kid(m)]
@@ -142,6 +151,8 @@ class FamilySpamCheckerModule:
             return self._deny("Quiet hours: kid may not create rooms")
         if not self._room_is_direct(room_config):
             return self._deny("Kids may not create group rooms")
+        if self._kid_invite_count(room_config) > 1:
+            return self._deny("Kids may only create direct chats with one person")
         return NOT_SPAM
 
     async def user_may_send_3pid_invite(
@@ -191,9 +202,9 @@ class FamilySpamCheckerModule:
             return True, None
         sender = getattr(event, "sender", None) or event.get("sender")
         if policy.is_kid(sender) or policy.fail_closed_kids:
-            return False, {"msg": "End-to-end encryption is disabled for family rooms"}
+            return False, {"tws_reason": "End-to-end encryption is disabled for family rooms"}
         if self.reject_encryption:
-            return False, {"msg": "End-to-end encryption is disabled on this server"}
+            return False, {"tws_reason": "End-to-end encryption is disabled on this server"}
         return True, None
 
     def _member_from_state_event(self, ev: Any) -> Optional[str]:
@@ -203,8 +214,15 @@ class FamilySpamCheckerModule:
         if ev_type != "m.room.member":
             return None
         state_key = getattr(ev, "state_key", None) or (ev.get("state_key") if isinstance(ev, dict) else None)
-        content = getattr(ev, "content", None) or (ev.get("content") if isinstance(ev, dict) else {}) or {}
-        membership = content.get("membership") if isinstance(content, dict) else None
+        content = getattr(ev, "content", None)
+        if content is None and isinstance(ev, dict):
+            content = ev.get("content")
+        content = content or {}
+        membership = None
+        if isinstance(content, Mapping):
+            membership = content.get("membership")
+        elif hasattr(content, "get"):
+            membership = content.get("membership")
         if membership in ("join", "invite") and state_key:
             return state_key
         return None
