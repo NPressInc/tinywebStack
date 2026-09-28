@@ -35,4 +35,9 @@ if [[ -n "$NODE_NAME" && -x "${TW_STACK_ROOT}/vm/create-family-test-users.sh" ]]
   "${TW_STACK_ROOT}/vm/create-family-test-users.sh" "$MAIN_DOMAIN" "$NODE_NAME"
 fi
 
+if [[ -n "$NODE_NAME" && -x "${TW_STACK_ROOT}/vm/setup-family-calendars.sh" ]]; then
+  "${TW_STACK_ROOT}/vm/setup-family-calendars.sh" "$MAIN_DOMAIN" "$NODE_NAME"
+  "${TW_STACK_ROOT}/vm/family-groups.sh"
+fi
+
 log "Family layer init complete for ${MAIN_DOMAIN}"

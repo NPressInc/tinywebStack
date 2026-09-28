@@ -84,6 +84,15 @@ for perm in synapse.main element.main; do
   perm_add "$perm" "$FED_TEST_GROUP"
 done
 
+if ynh_perm_exists nextcloud.main; then
+  perm_remove nextcloud.main all_users || true
+  perm_remove nextcloud.main visitors || true
+  perm_add nextcloud.main "$PARENTS_GROUP"
+  perm_add nextcloud.main "$KIDS_GROUP"
+  perm_add nextcloud.main "$FED_TEST_GROUP"
+  hide_portal_tile nextcloud.main
+fi
+
 if [[ "$LOCATION_APP" == "owntracks" ]]; then
   perm_remove owntracks.main all_users || true
   perm_remove owntracks.main visitors || true
@@ -100,7 +109,7 @@ if ynh_perm_exists "$DASH_PERM"; then
   perm_remove "$DASH_PERM" all_users || true
   perm_remove "$DASH_PERM" visitors || true
   perm_add "$DASH_PERM" "$PARENTS_GROUP"
-  show_portal_tile "$DASH_PERM" --label "Family home"
+  configure_family_home_tile "$DASH_PERM" || log "WARN: Family home portal tile not fully configured for ${DASH_PERM}"
 fi
 
 EVENTS_APP="${EVENTS_APP:-mobilizon}"
@@ -116,6 +125,8 @@ if [[ "$EVENTS_APP" == "mobilizon" ]] && ynh_perm_exists "mobilizon.main"; then
     python3 "$APPLY_PY" --kids-group "$KIDS_GROUP" || log "WARN: mobilizon kid permissions"
   fi
 fi
+
+configure_element_tile_logo || true
 
 # Traccar is fallback-only; Owntracks map is linked from the dashboard (avoid broken portal tiles).
 hide_portal_tile traccar.main

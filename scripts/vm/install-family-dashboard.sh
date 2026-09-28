@@ -11,6 +11,8 @@ source "${TW_STACK_ROOT}/lib/domains.sh"
 source "${TW_STACK_ROOT}/lib/matrix-server.sh"
 # shellcheck source=scripts/lib/synapse-admin-token.sh
 source "${TW_STACK_ROOT}/lib/synapse-admin-token.sh"
+# shellcheck source=scripts/lib/portal_tiles.sh
+source "${TW_STACK_ROOT}/lib/portal_tiles.sh"
 load_config
 
 usage() {
@@ -34,6 +36,9 @@ MODULE_DASH="${TW_STACK_ROOT}/family/dashboard"
 
 LOC_D="$(location_domain "$MAIN_DOMAIN")"
 EVENTS_D="$(events_domain "$MAIN_DOMAIN")"
+NC_D="$(nextcloud_domain "$MAIN_DOMAIN")"
+NC_PATH="${TWS_NEXTCLOUD_PATH:-/nextcloud}"
+CALDAV_ROOT="https://${NC_D}${NC_PATH}/remote.php/dav"
 MATRIX_HOST="$(matrix_public_host "$MAIN_DOMAIN")"
 SYNAPSE_APP="$(yunohost app list --output-as json 2>/dev/null | python3 -c "
 import json, sys
@@ -96,6 +101,7 @@ TWS_LOCATION_URL=https://${LOC_D}/
 TWS_LOCATION_DOMAIN=${LOC_D}
 TWS_EVENTS_URL=https://${EVENTS_D}/
 TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"
+TWS_CALDAV_ROOT=${CALDAV_ROOT}
 TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"
 TWS_OWNTRACKS_PUBLISH_URL=https://${LOC_D}/recorder/pub
 TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
@@ -213,7 +219,7 @@ runpy.run_path('${PERMS_PY}', run_name='__main__')
 " || die "YunoHost permission setup failed"
 
 yunohost user permission add "$DASH_PERM" "${TWS_PARENTS_GROUP:-parents}" || true
-yunohost user permission update "$DASH_PERM" --show_tile True --label "Family home" 2>/dev/null \
+configure_family_home_tile "$DASH_PERM" \
   || log "WARN: could not enable Family home portal tile for ${DASH_PERM}"
 
 NGINX_DIR="/etc/nginx/conf.d/${MAIN_DOMAIN}.d"

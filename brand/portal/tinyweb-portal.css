@@ -43,3 +43,20 @@ a[href^="https://yunohost.org"],
 a[href^="http://yunohost.org"] {
   display: none !important;
 }
+
+/*
+ * Family dashboard sub-permission: YunoHost 12 shows "Synapse (Family home)".
+ * yunohost-portal 12.1.2: link is inside h4.app-label (protocol-relative …/family).
+ */
+li.app-tile .app-label a[href$="/family"],
+li.app-tile .app-label a[href$="/family/"] {
+  font-size: 0 !important;
+  line-height: 1.2;
+}
+li.app-tile .app-label a[href$="/family"]::before,
+li.app-tile .app-label a[href$="/family/"]::before {
+  content: "Family home";
+  font-size: 1.25rem;
+  font-weight: 400;
+  color: inherit;
+}

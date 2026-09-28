@@ -29,9 +29,11 @@ This uses `yunohost domain config set` only (no core file patches).
 
 ### After login
 
-The script sets **`feature.app.default_app`** to **`synapse`** (app ID only). Parents reach the family UI via the **Family home** portal tile and the nginx redirect from `/` to `/family/`. If default app cannot be set automatically, use **Domains → your domain → Features → Default app** → synapse in the webadmin.
+Parents reach the family UI via the **Family home** portal tile (TinyWeb logo) and the nginx redirect from `/` to `/family/`. The **user intro** includes a clear **Open your family home** link to `/family/`.
 
-The **user intro** always includes a clear **Open your family home** link to `/family/`.
+### “Synapse (Family home)” on the app grid
+
+YunoHost 12 builds sub-permission tile labels as **`{app name} ({permission label})`**, so the API `--label "Family home"` still appears as **Synapse (Family home)**. Renaming the Synapse app would break integrations, so TinyWeb **`feature.portal.custom_css`** hides the link text and injects **Family home** via `::before` on `li.app-tile .app-label a[href$="/family"]` (protocol-relative URL, no trailing slash). Re-run `install-tinyweb-portal-branding.sh` after CSS changes. If a future portal theme changes markup, adjust `brand/portal/tinyweb-portal.css`.
 
 ## Orchestration
 
