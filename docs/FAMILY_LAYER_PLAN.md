@@ -59,10 +59,10 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 | ID | Feature | Parent / kid value | Stack already provides | Gap (custom) | Smallest approach | Depends on | Order | v1 |
 |----|---------|-------------------|------------------------|--------------|-------------------|------------|-------|-----|
 | F1.1 | **Canonical group model** | Parents manage who is in the household; kids get only kid-appropriate apps. | YunoHost groups + permission matrix | Convention + automation for `parents`, `kids`, optional `family-<slug>` | Shell script or small Python CLI: create groups, document naming; idempotent `yunohost user group create` | YunoHost postinstall | 1 | **Must** |
-| F1.2 | **Create kid account** | Parent adds a child without giving them admin rights. | `yunohost user create`; Synapse user via SSO | Wizard/CLI that sets password, group membership, and default permissions in one step | Extend `create-matrix-test-users.sh` pattern → `family-user-create.sh` with `--role kid\|parent` | F1.1 | 2 | **Must** |
+| F1.2 | **Create kid account** | Parent adds a child without giving them admin rights. | `yunohost user create`; Synapse user via SSO | **Dashboard** “Add family member” (+ sudo helper) or lab script `create-family-test-users.sh` | F1.1 | 2 | **Must** |
 | F1.3 | **App permissions by role** | Kid sees Element + location; not Traccar admin or YunoHost admin. | `yunohost user permission update` per app | Map role → permission set (remove `all_users` where too broad; grant `kids` / `parents`) | Declarative YAML consumed by apply script | F1.1, apps installed | 3 | **Must** |
 | F1.4 | **Matrix identity alignment** | Kid logs into Element as `@kid:family.domain`. | Synapse `server_name` = main domain ([yunohost-family-apps.sh](../scripts/vm/yunohost-family-apps.sh)); SSO | Ensure LDAP/SSO user matches localpart; document password reset flow | YunoHost + Synapse app docs; optional admin API check script | F1.2 | 3 | **Must** |
-| F1.5 | **Parent admin surface (family dashboard)** | One place to manage kid allowlists and quiet hours. | YunoHost SSO + LDAP groups | Central **family dashboard** web app (parents group only) | [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), `install-family-dashboard.sh` | F1.2–F1.3 | 6 | **Must** |
+| F1.5 | **Parent admin surface (family dashboard)** | **Only** UI non-technical families need; optional YunoHost/Synapse/OwnTracks admin for power users. | YunoHost SSO + LDAP groups | Dashboard: members, passwords, Matrix status, kid allowlists, quiet hours, invites, OwnTracks QR | [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), `family-dashboard-privileged.sh` | F1.2–F1.3 | 6 | **Must** |
 | F1.6 | **Kid credential recovery** | Parent resets forgotten kid password. | `yunohost user update` | Audit log + parent-only command wrapper | Thin CLI calling YunoHost API | F1.2 | 7 | Later |
 
 ---
@@ -145,6 +145,7 @@ Components on each node:
 - **Dashboard:** FastAPI app at `/family/` — parents group via SSO ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
 - **VM scripts:** `family-groups.sh`, `install-family-module.sh`, `install-family-dashboard.sh`, `family-init.sh`.
 - **Clients (v1):** **Element X** (and Element Android/iOS) for chat; **OwnTracks** app for location. Element Web may remain for admins; not the kid client.
+- **Parent UX:** The dashboard is the **only** required web UI for families; backend admin panels are optional ([PHILOSOPHY.md](PHILOSOPHY.md) §5b).
 - **No centralized cloud** in v1.
 
 ---

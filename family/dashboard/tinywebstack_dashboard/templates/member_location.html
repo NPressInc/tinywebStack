@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Location setup — {{ username }}</title>
+  {% include "base_styles.html" %}
+</head>
+<body>
+  <nav><a href="/members/{{ username }}">← {{ username }}</a></nav>
+  <h1>Location sharing on {{ username }}&rsquo;s phone</h1>
+  <p class="hint">Only parents can see the map on this home server. Scan this code with the <strong>OwnTracks</strong> app on the child&rsquo;s phone (Android or iPhone).</p>
+  {% if not has_config %}
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Create phone setup code</button>
+  </form>
+  {% else %}
+  <div class="card">
+    <p><img src="/members/{{ username }}/location/qr.png" alt="QR code for OwnTracks" width="280" height="280"></p>
+    <p class="hint">In OwnTracks: Preferences → Configuration management → Scan QR code.</p>
+    <p class="hint">Parents view locations at <a href="{{ location_url }}">{{ location_url }}</a> (not shared with children).</p>
+  </div>
+  <form method="post">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <input type="hidden" name="regenerate" value="1">
+    <button type="submit">Generate a new code (invalidates the old phone setup)</button>
+  </form>
+  {% endif %}
+</body>
+</html>

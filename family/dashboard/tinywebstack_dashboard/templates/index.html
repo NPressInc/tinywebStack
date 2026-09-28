@@ -2,20 +2,31 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Family dashboard</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 48rem; margin: 2rem auto; padding: 0 1rem; }
-    a { color: #0366d6; }
-  </style>
+  <title>Family home</title>
+  {% include "base_styles.html" %}
 </head>
 <body>
-  <h1>Family dashboard</h1>
-  <p>Signed in as <strong>{{ user }}</strong> (parents group).</p>
-  {% if location_url %}
-  <p>Location (parents only): <a href="{{ location_url }}">{{ location_url }}</a></p>
-  {% endif %}
-  <p><a href="/invite">Link another household</a> · <a href="/invite/redeem">Redeem invite</a></p>
-  <h2>Kids</h2>
+  <nav>
+    <a href="/">Home</a>
+    <a href="/members">Family members ({{ member_count }})</a>
+    <a href="/invite">Link another home</a>
+  </nav>
+  <h1>Your family home</h1>
+  <p class="hint">This is the only website you need for day-to-day family setup. Technical tools (YunoHost, Synapse, OwnTracks admin) are optional.</p>
+  <p>Signed in as <strong>{{ user }}</strong>.</p>
+  <div class="card">
+    <h2>Quick links</h2>
+    <ul>
+      <li><a href="/members">Manage parents and children</a></li>
+      <li><a href="/members/add">Add a child or parent</a></li>
+      {% if location_url %}
+      <li>View locations (parents only): <a href="{{ location_url }}">open map</a></li>
+      {% endif %}
+      <li><a href="/invite">Invite another household</a> · <a href="/invite/redeem">Redeem invite</a></li>
+    </ul>
+  </div>
+  <h2>Children — chat rules</h2>
+  <p class="hint">Choose who each child may message and when quiet hours apply.</p>
   {% if kids %}
   <ul>
     {% for kid in kids %}
@@ -23,7 +34,7 @@
     {% endfor %}
   </ul>
   {% else %}
-  <p>No users in the <code>kids</code> group yet.</p>
+  <p>No children yet. <a href="/members/add">Add a child</a> first.</p>
   {% endif %}
 </body>
 </html>

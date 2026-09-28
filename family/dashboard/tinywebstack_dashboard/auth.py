@@ -16,8 +16,10 @@ class DashboardConfig:
     policy_path: str = "/etc/tinywebstack/family-policy.json"
     server_name: str = ""
     location_base_url: str = ""
+    location_domain: str = ""
     csrf_secret: str = ""
     yunohost_cli: str = "yunohost"
+    owntracks_store_path: str = "/etc/tinywebstack/owntracks-kids.json"
 
 
 def username_from_headers(headers: dict) -> Optional[str]:

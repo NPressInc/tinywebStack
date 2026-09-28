@@ -61,6 +61,12 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 ---
 
+### 5b. One dashboard for non-technical families
+
+**tinywebStack:** **Carries over (product core).** The **TinyWeb parent dashboard** (`/family/` on the main domain) is the **only** interface a non-technical family should need for everyday life: add or remove parents and children, reset passwords, see whether chat is working, set who kids may message, link another home, and set up location on a child’s phone. **YunoHost admin**, **Synapse admin**, and **OwnTracks/Traccar admin UIs** remain available for installers and power users, but they are **optional**, not part of the parent story. If a workflow still requires opening those panels, treat that as a family-layer gap to close.
+
+---
+
 ### 6. Encryption and least privilege on the server
 
 **Source:** [TinyWebC `README.md`](https://github.com/NPressInc/TinyWebC/blob/main/README.md) — “encrypted message relay”; [KEY_DISTRIBUTION_ARCHITECTURE.md](https://github.com/NPressInc/TinyWebC/blob/main/docs/KEY_DISTRIBUTION_ARCHITECTURE.md) — “End-to-end encryption — Messages encrypted by clients, nodes cannot decrypt”; “Nodes only store public keys.”
