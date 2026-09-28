@@ -10,12 +10,13 @@ source "${TW_STACK_ROOT}/lib/domains.sh"
 load_config
 
 usage() {
-  echo "Usage: yunohost-family-apps.sh MAIN_DOMAIN"
+  echo "Usage: yunohost-family-apps.sh MAIN_DOMAIN [NODE_NAME]"
   exit 1
 }
 
 [[ $# -ge 1 ]] || usage
 MAIN_DOMAIN=$1
+NODE_NAME=${2:-}
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root on the YunoHost VM" >&2
@@ -37,7 +38,6 @@ install_app() {
   yunohost app install "$@"
 }
 
-# Synapse on matrix.<domain>, Matrix IDs on MAIN_DOMAIN via server_name=
 SYNAPSE_ARGS="domain=${MATRIX_D}&server_name=${MAIN_DOMAIN}&is_free_registration=0&init_main_permission=all_users"
 ELEMENT_ARGS="domain=${ELEMENT_D}&path=/&default_home_server=${MAIN_DOMAIN}&init_main_permission=visitors"
 
@@ -53,6 +53,9 @@ if [[ "$LOCATION_APP" == "owntracks" ]]; then
 else
   TRACCAR_ARGS="domain=${LOC_D}&init_main_permission=all_users"
   install_app traccar traccar --args "$TRACCAR_ARGS"
+  if [[ -n "$NODE_NAME" && -x "${TW_STACK_ROOT}/vm/setup-traccar-admin.sh" ]]; then
+    "${TW_STACK_ROOT}/vm/setup-traccar-admin.sh" "$MAIN_DOMAIN" "$NODE_NAME"
+  fi
 fi
 
-echo "Apps on ${MAIN_DOMAIN}: synapse@${MATRIX_D}, element@${ELEMENT_D}, ${LOCATION_APP}@${LOC_D}"
+echo "Apps on ${MAIN_DOMAIN}: Synapse https://${MATRIX_D} | Element https://${ELEMENT_D} | ${LOCATION_APP} https://${LOC_D}"

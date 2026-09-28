@@ -18,11 +18,15 @@ gen_if_missing() {
   write_node_secret "$node" "$kind" "$(openssl rand -base64 18)"
 }
 
-while read -r name _domain _rest; do
+while read -r name domain _rest; do
   [[ -n "$name" ]] || continue
   gen_if_missing "$name" yunohost_admin_password
   gen_if_missing "$name" alice_password
   gen_if_missing "$name" bob_password
+  gen_if_missing "$name" traccar_admin_password
+  if [[ -n "$domain" && -z "$(read_node_secret "$name" traccar_admin_login || true)" ]]; then
+    write_node_secret "$name" traccar_admin_login "admin@${domain}"
+  fi
 done < <(read_nodes_conf)
 
 log "Secrets ready in $(secrets_file)"

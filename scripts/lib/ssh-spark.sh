@@ -22,12 +22,13 @@ ensure_ssh_known_host() {
   local host=$1
   local port=${2:-22}
   local known file
-  require_cmd ssh-keyscan
+  require_cmd ssh-keyscan ssh-keygen
   known="$(ssh_known_hosts_file)"
   mkdir -p "$(dirname "$known")"
   touch "$known"
   chmod 600 "$known"
-  if grep -q "^\\[${host}\\]:${port} " "$known" 2>/dev/null || grep -q "^${host} " "$known" 2>/dev/null; then
+  if ssh-keygen -F "[${host}]:${port}" -f "$known" >/dev/null 2>&1 \
+    || ssh-keygen -F "$host" -f "$known" >/dev/null 2>&1; then
     return 0
   fi
   file="$(mktemp)"

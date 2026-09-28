@@ -9,13 +9,15 @@ source "${TW_STACK_ROOT}/lib/common.sh"
 source "${TW_STACK_ROOT}/lib/secrets.sh"
 # shellcheck source=scripts/lib/domains.sh
 source "${TW_STACK_ROOT}/lib/domains.sh"
+# shellcheck source=scripts/lib/yunohost-helper.sh
+source "${TW_STACK_ROOT}/lib/yunohost-helper.sh"
 load_config
 
 usage() {
   cat <<'EOF'
 Usage: yunohost-bootstrap.sh MAIN_DOMAIN [NODE_NAME]
 
-Environment (from spark remote.env / TW_STACK_SECRETS_FILE on spark):
+Environment (from spark remote.env):
   YUNOHOST_ADMIN_PASSWORD
 
 Must run as root on the VM.
@@ -57,24 +59,22 @@ fi
 
 while read -r d; do
   [[ -n "$d" ]] || continue
-  if ! yunohost domain list 2>/dev/null | grep -qF "$d"; then
+  if ! yunohost_domain_exists "$d"; then
     yunohost domain add "$d"
   fi
 done < <(node_all_domains "$MAIN_DOMAIN")
 
 while read -r d; do
   [[ -n "$d" ]] || continue
-  if ! yunohost domain cert list 2>/dev/null | grep -qF "$d"; then
-    yunohost domain cert install "$d" --self-signed --force 2>/dev/null || \
-      yunohost domain cert install "$d" --self-signed || true
-  fi
-done < <(node_all_domains "$MAIN_DOMAIN")
-
-if [[ -x "${TW_STACK_ROOT}/vm/yunohost-lab-tls.sh" ]]; then
-  while read -r d; do
-    [[ -n "$d" ]] || continue
+  if [[ -f "${TW_STACK_ROOT}/lab-certs/${d}/fullchain.pem" ]]; then
     "${TW_STACK_ROOT}/vm/yunohost-lab-tls.sh" "$d" || true
-  done < <(node_all_domains "$MAIN_DOMAIN")
-fi
+    continue
+  fi
+  if yunohost_domain_has_cert "$d"; then
+    continue
+  fi
+  yunohost domain cert install "$d" --self-signed 2>/dev/null || \
+    yunohost domain cert install "$d" --self-signed || true
+done < <(node_all_domains "$MAIN_DOMAIN")
 
 log "YunoHost bootstrap complete for ${MAIN_DOMAIN} node=${NODE_NAME} (admin: ${YUNOHOST_ADMIN_USER})"

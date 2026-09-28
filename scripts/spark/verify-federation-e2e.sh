@@ -23,8 +23,6 @@ usage() {
   cat <<'EOF'
 Usage: verify-federation-e2e.sh \
   NODE_A NODE_B DOMAIN_A DOMAIN_B ALICE_USER BOB_USER [REJECT_SERVER_DOMAIN]
-
-Run from spark after apply-private-dns.sh (or from a VM with lab CA path configured).
 EOF
   exit 1
 }
@@ -46,7 +44,23 @@ BOB_PASSWORD="${BOB_PASSWORD:-$(read_node_secret "$NODE_B" bob_password || true)
 [[ -n "$ALICE_PASSWORD" && -n "$BOB_PASSWORD" ]] || \
   die "Set alice/bob passwords in $(secrets_file)"
 
-LAB_CA="${TW_STACK_LAB_CA_DIR:-${TW_STACK_SECRETS_DIR}/lab-ca}/lab-ca.crt.pem"
+resolve_lab_ca() {
+  local c
+  for c in \
+    "${TW_STACK_LAB_CA_DIR:-}/lab-ca.crt.pem" \
+    "${TW_STACK_ROOT}/lab-certs/lab-ca.crt.pem" \
+    "${TW_STACK_SECRETS_DIR:-}/lab-ca/lab-ca.crt.pem"
+  do
+    if [[ -f "$c" ]]; then
+      printf '%s\n' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+LAB_CA="$(resolve_lab_ca)" || die "Lab CA not found (expected under TW_STACK_LAB_CA_DIR or ${TW_STACK_ROOT}/lab-certs/)"
+
 export DOMAIN_A DOMAIN_B ALICE_USER BOB_USER ALICE_PASSWORD BOB_PASSWORD REJECT_DOMAIN LAB_CA
 
 python3 <<'PY'
@@ -60,13 +74,12 @@ import urllib.parse
 import urllib.request
 import uuid
 
-lab_ca = os.environ.get("LAB_CA", "")
+lab_ca = os.environ["LAB_CA"]
+if not os.path.isfile(lab_ca):
+    sys.exit(f"Lab CA missing: {lab_ca}")
+
 ctx = ssl.create_default_context()
-if lab_ca and os.path.isfile(lab_ca):
-    ctx.load_verify_locations(lab_ca)
-else:
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
+ctx.load_verify_locations(lab_ca)
 
 
 def req(method, url, token=None, body=None):
@@ -164,6 +177,8 @@ bad = req(
 if bad.get("errcode") not in ("M_FORBIDDEN", "M_UNKNOWN"):
     sys.exit(f"Expected M_FORBIDDEN inviting {reject}, got: {bad}")
 err = bad.get("error", "")
+if bad.get("errcode") == "M_FORBIDDEN" and "Federation denied" not in err and "denied" not in err.lower():
+    print(f"WARN: expected 'Federation denied' text, got: {err[:120]}")
 print(f"OK: invite to {reject} refused ({bad.get('errcode')}: {err[:120]})")
 PY
 
