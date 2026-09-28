@@ -84,6 +84,15 @@ for perm in synapse.main element.main; do
   perm_add "$perm" "$FED_TEST_GROUP"
 done
 
+if ynh_perm_exists nextcloud.main; then
+  perm_remove nextcloud.main all_users || true
+  perm_remove nextcloud.main visitors || true
+  perm_add nextcloud.main "$PARENTS_GROUP"
+  perm_add nextcloud.main "$KIDS_GROUP"
+  perm_add nextcloud.main "$FED_TEST_GROUP"
+  hide_portal_tile nextcloud.main
+fi
+
 if [[ "$LOCATION_APP" == "owntracks" ]]; then
   perm_remove owntracks.main all_users || true
   perm_remove owntracks.main visitors || true

@@ -17,6 +17,7 @@ class DashboardConfig:
     server_name: str = ""
     location_base_url: str = ""
     location_domain: str = ""
+    caldav_root: str = ""
     csrf_secret: str = ""
     yunohost_cli: str = "yunohost"
     owntracks_store_path: str = "/etc/tinywebstack/owntracks-kids.json"

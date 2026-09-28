@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Phone calendars · TinyWeb{% endblock %}
+{% block nav %}
+<nav class="tw-nav">
+  <a href="{{ url('/') }}">Home</a>
+</nav>
+{% endblock %}
+{% block content %}
+<h1>Phone calendars</h1>
+<p class="hint">v1 uses CalDAV apps on your phone (DAVx5 on Android, Apple Calendar on iOS). You do not need the Nextcloud website.</p>
+<div class="card">
+  <h2>Your CalDAV settings</h2>
+  <ul>
+    <li><strong>Server URL:</strong> <code>{{ caldav_root }}</code></li>
+    <li><strong>Username:</strong> <code>{{ user }}</code></li>
+    <li><strong>Password:</strong> your family login password</li>
+    <li><strong>Principal URL (iOS advanced):</strong> <code>{{ principal_url }}</code></li>
+  </ul>
+  <p>Scan this QR code to copy the server URL and username (paste into DAVx5 “Login with URL and user name”):</p>
+  <p><img src="{{ qr_url }}" alt="CalDAV setup QR" style="max-width:100%;height:auto;"></p>
+</div>
+<p class="hint">Shared calendars: <strong>Family</strong>, <strong>Parents</strong> (parents only), <strong>Kids</strong>, plus your personal calendar. See <code>docs/CALENDAR.md</code> on the server for the full permission table.</p>
+{% endblock %}
