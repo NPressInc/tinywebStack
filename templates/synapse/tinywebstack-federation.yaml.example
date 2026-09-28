@@ -1,5 +1,7 @@
-# Example: /etc/matrix-synapse/conf.d/tinywebstack-federation.yaml
+# Example: /etc/matrix-synapse/conf.d/tinywebstack-federation.yaml (mode 640 root:synapse)
 federation_domain_whitelist:
   - "family-b.family.test"
+ip_range_whitelist:
+  - "192.168.122.0/24"
 federation_custom_ca_list:
-  - "/etc/matrix-synapse/conf.d/tinywebstack-lab-ca.pem"
+  - "/etc/matrix-synapse/tinywebstack-lab-ca.pem"

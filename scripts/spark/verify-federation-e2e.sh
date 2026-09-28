@@ -1,23 +1,30 @@
 #!/usr/bin/env bash
-# End-to-end Matrix federation check via Client-Server API (run from spark).
+# End-to-end Matrix federation check via Client-Server API.
 set -euo pipefail
 
-TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# shellcheck source=scripts/lib/common.sh
-source "${TW_STACK_ROOT}/scripts/lib/common.sh"
-# shellcheck source=scripts/lib/secrets.sh
-source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -f "${_script_dir}/../lib/common.sh" ]]; then
+  TW_STACK_ROOT="$(cd "${_script_dir}/.." && pwd)"
+  # shellcheck source=scripts/lib/common.sh
+  source "${TW_STACK_ROOT}/lib/common.sh"
+  # shellcheck source=scripts/lib/secrets.sh
+  source "${TW_STACK_ROOT}/lib/secrets.sh"
+else
+  TW_STACK_ROOT="$(cd "${_script_dir}/../.." && pwd)"
+  # shellcheck source=scripts/lib/common.sh
+  source "${TW_STACK_ROOT}/scripts/lib/common.sh"
+  # shellcheck source=scripts/lib/secrets.sh
+  source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+fi
 load_config
+load_secrets
 
 usage() {
   cat <<'EOF'
 Usage: verify-federation-e2e.sh \
   NODE_A NODE_B DOMAIN_A DOMAIN_B ALICE_USER BOB_USER [REJECT_SERVER_DOMAIN]
 
-Logs in on both homeservers, federated DM, message delivery, and allowlist rejection.
-
-Passwords via ALICE_PASSWORD / BOB_PASSWORD or TW_STACK_SECRETS_FILE:
-  ALICE_PASSWORD_<NODE>, BOB_PASSWORD_<NODE> (uppercase node name).
+Run from spark after apply-private-dns.sh (or from a VM with lab CA path configured).
 EOF
   exit 1
 }
@@ -32,28 +39,34 @@ ALICE_USER=$5
 BOB_USER=$6
 REJECT_DOMAIN=${7:-matrix.org}
 
-require_cmd curl python3
+require_cmd python3
 
 ALICE_PASSWORD="${ALICE_PASSWORD:-$(read_node_secret "$NODE_A" alice_password || true)}"
 BOB_PASSWORD="${BOB_PASSWORD:-$(read_node_secret "$NODE_B" bob_password || true)}"
 [[ -n "$ALICE_PASSWORD" && -n "$BOB_PASSWORD" ]] || \
-  die "Set ALICE_PASSWORD and BOB_PASSWORD (or secrets file entries)"
+  die "Set alice/bob passwords in $(secrets_file)"
 
-export DOMAIN_A DOMAIN_B ALICE_USER BOB_USER ALICE_PASSWORD BOB_PASSWORD REJECT_DOMAIN
+LAB_CA="${TW_STACK_LAB_CA_DIR:-${TW_STACK_SECRETS_DIR}/lab-ca}/lab-ca.crt.pem"
+export DOMAIN_A DOMAIN_B ALICE_USER BOB_USER ALICE_PASSWORD BOB_PASSWORD REJECT_DOMAIN LAB_CA
 
 python3 <<'PY'
 import json
 import os
 import ssl
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
 import uuid
 
+lab_ca = os.environ.get("LAB_CA", "")
 ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
+if lab_ca and os.path.isfile(lab_ca):
+    ctx.load_verify_locations(lab_ca)
+else:
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
 
 
 def req(method, url, token=None, body=None):
@@ -63,7 +76,7 @@ def req(method, url, token=None, body=None):
     data = None if body is None else json.dumps(body).encode()
     r = urllib.request.Request(url, data=data, headers=headers, method=method)
     try:
-        with urllib.request.urlopen(r, context=ctx, timeout=60) as resp:
+        with urllib.request.urlopen(r, context=ctx, timeout=90) as resp:
             return json.loads(resp.read().decode())
     except urllib.error.HTTPError as e:
         raw = e.read().decode()
@@ -108,17 +121,38 @@ room = req(
 if "room_id" not in room:
     sys.exit(f"createRoom failed: {room}")
 room_id = room["room_id"]
+room_enc = urllib.parse.quote(room_id, safe="")
+
+join = req("POST", f"https://{db}/_matrix/client/v3/join/{room_enc}", token=b_token, body={})
+if "room_id" not in join:
+    sys.exit(f"bob join failed: {join}")
 
 msg = f"tinywebstack federation ping {uuid.uuid4()}"
 txn = uuid.uuid4().hex
-path = f"/_matrix/client/v3/rooms/{urllib.parse.quote(room_id, safe='')}/send/m.room.message/{txn}"
-send = req("PUT", f"https://{da}{path}", token=a_token, body={"msgtype": "m.text", "body": msg})
+send = req(
+    "PUT",
+    f"https://{da}/_matrix/client/v3/rooms/{room_enc}/send/m.room.message/{txn}",
+    token=a_token,
+    body={"msgtype": "m.text", "body": msg},
+)
 if "event_id" not in send:
     sys.exit(f"send failed: {send}")
 
-sync = req("GET", f"https://{db}/_matrix/client/v3/sync?timeout=30000", token=b_token)
-if msg not in json.dumps(sync):
-    sys.exit("Message not visible to bob — federation or membership failed")
+found = False
+for _ in range(30):
+    hist = req(
+        "GET",
+        f"https://{db}/_matrix/client/v3/rooms/{room_enc}/messages?dir=b&limit=20",
+        token=b_token,
+    )
+    if msg in json.dumps(hist):
+        found = True
+        break
+    time.sleep(2)
+
+if not found:
+    sys.exit("Message not visible to bob at /messages — federation failed")
+
 print("OK: bob received federated message")
 
 bad = req(
@@ -127,9 +161,10 @@ bad = req(
     token=a_token,
     body={"invite": [f"@someone:{reject}"], "preset": "private_chat"},
 )
-if "errcode" not in bad:
-    sys.exit(f"Expected allowlist failure inviting {reject}, got: {bad}")
-print(f"OK: invite to {reject} refused ({bad.get('errcode')})")
+if bad.get("errcode") not in ("M_FORBIDDEN", "M_UNKNOWN"):
+    sys.exit(f"Expected M_FORBIDDEN inviting {reject}, got: {bad}")
+err = bad.get("error", "")
+print(f"OK: invite to {reject} refused ({bad.get('errcode')}: {err[:120]})")
 PY
 
 log "Federation verification passed."

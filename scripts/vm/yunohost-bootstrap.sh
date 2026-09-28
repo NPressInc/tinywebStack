@@ -7,15 +7,16 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${TW_STACK_ROOT}/lib/common.sh"
 # shellcheck source=scripts/lib/secrets.sh
 source "${TW_STACK_ROOT}/lib/secrets.sh"
+# shellcheck source=scripts/lib/domains.sh
+source "${TW_STACK_ROOT}/lib/domains.sh"
 load_config
 
 usage() {
   cat <<'EOF'
 Usage: yunohost-bootstrap.sh MAIN_DOMAIN [NODE_NAME]
 
-Environment (preferred over generating new secrets):
-  YUNOHOST_ADMIN_PASSWORD   Admin password for postinstall
-  TW_STACK_SECRETS_FILE     Key/value file (see docs/test-nodes.md)
+Environment (from spark remote.env / TW_STACK_SECRETS_FILE on spark):
+  YUNOHOST_ADMIN_PASSWORD
 
 Must run as root on the VM.
 EOF
@@ -24,6 +25,7 @@ EOF
 
 [[ $# -ge 1 ]] || usage
 MAIN_DOMAIN=$1
+# shellcheck disable=SC2034
 NODE_NAME=${2:-unknown}
 
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -31,7 +33,7 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-YUNOHOST_ADMIN_USER="${YUNOHOST_ADMIN_USER:-twsadmin}"
+YUNOHOST_ADMIN_USER="${YUNOHOST_ADMIN_USER:-twsowner}"
 YUNOHOST_INSTALL_URL="${YUNOHOST_INSTALL_URL:-https://install.yunohost.org}"
 
 if ! command -v yunohost >/dev/null 2>&1; then
@@ -40,19 +42,7 @@ fi
 
 if [[ ! -f /etc/yunohost/installed ]]; then
   if [[ -z "${YUNOHOST_ADMIN_PASSWORD:-}" ]]; then
-    YUNOHOST_ADMIN_PASSWORD="$(read_node_secret "$NODE_NAME" yunohost_admin_password || true)"
-  fi
-  if [[ -z "${YUNOHOST_ADMIN_PASSWORD:-}" ]]; then
-    YUNOHOST_ADMIN_PASSWORD="$(openssl rand -base64 24)"
-    if [[ "$NODE_NAME" != "unknown" ]]; then
-      write_node_secret "$NODE_NAME" yunohost_admin_password "$YUNOHOST_ADMIN_PASSWORD"
-    else
-      ensure_secrets_dir
-      install -m 600 /dev/null "$(secrets_file)" 2>/dev/null || true
-      printf 'YUNOHOST_ADMIN_PASSWORD=%q\n' "$YUNOHOST_ADMIN_PASSWORD" >>"$(secrets_file)"
-      chmod 600 "$(secrets_file)"
-      log "Generated admin password written to $(secrets_file) (not printed)"
-    fi
+    die "YUNOHOST_ADMIN_PASSWORD must be set (spark secrets file). Bootstrap does not generate passwords on the VM."
   fi
 
   yunohost tools postinstall \
@@ -65,14 +55,26 @@ if [[ ! -f /etc/yunohost/installed ]]; then
     --i-have-read-terms-of-services
 fi
 
-if ! yunohost domain cert list 2>/dev/null | grep -qF "$MAIN_DOMAIN"; then
-  yunohost domain cert install "$MAIN_DOMAIN" --self-signed --force || \
-    yunohost domain cert install "$MAIN_DOMAIN" --self-signed
-fi
+while read -r d; do
+  [[ -n "$d" ]] || continue
+  if ! yunohost domain list 2>/dev/null | grep -qF "$d"; then
+    yunohost domain add "$d"
+  fi
+done < <(node_all_domains "$MAIN_DOMAIN")
 
-# Lab CA cert (preferred for cross-node federation); no-op if not deployed yet.
+while read -r d; do
+  [[ -n "$d" ]] || continue
+  if ! yunohost domain cert list 2>/dev/null | grep -qF "$d"; then
+    yunohost domain cert install "$d" --self-signed --force 2>/dev/null || \
+      yunohost domain cert install "$d" --self-signed || true
+  fi
+done < <(node_all_domains "$MAIN_DOMAIN")
+
 if [[ -x "${TW_STACK_ROOT}/vm/yunohost-lab-tls.sh" ]]; then
-  "${TW_STACK_ROOT}/vm/yunohost-lab-tls.sh" "$MAIN_DOMAIN" || true
+  while read -r d; do
+    [[ -n "$d" ]] || continue
+    "${TW_STACK_ROOT}/vm/yunohost-lab-tls.sh" "$d" || true
+  done < <(node_all_domains "$MAIN_DOMAIN")
 fi
 
-log "YunoHost bootstrap complete for ${MAIN_DOMAIN} (admin user: ${YUNOHOST_ADMIN_USER})"
+log "YunoHost bootstrap complete for ${MAIN_DOMAIN} node=${NODE_NAME} (admin: ${YUNOHOST_ADMIN_USER})"

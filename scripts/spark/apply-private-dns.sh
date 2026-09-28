@@ -5,6 +5,8 @@ set -euo pipefail
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/scripts/lib/common.sh"
+# shellcheck source=scripts/lib/domains.sh
+source "${TW_STACK_ROOT}/scripts/lib/domains.sh"
 load_config
 ensure_libvirt_system_uri
 
@@ -19,7 +21,6 @@ TMP="$(mktemp)"
   echo "$MARKER_BEGIN"
   while read -r name domain _rest; do
     [[ -n "$name" ]] || continue
-    domain="${domain:-${name}.${TEST_DOMAIN_SUFFIX}}"
     dom="$(vm_domain_name "$name")"
     ip=""
     if virsh dominfo "$dom" >/dev/null 2>&1; then
@@ -29,7 +30,10 @@ TMP="$(mktemp)"
       log "WARN: no IP yet for ${dom}; using placeholder 127.0.0.1 — re-run after VMs boot"
       ip="127.0.0.1"
     fi
-    printf '%s\t%s\n' "$ip" "$domain"
+    while read -r fqdn; do
+      [[ -n "$fqdn" ]] || continue
+      printf '%s\t%s\n' "$ip" "$fqdn"
+    done < <(node_all_domains "${domain:-${name}.${TEST_DOMAIN_SUFFIX}}")
   done < <(read_nodes_conf)
   echo "$MARKER_END"
 } > "$TMP"

@@ -7,6 +7,7 @@ package_upgrade: true
 packages:
   - curl
   - sudo
+  - rsync
   - qemu-guest-agent
 users:
   - name: ${PROVISION_SSH_USER}
@@ -19,5 +20,12 @@ users:
 ssh_pwauth: false
 chpasswd:
   expire: false
+write_files:
+  - path: /root/.ssh/authorized_keys
+    owner: root:root
+    permissions: "0600"
+    content: |
+      ${ADMIN_SSH_PUBKEY_CONTENT}
 runcmd:
   - systemctl enable --now qemu-guest-agent || true
+  - chmod 700 /root/.ssh
