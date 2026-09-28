@@ -45,7 +45,7 @@ provision_synapse_admin_token() {
   local mxid="@${admin_local}:${server_name}"
 
   if [[ -n "$register_bin" ]]; then
-    if ! "$register_bin" -c "$hs_yaml" -u "$admin_local" -p "$admin_pass" -a 2>/dev/null; then
+    if ! printf '%s\n' "$admin_pass" | "$register_bin" -c "$hs_yaml" -u "$admin_local" -a 2>/dev/null; then
       log "Admin user ${admin_local} may already exist; attempting login only"
     fi
   else

@@ -61,7 +61,13 @@ perm_add() {
 }
 
 perm_remove() {
-  yunohost user permission remove "$1" "$2" || true
+  local out
+  out="$(yunohost user permission remove "$1" "$2" 2>&1)" || {
+    if [[ "$out" == *protected* ]]; then
+      return 0
+    fi
+    log "WARN: permission remove $1 $2: ${out}"
+  }
 }
 
 ensure_group "$PARENTS_GROUP"

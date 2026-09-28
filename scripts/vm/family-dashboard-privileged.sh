@@ -9,6 +9,55 @@ source "${TW_STACK_ROOT}/lib/common.sh"
 source "${TW_STACK_ROOT}/lib/matrix-server.sh"
 load_config
 
+load_dashboard_env() {
+  local f=/etc/tinywebstack/dashboard.env
+  if [[ -f "$f" ]]; then
+    set -a
+    # shellcheck source=/dev/null
+    source "$f"
+    set +a
+  fi
+  if [[ -z "${TWS_CA_BUNDLE:-}" && -f /etc/tinywebstack/lab-ca.pem ]]; then
+    TWS_CA_BUNDLE=/etc/tinywebstack/lab-ca.pem
+  fi
+}
+
+load_dashboard_env
+
+synapse_curl_opts() {
+  SYNAPSE_CURL_OPTS=(-fsS)
+  if [[ -n "${TWS_CA_BUNDLE:-}" && -f "${TWS_CA_BUNDLE}" ]]; then
+    SYNAPSE_CURL_OPTS+=(--cacert "${TWS_CA_BUNDLE}")
+  fi
+  if [[ "${TWS_LAB_TLS_INSECURE:-0}" == "1" ]]; then
+    SYNAPSE_CURL_OPTS+=(-k)
+  fi
+}
+
+synapse_admin_put_user() {
+  local mxid=$1 pass=$2
+  [[ -s "$SYNAPSE_TOKEN_FILE" ]] || return 1
+  local token server host enc url body tmp http
+  token="$(tr -d '\n' < "$SYNAPSE_TOKEN_FILE")"
+  [[ -n "$token" ]] || return 1
+  server="${TWS_SERVER_NAME:-}"
+  if [[ -z "$server" && -f /etc/tinywebstack/dashboard.env ]]; then
+    server="$(grep -E '^TWS_SERVER_NAME=' /etc/tinywebstack/dashboard.env | cut -d= -f2- | tr -d '"')"
+  fi
+  [[ -n "$server" ]] || return 1
+  host="$(matrix_public_host "$server")"
+  enc="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$mxid")"
+  url="https://${host}/_synapse/admin/v2/users/${enc}"
+  body="$(python3 -c "import json,sys; print(json.dumps({'password': sys.argv[1], 'deactivated': False}))" "$pass")"
+  synapse_curl_opts
+  tmp="$(mktemp)"
+  http="$(curl "${SYNAPSE_CURL_OPTS[@]}" -o "$tmp" -w '%{http_code}' -X PUT \
+    -H "Authorization: Bearer ${token}" -H "Content-Type: application/json" \
+    -d "$body" "$url" || true)"
+  rm -f "$tmp"
+  [[ "$http" == "200" || "$http" == "201" ]]
+}
+
 usage() {
   cat <<'EOF'
 Usage:
@@ -89,7 +138,14 @@ case "$CMD" in
     if ! "${TW_STACK_ROOT}/vm/family-groups.sh"; then
       log "WARN: family-groups sync failed after creating ${USER} (user is in ${G})"
     fi
-    printf 'OK user=%s role=%s\n' "$USER" "$ROLE"
+    SERVER="${TWS_SERVER_NAME:-$DOMAIN}"
+    MXID="@${USER}:${SERVER}"
+    if synapse_admin_put_user "$MXID" "$PASS"; then
+      printf 'OK user=%s role=%s matrix_reactivated=1\n' "$USER" "$ROLE"
+    else
+      log "WARN: Synapse activate/update failed for ${MXID} (YunoHost user exists)"
+      printf 'OK user=%s role=%s matrix_reactivated=0\n' "$USER" "$ROLE"
+    fi
     ;;
 
   user-delete)
@@ -100,17 +156,21 @@ case "$CMD" in
     if [[ -z "$SERVER" && -f /etc/tinywebstack/dashboard.env ]]; then
       SERVER="$(grep -E '^TWS_SERVER_NAME=' /etc/tinywebstack/dashboard.env | cut -d= -f2- | tr -d '"')"
     fi
+    MATRIX_DEACTIVATED=0
     if [[ -n "$SERVER" && -s "$SYNAPSE_TOKEN_FILE" ]]; then
       TOKEN="$(tr -d '\n' < "$SYNAPSE_TOKEN_FILE")"
       MXID="@${USER}:${SERVER}"
       HOST="$(matrix_public_host "$SERVER")"
       ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$MXID")"
       URL="https://${HOST}/_synapse/admin/v1/deactivate/${ENC}"
-      CURL_OPTS=(-fsS -X POST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d '{"erase": false}')
-      CA="${TWS_CA_BUNDLE:-}"
-      [[ -n "$CA" && -f "$CA" ]] && CURL_OPTS+=(--cacert "$CA")
-      [[ "${TWS_LAB_TLS_INSECURE:-0}" == "1" ]] && CURL_OPTS+=(-k)
-      curl "${CURL_OPTS[@]}" "$URL" || log "WARN: Synapse deactivate failed for ${MXID}"
+      synapse_curl_opts
+      if curl "${SYNAPSE_CURL_OPTS[@]}" -X POST \
+        -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+        -d '{"erase": false}' "$URL"; then
+        MATRIX_DEACTIVATED=1
+      else
+        log "WARN: Synapse deactivate failed for ${MXID}"
+      fi
     fi
     if user_exists "$USER"; then
       yunohost user delete "$USER"
@@ -127,7 +187,7 @@ PY
     if [[ -f "$HTPASSWD" ]]; then
       htpasswd -D "$HTPASSWD" "$USER" 2>/dev/null || true
     fi
-    printf 'OK deleted=%s\n' "$USER"
+    printf 'OK deleted=%s matrix_deactivated=%s\n' "$USER" "$MATRIX_DEACTIVATED"
     ;;
 
   password-reset)
@@ -160,11 +220,8 @@ PY
     ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$MXID")"
     URL="https://${HOST}/_synapse/admin/v2/users/${ENC}"
     TMP="$(mktemp)"
-    CURL_OPTS=(-fsSL)
-    CA="${TWS_CA_BUNDLE:-}"
-    [[ -n "$CA" && -f "$CA" ]] && CURL_OPTS+=(--cacert "$CA")
-    [[ "${TWS_LAB_TLS_INSECURE:-0}" == "1" ]] && CURL_OPTS+=(-k)
-    HTTP="$(curl "${CURL_OPTS[@]}" -o "$TMP" -w '%{http_code}' -H "Authorization: Bearer ${TOKEN}" "$URL" || true)"
+    synapse_curl_opts
+    HTTP="$(curl "${SYNAPSE_CURL_OPTS[@]}" -o "$TMP" -w '%{http_code}' -H "Authorization: Bearer ${TOKEN}" "$URL" || true)"
     if [[ "$HTTP" != "200" ]]; then
       rm -f "$TMP"
       printf 'status=not_found http=%s mxid=%s\n' "$HTTP" "$MXID"

@@ -409,8 +409,11 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail="You cannot remove your own account here")
         if not member_role(username):
             raise HTTPException(status_code=404, detail="Not a family member")
-        delete_member(username)
-        return RedirectResponse(url=dash_url("/members?msg=Member+removed", root_path), status_code=303)
+        result = delete_member(username)
+        msg = "Member+removed"
+        if result.get("matrix_deactivated") == "0":
+            msg = "Member+removed+but+Matrix+deactivation+failed"
+        return RedirectResponse(url=dash_url(f"/members?msg={msg}", root_path), status_code=303)
 
     @app.get("/members/{username}/location", response_class=HTMLResponse)
     async def member_location_page(request: Request, username: str, user: str = Depends(current_user)):

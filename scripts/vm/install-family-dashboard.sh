@@ -118,6 +118,12 @@ else
   if [[ -n "$CA_LINE" ]] && ! grep -q '^TWS_CA_BUNDLE=' "$CSRF_FILE"; then
     printf '%s\n' "$CA_LINE" >>"$CSRF_FILE"
   fi
+  grep -q '^TWS_DASHBOARD_PERM=' "$CSRF_FILE" \
+    && sed -i "s|^TWS_DASHBOARD_PERM=.*|TWS_DASHBOARD_PERM=${DASH_PERM}|" "$CSRF_FILE" \
+    || printf 'TWS_DASHBOARD_PERM=%s\n' "$DASH_PERM" >>"$CSRF_FILE"
+  grep -q '^TWS_DASHBOARD_PUB_PERM=' "$CSRF_FILE" \
+    && sed -i "s|^TWS_DASHBOARD_PUB_PERM=.*|TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}|" "$CSRF_FILE" \
+    || printf 'TWS_DASHBOARD_PUB_PERM=%s\n' "$DASH_PUB_PERM" >>"$CSRF_FILE"
 fi
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack
@@ -178,43 +184,16 @@ printf '%s\n' \
 mv "$TMP_SUDO" "$SUDOERS"
 chmod 440 "$SUDOERS"
 
+PERMS_PY="${TW_STACK_ROOT}/lib/setup_family_dashboard_perms.py"
+[[ -f "$PERMS_PY" ]] || die "Missing ${PERMS_PY}"
 yunohost tools shell -c "
-from yunohost.permission import permission_create, permission_url_add, permission_list
-
-def ensure_perm(name, **kwargs):
-    perms = permission_list()
-    if name not in perms:
-        permission_create(name, **kwargs)
-
-ensure_perm(
-    '${DASH_PERM}',
-    url='/family',
-    allowed=['${TWS_PARENTS_GROUP:-parents}'],
-    auth_header=True,
-    show_tile=False,
-    protected=True,
-)
-ensure_perm(
-    '${DASH_PUB_PERM}',
-    url='/family/api/invite/verify',
-    allowed=['visitors'],
-    auth_header=False,
-    show_tile=False,
-    protected=True,
-    additional_urls=['/.well-known/tinywebstack-family.json'],
-)
-try:
-    permission_url_add('${DASH_PUB_PERM}', 'wellknown', {'url': '/.well-known/tinywebstack-family.json', 'auth_header': False})
-except Exception:
-    pass
-ensure_perm(
-    'owntracks.pub',
-    url='/recorder/pub',
-    allowed=['visitors'],
-    auth_header=False,
-    show_tile=False,
-    protected=True,
-)
+import runpy, sys
+sys.argv = [
+    'setup_family_dashboard_perms.py',
+    '--synapse-app', '${SYNAPSE_APP}',
+    '--parents-group', '${TWS_PARENTS_GROUP:-parents}',
+]
+runpy.run_path('${PERMS_PY}', run_name='__main__')
 " || die "YunoHost permission setup failed"
 
 yunohost user permission add "$DASH_PERM" "${TWS_PARENTS_GROUP:-parents}" || true
@@ -247,7 +226,7 @@ EOF
 mv "$TMP" "$NGINX_SNIP"
 rm -f /etc/nginx/conf.d/tinywebstack-family-dashboard.conf
 
-OWNTRACKS_PORT="$(yunohost app setting get owntracks port 2>/dev/null | tr -d '[:space:]' || true)"
+OWNTRACKS_PORT="$(yunohost app setting owntracks port 2>/dev/null | tr -d '[:space:]' || true)"
 if [[ -z "$OWNTRACKS_PORT" && -f /etc/yunohost/apps/owntracks/settings.yml ]]; then
   OWNTRACKS_PORT="$(grep -E '^[[:space:]]*port:' /etc/yunohost/apps/owntracks/settings.yml | awk '{print $2}' | tr -d '\"' | head -1)"
 fi
@@ -263,7 +242,8 @@ location /recorder/pub {
     auth_basic_user_file /etc/tinywebstack/owntracks-recorder.htpasswd;
     proxy_pass http://127.0.0.1:${OWNTRACKS_PORT}/pub;
     proxy_set_header Host \$host;
-    proxy_set_header X-Limit-U \$remote_user;
+    set \$tws_ot_user \$remote_user;
+    proxy_set_header X-Limit-U \$tws_ot_user;
 }
 EOF
 mv "$TMP_OT" "$NGINX_OT_SNIP"

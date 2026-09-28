@@ -111,32 +111,38 @@ set -euo pipefail
 REMOTE_ROOT=$1
 SCRIPT=$2
 shift 2
+STAGING="${HOME}/tinywebstack-staging"
 sudo mkdir -p "${REMOTE_ROOT}"
-sudo rsync -a ~/tinywebstack-staging/ "${REMOTE_ROOT}/"
-sudo install -m 644 ~/tinywebstack-staging/defaults.env "${REMOTE_ROOT}/defaults.env"
-sudo install -m 600 ~/tinywebstack-staging/remote.env "${REMOTE_ROOT}/remote.env"
+sudo rsync -a "${STAGING}/" "${REMOTE_ROOT}/"
+sudo install -m 644 "${STAGING}/defaults.env" "${REMOTE_ROOT}/defaults.env"
+sudo install -m 600 "${STAGING}/remote.env" "${REMOTE_ROOT}/remote.env"
 set -a
 # shellcheck source=/dev/null
 source "${REMOTE_ROOT}/remote.env"
 set +a
-if [[ -d ~/tinywebstack-staging/lab-certs ]]; then
+if [[ -d "${STAGING}/lab-certs" ]]; then
   sudo mkdir -p "${REMOTE_ROOT}/lab-certs"
-  sudo rsync -a ~/tinywebstack-staging/lab-certs/ "${REMOTE_ROOT}/lab-certs/"
+  sudo rsync -a "${STAGING}/lab-certs/" "${REMOTE_ROOT}/lab-certs/"
 fi
-if [[ -f ~/tinywebstack-staging/peers.hosts ]]; then
-  sudo install -m 644 ~/tinywebstack-staging/peers.hosts "${REMOTE_ROOT}/peers.hosts"
+if [[ -f "${STAGING}/peers.hosts" ]]; then
+  sudo install -m 644 "${STAGING}/peers.hosts" "${REMOTE_ROOT}/peers.hosts"
 fi
-sudo bash -c 'set -euo pipefail
-REMOTE_ROOT="$1"
-SCRIPT="$2"
+sudo bash -s -- "${REMOTE_ROOT}" "${SCRIPT}" "$@" <<'INNER'
+set -euo pipefail
+REMOTE_ROOT=$1
+SCRIPT=$2
 shift 2
-cleanup() { rm -f "${REMOTE_ROOT}/remote.env"; }
+STAGING="${HOME}/tinywebstack-staging"
+cleanup() {
+  rm -f "${REMOTE_ROOT}/remote.env"
+  rm -f "${STAGING}/remote.env"
+}
 trap cleanup EXIT
 set -a
 # shellcheck source=/dev/null
 source "${REMOTE_ROOT}/remote.env"
 set +a
 export TW_STACK_ROOT="${REMOTE_ROOT}" TW_STACK_IS_REMOTE=1
-exec bash "${REMOTE_ROOT}/vm/${SCRIPT}" "$@"
-' _ "${REMOTE_ROOT}" "${SCRIPT}" "$@"
+bash "${REMOTE_ROOT}/vm/${SCRIPT}" "$@"
+INNER
 EOF

@@ -36,6 +36,15 @@ def _helper_cmd() -> list[str]:
     return path.split()
 
 
+def parse_helper_line(line: str) -> dict[str, str]:
+    parts: dict[str, str] = {}
+    for token in line.split():
+        if "=" in token:
+            k, v = token.split("=", 1)
+            parts[k] = v
+    return parts
+
+
 def run_helper(*args: str, stdin: str | None = None) -> str:
     if os.environ.get("TWS_DASHBOARD_MOCK_YUNOHOST"):
         if args and args[0] == "synapse-user-status":
@@ -66,12 +75,14 @@ def run_helper(*args: str, stdin: str | None = None) -> str:
         raise HelperError(exc.stderr or exc.stdout or str(exc)) from exc
 
 
-def create_member(username: str, full_name: str, role: Role, domain: str, password: str) -> None:
-    run_helper("user-create", username, full_name, role, domain, stdin=password + "\n")
+def create_member(username: str, full_name: str, role: Role, domain: str, password: str) -> dict[str, str]:
+    line = run_helper("user-create", username, full_name, role, domain, stdin=password + "\n")
+    return parse_helper_line(line)
 
 
-def delete_member(username: str) -> None:
-    run_helper("user-delete", username)
+def delete_member(username: str) -> dict[str, str]:
+    line = run_helper("user-delete", username)
+    return parse_helper_line(line)
 
 
 def reset_password(username: str, password: str) -> None:
