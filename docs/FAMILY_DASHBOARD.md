@@ -15,7 +15,7 @@ Or use `family-init.sh` which runs groups, module, dashboard, and optional test 
 ## Auth
 
 - Protected by **YunoHost SSO** (nginx + SSOwat). Only users in the **`parents`** LDAP group may access (configurable via `TWS_PARENTS_GROUP`).
-- Behind the scenes the app reads `Remote-User` / `YNH_USER` headers.
+- Behind the scenes the app trusts **`YNH_USER` only** (SSOwat). Nginx must set `proxy_set_header Remote-User ""` so clients cannot spoof identity.
 - Forms use CSRF tokens (`TWS_CSRF_SECRET` in `/etc/tinywebstack/dashboard.env`).
 
 ## URL
