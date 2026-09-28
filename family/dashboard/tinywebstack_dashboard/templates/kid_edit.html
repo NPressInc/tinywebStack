@@ -8,6 +8,7 @@
 <p class="hint">Who this child may message, and when messages are paused (quiet hours).</p>
 <form method="post">
   <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="events_rules_form" value="1">
   <label>Allowed chat partners (one full address per line)</label>
   <textarea name="allowlist_mxids" rows="6">{{ allowlist_mxids }}</textarea>
   <label>Trusted other homes (whole domain names)</label>
@@ -19,6 +20,11 @@
   <input name="qh_end" value="{{ qh_end }}" placeholder="07:00">
   <label>Timezone</label>
   <input name="qh_timezone" value="{{ qh_timezone }}" placeholder="America/Los_Angeles">
+  <h2>Events</h2>
+  <label>
+    <input type="checkbox" name="events_enabled" value="1" {% if events_enabled %}checked{% endif %}>
+    Allow this child to open the family events app (RSVPs)
+  </label>
   <button type="submit">Save</button>
 </form>
 {% endblock %}

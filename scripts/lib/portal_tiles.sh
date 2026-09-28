@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Portal permission tiles (YunoHost 12: --show_tile must be True/False, not true/false).
+set -euo pipefail
 
 ynh_permission_update() {
   local perm=$1
@@ -10,6 +11,17 @@ ynh_permission_update() {
   fi
   log "WARN: yunohost user permission update ${perm} $*: ${out}"
   return 1
+}
+
+show_portal_tile() {
+  local perm=$1
+  shift
+  ynh_permission_update "$perm" --show_tile True "$@" || true
+}
+
+hide_portal_tile() {
+  local perm=$1
+  ynh_permission_update "$perm" --show_tile False || true
 }
 
 install_tinyweb_family_tile_png() {
@@ -76,9 +88,4 @@ configure_element_tile_logo() {
   local logo=/usr/share/yunohost/portal/customassets/element-tile.png
   install_element_tile_png "$logo" || return 1
   ynh_permission_update "$perm" --logo "$logo"
-}
-
-hide_portal_tile() {
-  local perm=$1
-  ynh_permission_update "$perm" --show_tile False || true
 }

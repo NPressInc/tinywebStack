@@ -112,6 +112,20 @@ if ynh_perm_exists "$DASH_PERM"; then
   configure_family_home_tile "$DASH_PERM" || log "WARN: Family home portal tile not fully configured for ${DASH_PERM}"
 fi
 
+EVENTS_APP="${EVENTS_APP:-mobilizon}"
+if [[ "$EVENTS_APP" == "mobilizon" ]] && ynh_perm_exists "mobilizon.main"; then
+  perm_remove mobilizon.main all_users || true
+  perm_remove mobilizon.main visitors || true
+  perm_add mobilizon.main "$PARENTS_GROUP"
+  perm_add mobilizon.main "$KIDS_GROUP"
+  perm_add mobilizon.main "$FED_TEST_GROUP"
+  show_portal_tile mobilizon.main --label "Events"
+  APPLY_PY="${TW_STACK_ROOT}/lib/apply_mobilizon_permissions.py"
+  if [[ -f "$APPLY_PY" && -f /etc/tinywebstack/family-policy.json ]]; then
+    python3 "$APPLY_PY" --kids-group "$KIDS_GROUP" || log "WARN: mobilizon kid permissions"
+  fi
+fi
+
 configure_element_tile_logo || true
 
 # Traccar is fallback-only; Owntracks map is linked from the dashboard (avoid broken portal tiles).

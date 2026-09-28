@@ -27,7 +27,10 @@ def sync_kids_from_usernames(
     kids = dict(policy.get("kids") or {})
     for user in kid_usernames:
         mxid = f"@{user}:{server_name}"
-        kids.setdefault(mxid, {"allowlist_mxids": [], "allowlist_domains": []})
+        kids.setdefault(
+            mxid,
+            {"allowlist_mxids": [], "allowlist_domains": [], "events_enabled": True},
+        )
     # Drop entries for removed kids.
     keep = {f"@{u}:{server_name}" for u in kid_usernames}
     kids = {k: v for k, v in kids.items() if k in keep}

@@ -35,6 +35,7 @@ MODULE_DASH="${TW_STACK_ROOT}/family/dashboard"
 [[ -d "$MODULE_DASH" ]] || die "Missing ${MODULE_DASH}"
 
 LOC_D="$(location_domain "$MAIN_DOMAIN")"
+EVENTS_D="$(events_domain "$MAIN_DOMAIN")"
 NC_D="$(nextcloud_domain "$MAIN_DOMAIN")"
 NC_PATH="${TWS_NEXTCLOUD_PATH:-/nextcloud}"
 CALDAV_ROOT="https://${NC_D}${NC_PATH}/remote.php/dav"
@@ -98,6 +99,8 @@ TWS_PARENTS_GROUP=${TWS_PARENTS_GROUP:-parents}
 TWS_KIDS_GROUP=${TWS_KIDS_GROUP:-kids}
 TWS_LOCATION_URL=https://${LOC_D}/
 TWS_LOCATION_DOMAIN=${LOC_D}
+TWS_EVENTS_URL=https://${EVENTS_D}/
+TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"
 TWS_CALDAV_ROOT=${CALDAV_ROOT}
 TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"
 TWS_OWNTRACKS_PUBLISH_URL=https://${LOC_D}/recorder/pub
@@ -135,6 +138,12 @@ else
   grep -q '^TWS_DASHBOARD_PUB_PERM=' "$CSRF_FILE" \
     && sed -i "s|^TWS_DASHBOARD_PUB_PERM=.*|TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}|" "$CSRF_FILE" \
     || printf 'TWS_DASHBOARD_PUB_PERM=%s\n' "$DASH_PUB_PERM" >>"$CSRF_FILE"
+  grep -q '^TWS_EVENTS_URL=' "$CSRF_FILE" \
+    && sed -i "s|^TWS_EVENTS_URL=.*|TWS_EVENTS_URL=https://${EVENTS_D}/|" "$CSRF_FILE" \
+    || printf 'TWS_EVENTS_URL=https://%s/\n' "$EVENTS_D" >>"$CSRF_FILE"
+  grep -q '^TWS_EVENTS_PERMS_CMD=' "$CSRF_FILE" \
+    && sed -i 's|^TWS_EVENTS_PERMS_CMD=.*|TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"|' "$CSRF_FILE" \
+    || printf '%s\n' 'TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"' >>"$CSRF_FILE"
 fi
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack
@@ -185,12 +194,14 @@ EOF
 
 install_wrapper tws-family-sync-federation family-sync-federation
 install_wrapper tws-family-dashboard-privileged family-dashboard-privileged
+install_wrapper tws-family-events-perms family-events-perms
 
 SUDOERS="/etc/sudoers.d/tinywebstack-family-dashboard"
 TMP_SUDO="$(mktemp)"
 printf '%s\n' \
   "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-sync-federation *" \
   "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-dashboard-privileged *" \
+  "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-events-perms" \
   >"$TMP_SUDO"
 mv "$TMP_SUDO" "$SUDOERS"
 chmod 440 "$SUDOERS"

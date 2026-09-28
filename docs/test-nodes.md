@@ -22,6 +22,7 @@ Do not use the same directory for the git repo and VM data.
 | Element | `element.family-a.family.test` | Web client |
 | Location (default) | `owntracks.family-a.family.test` | OwnTracks Recorder + app; set `LOCATION_APP=traccar` for catalog fallback |
 | Nextcloud CalDAV | `nextcloud.family-a.family.test` | Calendar app; web tile hidden — phones use CalDAV ([CALENDAR.md](CALENDAR.md)) |
+| Events (Mobilizon) | `mobilizon.family-a.family.test` | SSO/LDAP; arm64 catalog package; see [EVENTS.md](EVENTS.md) |
 | Family dashboard | `https://family-a.family.test/family/` | Parents group only (after `family-init.sh`) |
 
 `apply-private-dns.sh` adds all of these names to spark’s `/etc/hosts`. Push peer entries to each VM with:
@@ -94,6 +95,8 @@ Per node (`NODE_NAME=family-a`, `DOMAIN=family-a.family.test`, `IP=…`):
 ./scripts/vm/remote-run.sh "$IP" yunohost-family-apps.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/vm/remote-run.sh "$IP" create-matrix-test-users.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/vm/remote-run.sh "$IP" family-init.sh "$DOMAIN" "$NODE_NAME"
+# family-init installs Mobilizon + family calendars; or explicitly:
+# ./scripts/vm/remote-run.sh "$IP" install-mobilizon.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/spark/sync-vm-peer-hosts.sh "$NODE_NAME" "$IP"
 ```
 
@@ -121,7 +124,7 @@ Passwords are generated on spark by `ensure-node-secrets.sh` into `~/.tinywebsta
 
 `remote-run.sh` passes them in a root-only `remote.env` on the VM (never printed).
 
-Federation:
+Federation and verification:
 
 ```bash
 ./scripts/spark/configure-federation-pair.sh "<ip-a>" "<ip-b>"
@@ -132,11 +135,27 @@ Federation:
 
 ./scripts/spark/verify-calendar-e2e.sh family-a family-a.family.test
 ./scripts/spark/verify-calendar-e2e.sh family-b family-b.family.test
+
+./scripts/spark/verify-events-e2e.sh \
+  family-a family-b \
+  family-a.family.test family-b.family.test \
+  mobilizon.fr
 ```
 
-Verification uses the **lab CA** for TLS, has **bob join** the room, polls `/messages`, and expects **`M_FORBIDDEN`** / federation denied for `matrix.org`.
+Matrix verification uses the **lab CA** for TLS, has **bob join** the room, polls `/messages`, and expects **`M_FORBIDDEN`** / federation denied for `matrix.org`.
 
 Calendar verification checks CalDAV login and a parent → kid invite accept round trip on each node (see [CALENDAR.md](CALENDAR.md)).
+
+Mobilizon verification logs in as **`parent`** (SSO) on each node, syncs trusted instances, creates an event on family-a and RSVPs from family-b, and checks a **non-trusted** probe host (`mobilizon.fr` by default) is not approved.
+
+### Manual steps on spark
+
+With `LAB_PASSWORD=dummydummy` in `config/local.env` (≥8 characters), after both nodes reach `family-init.sh`:
+
+1. Confirm apps: `yunohost app list` on each VM should include **nextcloud** and **mobilizon** (re-run `yunohost-family-apps.sh` / `install-mobilizon.sh` if needed).
+2. Run `configure-federation-pair.sh` (Matrix + Mobilizon sync) if not already linked via dashboard invite.
+3. Run the three verify scripts above; fix DNS (`apply-private-dns.sh`) if HTTPS to `nextcloud.*` or `mobilizon.*` fails.
+4. Optional UI: `https://family-a.family.test/family/` → **CalDAV setup** and **open events**; child chat rules → toggle **Events** for a kid.
 
 ---
 

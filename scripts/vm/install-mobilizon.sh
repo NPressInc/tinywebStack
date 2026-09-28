@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# Install Mobilizon (YunoHost catalog) as the family events app (idempotent).
+set -euo pipefail
+
+TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=scripts/lib/common.sh
+source "${TW_STACK_ROOT}/lib/common.sh"
+# shellcheck source=scripts/lib/domains.sh
+source "${TW_STACK_ROOT}/lib/domains.sh"
+load_config
+
+usage() {
+  echo "Usage: install-mobilizon.sh MAIN_DOMAIN [NODE_NAME]"
+  exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+MAIN_DOMAIN=$1
+NODE_NAME=${2:-}
+: "${NODE_NAME:=}"
+
+if [[ "$(id -u)" -ne 0 ]]; then
+  echo "Run as root on the YunoHost VM" >&2
+  exit 1
+fi
+
+EVENTS_APP="${EVENTS_APP:-mobilizon}"
+if [[ "$EVENTS_APP" != "mobilizon" ]]; then
+  log "EVENTS_APP=${EVENTS_APP} — Mobilizon install skipped"
+  exit 0
+fi
+
+EVENTS_D="$(events_domain "$MAIN_DOMAIN")"
+ADMIN_USER="${MOBILIZON_ADMIN_USER:-${YUNOHOST_ADMIN_USER:-twsowner}}"
+
+install_app() {
+  if yunohost app list 2>/dev/null | grep -qw mobilizon; then
+    log "App mobilizon already installed"
+    return 0
+  fi
+  yunohost app install mobilizon --args "domain=${EVENTS_D}&admin=${ADMIN_USER}"
+}
+
+if ! yunohost domain list 2>/dev/null | grep -qw "$EVENTS_D"; then
+  yunohost domain add "$EVENTS_D"
+fi
+
+install_app
+"${TW_STACK_ROOT}/vm/mobilizon-family-config.sh" "$MAIN_DOMAIN"
+
+if [[ -x "${TW_STACK_ROOT}/vm/family-groups.sh" ]]; then
+  "${TW_STACK_ROOT}/vm/family-groups.sh" || log "WARN: family-groups after mobilizon"
+fi
+
+log "Mobilizon (events) ready at https://${EVENTS_D}/"

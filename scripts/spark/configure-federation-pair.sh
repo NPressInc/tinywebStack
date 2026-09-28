@@ -32,4 +32,11 @@ read -r _name_b domain_b _rest <<< "${rows[1]}"
 "${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_A" synapse-federation-allowlist.sh "$domain_a" "$domain_b" || die "Federation config failed on A"
 "${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_B" synapse-federation-allowlist.sh "$domain_b" "$domain_a" || die "Federation config failed on B"
 
+if [[ -f "${TW_STACK_ROOT}/scripts/vm/mobilizon-federation-sync.sh" ]]; then
+  "${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_A" mobilizon-federation-sync.sh "$domain_a" "$_name_a" "$domain_b" \
+    || log "WARN: Mobilizon federation sync failed on A"
+  "${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_B" mobilizon-federation-sync.sh "$domain_b" "$_name_b" "$domain_a" \
+    || log "WARN: Mobilizon federation sync failed on B"
+fi
+
 log "Federation allowlists configured: ${domain_a} <-> ${domain_b}"
