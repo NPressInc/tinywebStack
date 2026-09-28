@@ -1,4 +1,5 @@
-# Example snippet for /etc/matrix-synapse/conf.d/tinywebstack-federation.yaml
-# Only domains listed here may federate with this homeserver.
+# Example: /etc/matrix-synapse/conf.d/tinywebstack-federation.yaml
 federation_domain_whitelist:
   - "family-b.family.test"
+federation_custom_ca_list:
+  - "/etc/matrix-synapse/conf.d/tinywebstack-lab-ca.pem"

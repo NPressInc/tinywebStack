@@ -6,6 +6,7 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/scripts/lib/common.sh"
 load_config
+ensure_libvirt_system_uri
 
 if ! dry_run_is_active; then
   require_cmd virt-install virsh

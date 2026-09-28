@@ -1,183 +1,178 @@
 # YunoHost test nodes on `spark` (milestones 1 and 3)
 
-This guide is for William: stand up **two** headless YunoHost VMs on the Ubuntu host `spark` using KVM/libvirt, install the family app set (Synapse, Element, location), and prove **Matrix federation with an allowlist** between the nodes.
+Headless KVM/libvirt VMs on William's Ubuntu host **spark**, YunoHost + Synapse/Element/OwnTracks, and Matrix federation with an allowlist.
 
-You cannot run GUI tools on `spark`; everything is SSH and CLI.
+## Paths on spark (important)
+
+| Purpose | Path |
+|--------|------|
+| Git checkout | e.g. `~/Documents/codingProj/tinywebStack` |
+| VM disks & cloud-init seeds | `/var/lib/libvirt/images/tinywebstack` (default) |
+| Cloud image cache | `~/.tinywebstack/images` |
+| Passwords & lab CA (not in git) | `~/.tinywebstack-secrets/` (`passwords.env`, `lab-ca/`) |
+
+Do **not** put the repo inside `~/tinywebstack` if that directory is used for VM data.
 
 ## Architecture
 
 ```text
-spark (Ubuntu + KVM)
-├── tws-family-a  →  family-a.family.test  (YunoHost + Synapse + Element + OwnTracks)
-└── tws-family-b  →  family-b.family.test  (same stack)
-         Matrix federation (allowlist: only each other's domain)
+spark (Ubuntu 24.04, aarch64 or amd64, KVM)
+├── tws-family-a  →  family-a.family.test
+└── tws-family-b  →  family-b.family.test
+         Matrix federation + shared lab CA (TLS)
 ```
 
-Scripts live under `scripts/`. Parameters live in `config/nodes.conf` (copy from `config/nodes.conf.example`) and optional overrides in `config/local.env` (never commit secrets).
+Provisioning SSH user: **`twsadmin`** (not `admin`). YunoHost postinstall uses the same username by default so SSH stays in the `admins` group.
 
-### Location app choice: OwnTracks
+### Location app: OwnTracks
 
-We install **OwnTracks** (not Traccar):
+Family-oriented, YunoHost-packaged; see [PLAN.md](../PLAN.md).
 
-- OwnTracks matches the family use case (opt-in location sharing from phones, parent-controlled accounts via YunoHost users).
-- Traccar targets fleet/GPS device tracking and is heavier to align with the family permission model in [PLAN.md](../PLAN.md).
-- OwnTracks has a [YunoHost app package](https://github.com/YunoHost-Apps/owntracks_ynh).
+### DNS and TLS
 
-### Private DNS and TLS (documented choice)
-
-| Concern | Approach |
-|--------|----------|
-| **DNS** | Use the `.family.test` names from `config/nodes.conf.example`. They are not public DNS. On `spark`, run `scripts/spark/apply-private-dns.sh` (updates `/etc/hosts` from libvirt DHCP leases). Mirror the same lines in each VM's `/etc/hosts` for the **peer** domain, or run a small dnsmasq on `spark` if you prefer one place to maintain records. |
-| **TLS** | YunoHost expects HTTPS. Public Let's Encrypt will **not** work for private names. On each VM, after `yunohost domain add`, install a **self-signed** certificate (see bootstrap script). Trust is limited to your test clients: import the cert, use Element on desktop, or accept browser warnings. This is intentional for lab nodes. |
-
-Federation uses HTTPS between homeserver names; both nodes must resolve and trust each other's certificates (or use clients that accept your CA/self-signed setup).
-
-### Single VM later (two domains / two “families”)
-
-Scripts are structured by **node name** in `config/nodes.conf`, not hard-coded for two VMs:
-
-- **Two VMs (recommended for milestone 3):** Two independent YunoHost installs, two Synapse homeservers — matches production “two households”.
-- **One VM, two domains:** Standard YunoHost supports **multiple domains** on one install but **one Synapse app** (one Matrix homeserver). Users on both domains are still on the **same** server; you do **not** need federation to message within that server. That layout does **not** prove cross-household federation.
-- **One VM, two Synapse instances:** Not supported by the catalog; would fight YunoHost’s one-app-per-service model. Not recommended.
-
-To collapse infrastructure while keeping federation proof, keep **two logical nodes** (two VMs) or accept same-server testing without federation.
+- **DNS:** private `.family.test` names via `/etc/hosts` on spark and peer entries on each VM (`apply-private-dns.sh`).
+- **TLS:** shared **lab CA** (`scripts/lab-ca/`) issues certs for each domain; YunoHost installs them via `yunohost-lab-tls.sh`. Synapse trusts the same CA via `federation_custom_ca_list` in `conf.d` (fallback: `federation_verify_certificates: false` only if lab CA is missing).
 
 ---
 
 ## Prerequisites on `spark`
 
-Run on `spark` as a user in the `libvirt` group:
+Add your user to **libvirt** and **kvm**, then log out and back in:
+
+```bash
+sudo usermod -aG libvirt,kvm "$USER"
+```
+
+Install packages (architecture-specific):
 
 ```bash
 sudo apt update
-sudo apt install -y qemu-kvm libvirt-daemon-system virtinst virt-viewer \
-  genisoimage cloud-image-utils curl rsync
+ARCH="$(dpkg --print-architecture)"
+if [ "$ARCH" = amd64 ]; then
+  sudo apt install -y qemu-kvm libvirt-daemon-system virtinst virt-viewer \
+    genisoimage cloud-image-utils curl rsync qemu-utils
+else
+  # arm64 (spark): qemu-kvm meta-package may be unavailable
+  sudo apt install -y qemu-system-arm qemu-efi-aarch64 qemu-utils \
+    libvirt-daemon-system virtinst virt-viewer \
+    genisoimage cloud-image-utils curl rsync
+fi
+```
 
-# Clone or pull tinywebStack repo
-cd ~/tinywebstack   # path is your choice; scripts use TW_STACK_ROOT from cwd
+Libvirt URI (non-root): scripts set this automatically; you can export it in `config/local.env`:
+
+```bash
+LIBVIRT_DEFAULT_URI=qemu:///system
+```
+
+VM disks default to **`/var/lib/libvirt/images/tinywebstack`** so `libvirt-qemu` can read them (home dirs with mode `750` break session-based storage under `$HOME`).
+
+From the **repo root**:
+
+```bash
+cd ~/Documents/codingProj/tinywebStack   # your clone
 
 cp config/nodes.conf.example config/nodes.conf
-cp config/defaults.env.example config/local.env   # edit paths if needed
+cp config/defaults.env.example config/local.env   # optional overrides
+mkdir -p ~/.tinywebstack-secrets && chmod 700 ~/.tinywebstack-secrets
 ```
 
 Ensure `~/.ssh/id_ed25519.pub` exists (or set `ADMIN_SSH_PUBKEY` in `local.env`).
 
 ---
 
-## Step 1 — Create both VMs (idempotent)
-
-From the repo root on `spark`:
+## Step 1 — Lab CA and VMs
 
 ```bash
 chmod +x scripts/**/*.sh scripts/*.sh
+./scripts/spark/stage-lab-certs.sh
 ./scripts/spark/deploy-test-nodes.sh
 ```
 
-Wait for cloud-init to finish, then get IPs:
+Wait for cloud-init, then:
 
 ```bash
 virsh domifaddr tws-family-a
 virsh domifaddr tws-family-b
-```
-
-Update private DNS on `spark`:
-
-```bash
 sudo ./scripts/spark/apply-private-dns.sh
 ```
 
-Copy peer host entries onto each VM (SSH as `admin`), e.g. on **family-a**:
-
-```bash
-# On VM family-a — add family-b's IP and name
-sudo tee -a /etc/hosts <<EOF
-<family-b-ip>  family-b.family.test
-EOF
-```
-
-Repeat symmetrically on family-b.
+Add peer `/etc/hosts` lines on each VM (SSH as **`twsadmin`**).
 
 ---
 
-## Step 2 — Install YunoHost on each VM
-
-From `spark`, for each node (replace IP and domain):
+## Step 2 — YunoHost on each VM
 
 ```bash
 export NODE_IP=192.168.122.X
 export DOMAIN=family-a.family.test
+export NODE_NAME=family-a
 
-ssh admin@${NODE_IP} 'curl -sSf https://install.yunohost.fr | bash'
+# Optional: predefine admin password (otherwise written to ~/.tinywebstack-secrets/passwords.env)
+# export YUNOHOST_ADMIN_PASSWORD='...'
 
-# Copy scripts and bootstrap (password generated if not set)
-./scripts/vm/remote-run.sh admin@${NODE_IP} yunohost-bootstrap.sh "${DOMAIN}"
+./scripts/vm/remote-run.sh "twsadmin@${NODE_IP}" yunohost-bootstrap.sh "${DOMAIN}" "${NODE_NAME}"
 ```
 
-Save the generated admin password. Repeat for `family-b.family.test`.
+Installer URL: **`https://install.yunohost.org`**, unattended via `bash -s -- -a`, then **`yunohost tools postinstall`** with CLI flags (no prompts). Passwords are **never printed**; they go to `TW_STACK_SECRETS_FILE` (default `~/.tinywebstack-secrets/passwords.env`).
 
-Optional: set `YUNOHOST_ADMIN_PASSWORD` in the environment when bootstrapping if you want a chosen password (do not commit it).
+Repeat for family-b.
 
 ---
 
-## Step 3 — Install Synapse, Element, OwnTracks
-
-On each VM via `spark`:
+## Step 3 — Apps and test users
 
 ```bash
-./scripts/vm/remote-run.sh admin@${NODE_IP} yunohost-family-apps.sh "${DOMAIN}"
+./scripts/vm/remote-run.sh "twsadmin@${NODE_IP}" yunohost-family-apps.sh "${DOMAIN}"
 ```
 
-On each node, create test users (example):
+Create Matrix test users and store passwords in the secrets file, e.g.:
 
 ```bash
-sudo yunohost user create alice --firstname Alice --lastname Test --password "$(openssl rand -base64 16)"
-sudo yunohost user create bob --firstname Bob --lastname Test --password "$(openssl rand -base64 16)"
+# On the VM
+ALICE_PW="$(openssl rand -base64 18)"
+BOB_PW="$(openssl rand -base64 18)"
+sudo yunohost user create alice --firstname Alice --lastname Test --password "$ALICE_PW"
+sudo yunohost user create bob --firstname Bob --lastname Test --password "$BOB_PW"
 ```
 
-Grant app permissions as needed (`yunohost user permission list`, `yunohost user permission update ...`).
+On spark, append to `~/.tinywebstack-secrets/passwords.env` (mode `600`):
+
+```bash
+ALICE_PASSWORD_FAMILY_A='...'
+BOB_PASSWORD_FAMILY_B='...'
+```
 
 ---
 
-## Step 4 — Federation allowlist (milestone 3)
-
-From `spark`, once both nodes are up:
+## Step 4 — Federation allowlist
 
 ```bash
-./scripts/spark/configure-federation-pair.sh admin@<ip-a> admin@<ip-b>
+./scripts/spark/configure-federation-pair.sh "twsadmin@<ip-a>" "twsadmin@<ip-b>"
 ```
 
-This sets `federation_domain_whitelist` on each Synapse so **only the peer domain** is allowed.
+Config lives in **`/etc/matrix-synapse/conf.d/tinywebstack-federation.yaml`** (not edited into `homeserver.yaml`).
 
 ---
 
-## Step 5 — Verification procedure
+## Step 5 — Verification
 
-### A. Allowed federation (user on A messages user on B)
+### Automated (Client-Server API)
 
-1. Log into Element on **family-a** as `@alice:family-a.family.test` (client must use homeserver `https://family-a.family.test`).
-2. Start a direct message to `@bob:family-b.family.test`.
-3. On **family-b**, log in as Bob and confirm the message arrives.
-4. On either server: `sudo journalctl -u matrix-synapse -f` — you should see successful federation traffic between the two domains (no “not in whitelist” errors).
+From spark, after alice/bob exist and secrets are set:
 
-### B. Non-allowlisted server refused
+```bash
+./scripts/spark/verify-federation-e2e.sh \
+  family-a family-b \
+  family-a.family.test family-b.family.test \
+  alice bob matrix.org
+```
 
-Pick a domain **not** in the whitelist (e.g. `matrix.org` or a fake `evil.family.test` that resolves to nothing):
+This logs in on both homeservers, creates a federated DM, delivers a message, and checks that inviting `@someone:matrix.org` fails (allowlist).
 
-1. From VM **family-a**, try to reach a third homeserver’s federation API:
+### Manual (Element)
 
-   ```bash
-   curl -sS "https://matrix.org/_matrix/federation/v1/version" | head
-   ```
-
-2. In Element on family-a, attempt to invite `@someone:matrix.org` to a room — with the whitelist, Synapse should **refuse outbound federation** to non-listed domains (check Synapse logs for whitelist denial).
-
-3. Optional automated hint from `spark`:
-
-   ```bash
-   ./scripts/spark/verify-federation.sh family-a.family.test family-b.family.test matrix.org
-   ```
-
-**Success criteria:** Alice ↔ Bob works across domains; federation to `matrix.org` (or other non-allowlisted servers) does not establish.
+Same flow as before: Element → DM across domains; confirm `matrix.org` invites fail. Check `journalctl -u matrix-synapse -f` for whitelist denials.
 
 ---
 
@@ -191,23 +186,16 @@ sudo sed -i '/tinywebstack-test-nodes-begin/,/tinywebstack-test-nodes-end/d' /et
 
 ---
 
-## Local validation (without `spark`)
-
-In CI or a dev container:
+## Local validation
 
 ```bash
 ./scripts/validate.sh
 ```
 
-This runs `bash -n`, optional `shellcheck`, renders a cloud-init ISO with `DRY_RUN`, and parses the Synapse YAML example. It does **not** run `virt-install` or YunoHost.
+Runs `bash -n`, downloads **shellcheck** static binary if needed, `DRY_RUN` deploy (does not overwrite your `config/nodes.conf`), and YAML lint.
 
 ---
 
-## What this agent could not test
+## Single VM later
 
-- Real `virt-install` / libvirt on `spark`
-- YunoHost installer and app installs
-- Live Matrix federation or TLS trust on your LAN
-- OwnTracks mobile publish (requires phones and firewall rules)
-
-Run `./scripts/validate.sh` where you develop; run the steps above on `spark` for end-to-end proof.
+Unchanged from [PLAN.md](../PLAN.md): two federated homeservers ⇒ two VMs (or accept same-server testing without federation).

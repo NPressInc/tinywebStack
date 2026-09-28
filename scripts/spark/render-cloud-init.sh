@@ -22,10 +22,12 @@ NODE_NAME=$1
 FQDN=$2
 OUT_DIR=${3:-"${TW_STACK_VM_DIR}/$(vm_domain_name "$NODE_NAME")/seed"}
 
+PROVISION_SSH_USER="${PROVISION_SSH_USER:-twsadmin}"
+
 [[ -f "${ADMIN_SSH_PUBKEY}" ]] || die "ADMIN_SSH_PUBKEY not found: ${ADMIN_SSH_PUBKEY}"
 
 ADMIN_SSH_PUBKEY_CONTENT="$(cat "${ADMIN_SSH_PUBKEY}")"
-export NODE_NAME FQDN ADMIN_SSH_PUBKEY_CONTENT
+export NODE_NAME FQDN ADMIN_SSH_PUBKEY_CONTENT PROVISION_SSH_USER
 
 ensure_dir "$OUT_DIR"
 TMP="$(mktemp -d)"
@@ -35,6 +37,7 @@ render_tpl() {
   local src=$1 dest=$2
   sed -e "s/\${NODE_NAME}/${NODE_NAME}/g" \
       -e "s/\${FQDN}/${FQDN//\//\\/}/g" \
+      -e "s/\${PROVISION_SSH_USER}/${PROVISION_SSH_USER}/g" \
       -e "s|\${ADMIN_SSH_PUBKEY_CONTENT}|${ADMIN_SSH_PUBKEY_CONTENT}|g" \
       "$src" > "$dest"
 }
@@ -45,6 +48,7 @@ done
 
 ISO="${OUT_DIR}/cloud-init.iso"
 if dry_run_is_active; then
+  mkdir -p "$OUT_DIR"
   cp "${TMP}/user-data" "${OUT_DIR}/user-data.rendered"
   log "DRY_RUN: rendered ${OUT_DIR}/user-data.rendered (no ISO without genisoimage)"
 elif command -v genisoimage >/dev/null 2>&1; then

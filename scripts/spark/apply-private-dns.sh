@@ -6,12 +6,13 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/scripts/lib/common.sh"
 load_config
+ensure_libvirt_system_uri
 
 HOSTS_FILE="${HOSTS_FILE:-/etc/hosts}"
 MARKER_BEGIN="# tinywebstack-test-nodes-begin"
 MARKER_END="# tinywebstack-test-nodes-end"
 
-require_cmd virsh awk
+require_cmd awk
 
 TMP="$(mktemp)"
 {
@@ -36,6 +37,7 @@ TMP="$(mktemp)"
 if dry_run_is_active; then
   log "DRY_RUN: would merge into ${HOSTS_FILE}:"
   cat "$TMP"
+  rm -f "$TMP"
   exit 0
 fi
 

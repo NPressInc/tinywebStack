@@ -5,6 +5,7 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/scripts/lib/common.sh"
 load_config
+ensure_libvirt_system_uri
 
 require_cmd curl
 if ! dry_run_is_active; then
@@ -12,13 +13,16 @@ if ! dry_run_is_active; then
 fi
 
 DEBIAN_VERSION="${DEBIAN_VERSION:-12}"
-ARCH="${ARCH:-amd64}"
+ARCH="${ARCH:-$(debian_cloud_arch)}"
 IMAGE_NAME="debian-${DEBIAN_VERSION}-genericcloud-${ARCH}"
 BASE_URL="https://cloud.debian.org/images/cloud/bookworm/latest"
 
 ensure_dir "${TW_STACK_IMAGE_DIR}"
 
-TARGET="${DEBIAN_CLOUD_IMAGE:-${TW_STACK_IMAGE_DIR}/${IMAGE_NAME}.qcow2}"
+if [[ -z "${DEBIAN_CLOUD_IMAGE}" ]]; then
+  DEBIAN_CLOUD_IMAGE="${TW_STACK_IMAGE_DIR}/${IMAGE_NAME}.qcow2"
+fi
+TARGET="${DEBIAN_CLOUD_IMAGE}"
 TMP="${TARGET}.partial"
 
 if [[ -f "$TARGET" ]]; then
