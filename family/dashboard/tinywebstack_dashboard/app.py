@@ -27,6 +27,7 @@ from tinywebstack_dashboard.auth import (
 from tinywebstack_dashboard.invite_store import add_pending, load_pending
 from tinywebstack_dashboard.peer_verify import _ssl_context, verify_peer_domain
 from tinywebstack_dashboard.members import list_members, matrix_status_label
+from tinywebstack_dashboard.calendar_setup import caldav_account_url, davx5_login_hint
 from tinywebstack_dashboard.owntracks_setup import (
     build_owntracks_config,
     load_stored_credentials,
@@ -56,6 +57,7 @@ def config_from_env() -> DashboardConfig:
         server_name=os.environ.get("TWS_SERVER_NAME", ""),
         location_base_url=os.environ.get("TWS_LOCATION_URL", ""),
         location_domain=os.environ.get("TWS_LOCATION_DOMAIN", ""),
+        caldav_root=os.environ.get("TWS_CALDAV_ROOT", ""),
         csrf_secret=os.environ.get("TWS_CSRF_SECRET", secrets.token_hex(32)),
         yunohost_cli=os.environ.get("TWS_YUNOHOST_CLI", "yunohost"),
         owntracks_store_path=os.environ.get(
@@ -445,6 +447,35 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         loc_domain = cfg.location_domain or cfg.location_base_url.replace("https://", "").split("/")[0]
         issue_owntracks(username, cfg.server_name, loc_domain)
         return RedirectResponse(url=dash_url(f"/members/{username}/location", root_path), status_code=303)
+
+    @app.get("/calendar", response_class=HTMLResponse)
+    async def calendar_setup_page(request: Request, user: str = Depends(current_user)):
+        if not cfg.caldav_root:
+            raise HTTPException(status_code=503, detail="Calendar not configured on this node")
+        return TEMPLATES.TemplateResponse(
+            request,
+            "calendar.html",
+            {
+                "user": user,
+                "caldav_root": cfg.caldav_root.rstrip("/"),
+                "principal_url": caldav_account_url(cfg.caldav_root, user),
+                "qr_url": dash_url("/calendar/qr.png", root_path),
+            },
+        )
+
+    @app.get("/calendar/qr.png")
+    async def calendar_setup_qr(user: str = Depends(current_user)):
+        if not cfg.caldav_root:
+            raise HTTPException(status_code=503, detail="Calendar not configured")
+        import io
+
+        import qrcode
+
+        hint = davx5_login_hint(cfg.caldav_root, user)
+        img = qrcode.make(hint)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
 
     @app.get("/members/{username}/location/qr.png")
     async def member_location_qr(username: str, user: str = Depends(current_user)):

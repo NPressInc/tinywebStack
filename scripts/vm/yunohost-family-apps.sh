@@ -64,4 +64,8 @@ else
   fi
 fi
 
+if [[ -x "${TW_STACK_ROOT}/vm/install-nextcloud-calendar.sh" ]]; then
+  "${TW_STACK_ROOT}/vm/install-nextcloud-calendar.sh" "$MAIN_DOMAIN" "$NODE_NAME"
+fi
+
 echo "Apps on ${MAIN_DOMAIN}: Synapse https://${MATRIX_D} | Element https://${ELEMENT_D} | ${LOCATION_APP} https://${LOC_D}"

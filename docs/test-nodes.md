@@ -21,6 +21,7 @@ Do not use the same directory for the git repo and VM data.
 | Synapse | `matrix.family-a.family.test` | `server_name=family-a.family.test` → `@user:family-a.family.test` |
 | Element | `element.family-a.family.test` | Web client |
 | Location (default) | `owntracks.family-a.family.test` | OwnTracks Recorder + app; set `LOCATION_APP=traccar` for catalog fallback |
+| Nextcloud CalDAV | `nextcloud.family-a.family.test` | Calendar app; web tile hidden — phones use CalDAV ([CALENDAR.md](CALENDAR.md)) |
 | Family dashboard | `https://family-a.family.test/family/` | Parents group only (after `family-init.sh`) |
 
 `apply-private-dns.sh` adds all of these names to spark’s `/etc/hosts`. Push peer entries to each VM with:
@@ -128,9 +129,14 @@ Federation:
   family-a family-b \
   family-a.family.test family-b.family.test \
   alice bob matrix.org
+
+./scripts/spark/verify-calendar-e2e.sh family-a family-a.family.test
+./scripts/spark/verify-calendar-e2e.sh family-b family-b.family.test
 ```
 
 Verification uses the **lab CA** for TLS, has **bob join** the room, polls `/messages`, and expects **`M_FORBIDDEN`** / federation denied for `matrix.org`.
+
+Calendar verification checks CalDAV login and a parent → kid invite accept round trip on each node (see [CALENDAR.md](CALENDAR.md)).
 
 ---
 

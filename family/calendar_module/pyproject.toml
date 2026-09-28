@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinywebstack-calendar"
+version = "0.1.0"
+description = "Nextcloud Calendar setup and verification for tinywebStack"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.optional-dependencies]
+verify = ["caldav>=1.3.9", "vobject>=0.9.6"]
+test = ["pytest>=7.0", "caldav>=1.3.9", "vobject>=0.9.6"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tinywebstack_calendar*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
