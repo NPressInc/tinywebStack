@@ -33,7 +33,7 @@ Parents reach the family UI via the **Family home** portal tile (TinyWeb logo) a
 
 ### “Synapse (Family home)” on the app grid
 
-YunoHost 12 builds sub-permission tile labels as **`{app name} ({permission label})`**, so the API `--label "Family home"` still appears as **Synapse (Family home)**. Renaming the Synapse app would break integrations, so TinyWeb **`feature.portal.custom_css`** rewrites the visible text on the tile that links to `/family/` to **Family home** only. If a future portal theme changes markup, adjust selectors in `brand/portal/tinyweb-portal.css`.
+YunoHost 12 builds sub-permission tile labels as **`{app name} ({permission label})`**, so the API `--label "Family home"` still appears as **Synapse (Family home)**. Renaming the Synapse app would break integrations, so TinyWeb **`feature.portal.custom_css`** hides the link text and injects **Family home** via `::before` on `li.app-tile .app-label a[href$="/family"]` (protocol-relative URL, no trailing slash). Re-run `install-tinyweb-portal-branding.sh` after CSS changes. If a future portal theme changes markup, adjust `brand/portal/tinyweb-portal.css`.
 
 ## Orchestration
 
