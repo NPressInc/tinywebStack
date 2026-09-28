@@ -27,3 +27,14 @@ def test_portal_tiles_helper_documents_true_false() -> None:
     assert "--show_tile False" in helper
     assert "--show_tile True" in helper
     assert "2>/dev/null" not in helper
+
+
+def test_brand_portal_tile_pngs_ship_in_repo() -> None:
+    assert (ROOT / "brand" / "portal" / "tinyweb-family-tile.png").is_file()
+    assert (ROOT / "brand" / "portal" / "element-tile.png").is_file()
+
+
+def test_portal_css_rewrites_family_home_tile_label() -> None:
+    css = (ROOT / "brand" / "portal" / "tinyweb-portal.css").read_text(encoding="utf-8")
+    assert 'content: "Family home"' in css
+    assert 'href="/family/"' in css
