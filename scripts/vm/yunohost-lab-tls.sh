@@ -7,24 +7,29 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${TW_STACK_ROOT}/lib/common.sh"
 
 usage() {
-  echo "Usage: yunohost-lab-tls.sh MAIN_DOMAIN"
+  echo "Usage: yunohost-lab-tls.sh FQDN"
   exit 1
 }
 
 [[ $# -eq 1 ]] || usage
-MAIN_DOMAIN=$1
+FQDN=$1
 
-CERT_SRC="${TW_STACK_ROOT}/lab-certs/${MAIN_DOMAIN}"
+CERT_SRC="${TW_STACK_ROOT}/lab-certs/${FQDN}"
 if [[ ! -f "${CERT_SRC}/fullchain.pem" || ! -f "${CERT_SRC}/privkey.pem" ]]; then
   log "No lab cert staged at ${CERT_SRC}; keeping YunoHost self-signed cert"
   exit 0
 fi
 
-DEST="/etc/yunohost/certs/${MAIN_DOMAIN}"
+DEST="/etc/yunohost/certs/${FQDN}"
 mkdir -p "$DEST"
 install -m 644 "${CERT_SRC}/fullchain.pem" "${DEST}/crt.pem"
 install -m 600 "${CERT_SRC}/privkey.pem" "${DEST}/key.pem"
-ln -sfn "${MAIN_DOMAIN}" "/etc/yunohost/certs/${MAIN_DOMAIN}-live" 2>/dev/null || true
 
 yunohost tools regen-conf --force || true
-log "Installed lab TLS cert for ${MAIN_DOMAIN}"
+systemctl reload nginx 2>/dev/null || systemctl try-reload-or-restart nginx || true
+if systemctl is-active --quiet synapse 2>/dev/null; then
+  systemctl restart synapse
+elif systemctl is-active --quiet matrix-synapse 2>/dev/null; then
+  systemctl restart matrix-synapse
+fi
+log "Installed lab TLS cert for ${FQDN}"

@@ -12,7 +12,9 @@ if ! dry_run_is_active; then
   require_cmd virt-install virsh
 fi
 
+"${TW_STACK_ROOT}/scripts/spark/ensure-libvirt-storage.sh"
 "${TW_STACK_ROOT}/scripts/spark/fetch-debian-cloud-image.sh"
+"${TW_STACK_ROOT}/scripts/spark/ensure-node-secrets.sh"
 
 while read -r name domain ram vcpus disk; do
   [[ -n "$name" ]] || continue

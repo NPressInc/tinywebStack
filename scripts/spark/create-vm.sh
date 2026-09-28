@@ -70,7 +70,6 @@ if [[ ! -f "$DISK" ]]; then
 fi
 
 mapfile -t _arch_args < <(virt_install_arch_args)
-mapfile -t _uefi_args < <(virt_install_uefi_disk_args "$DOMAIN")
 
 # shellcheck disable=SC2068
 virt-install \
@@ -84,7 +83,10 @@ virt-install \
   --graphics none \
   --console pty,target_type=serial \
   --noautoconsole \
-  "${_arch_args[@]}" \
-  "${_uefi_args[@]}"
+  "${_arch_args[@]}"
+
+if [[ "${VM_AUTOSTART:-1}" == "1" ]]; then
+  virsh autostart "$DOMAIN" >/dev/null
+fi
 
 log "VM ${DOMAIN} created. DHCP address: virsh domifaddr ${DOMAIN} (may take a minute after first boot)"

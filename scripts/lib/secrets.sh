@@ -53,6 +53,10 @@ write_node_secret() {
   local kind=$2
   local value=$3
   local key f tmp
+  if [[ "${TW_STACK_IS_REMOTE:-0}" == "1" || "${DRY_RUN:-0}" == "1" ]]; then
+    log "Skip writing secret ${kind} for ${node} (remote or DRY_RUN)"
+    return 0
+  fi
   key="$(secret_key_for_node "$node" "$kind")"
   ensure_secrets_dir
   f="$(secrets_file)"

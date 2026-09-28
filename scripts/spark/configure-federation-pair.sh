@@ -29,7 +29,7 @@ mapfile -t rows < <(read_nodes_conf)
 read -r _name_a domain_a _rest <<< "${rows[0]}"
 read -r _name_b domain_b _rest <<< "${rows[1]}"
 
-"${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_A" synapse-federation-allowlist.sh "$domain_a" "$domain_b"
-"${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_B" synapse-federation-allowlist.sh "$domain_b" "$domain_a"
+"${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_A" synapse-federation-allowlist.sh "$domain_a" "$domain_b" || die "Federation config failed on A"
+"${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$SSH_B" synapse-federation-allowlist.sh "$domain_b" "$domain_a" || die "Federation config failed on B"
 
 log "Federation allowlists configured: ${domain_a} <-> ${domain_b}"
