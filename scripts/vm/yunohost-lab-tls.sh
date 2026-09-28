@@ -16,12 +16,19 @@ FQDN=$1
 
 CERT_SRC="${TW_STACK_ROOT}/lab-certs/${FQDN}"
 if [[ ! -f "${CERT_SRC}/fullchain.pem" || ! -f "${CERT_SRC}/privkey.pem" ]]; then
-  log "No lab cert staged at ${CERT_SRC}; keeping YunoHost self-signed cert"
+  log "No lab cert staged at ${CERT_SRC}; keeping existing cert"
   exit 0
 fi
 
 DEST="/etc/yunohost/certs/${FQDN}"
 mkdir -p "$DEST"
+if [[ -f "${DEST}/crt.pem" && -f "${DEST}/key.pem" ]] \
+  && cmp -s "${CERT_SRC}/fullchain.pem" "${DEST}/crt.pem" \
+  && cmp -s "${CERT_SRC}/privkey.pem" "${DEST}/key.pem"; then
+  log "Lab TLS cert unchanged for ${FQDN}"
+  exit 0
+fi
+
 install -m 644 "${CERT_SRC}/fullchain.pem" "${DEST}/crt.pem"
 install -m 600 "${CERT_SRC}/privkey.pem" "${DEST}/key.pem"
 
