@@ -37,4 +37,6 @@ def test_brand_portal_tile_pngs_ship_in_repo() -> None:
 def test_portal_css_rewrites_family_home_tile_label() -> None:
     css = (ROOT / "brand" / "portal" / "tinyweb-portal.css").read_text(encoding="utf-8")
     assert 'content: "Family home"' in css
-    assert 'href="/family/"' in css
+    assert 'li.app-tile .app-label a[href$="/family"]' in css
+    assert "::before" in css
+    assert 'a.app-tile[href="/family/"]' not in css
