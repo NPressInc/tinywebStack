@@ -5,6 +5,8 @@ set -euo pipefail
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/lib/common.sh"
+# shellcheck source=scripts/lib/portal_tiles.sh
+source "${TW_STACK_ROOT}/lib/portal_tiles.sh"
 load_config
 
 usage() {
@@ -70,10 +72,6 @@ perm_remove() {
   }
 }
 
-hide_portal_tile() {
-  yunohost user permission update "$1" --show_tile false 2>/dev/null || true
-}
-
 ensure_group "$PARENTS_GROUP"
 ensure_group "$KIDS_GROUP"
 ensure_group "$FED_TEST_GROUP"
@@ -102,8 +100,10 @@ if ynh_perm_exists "$DASH_PERM"; then
   perm_remove "$DASH_PERM" all_users || true
   perm_remove "$DASH_PERM" visitors || true
   perm_add "$DASH_PERM" "$PARENTS_GROUP"
-  yunohost user permission update "$DASH_PERM" --show_tile True --label "Family home" 2>/dev/null || true
+  configure_family_home_tile "$DASH_PERM" || log "WARN: Family home portal tile not fully configured for ${DASH_PERM}"
 fi
+
+configure_element_tile_logo || true
 
 # Traccar is fallback-only; Owntracks map is linked from the dashboard (avoid broken portal tiles).
 hide_portal_tile traccar.main
