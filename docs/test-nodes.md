@@ -96,6 +96,20 @@ Per node (`NODE_NAME=family-a`, `DOMAIN=family-a.family.test`, `IP=…`):
 ./scripts/spark/sync-vm-peer-hosts.sh "$NODE_NAME" "$IP"
 ```
 
+### Lab-only shared password (`LAB_PASSWORD`)
+
+For disposable test VMs you can set **`LAB_PASSWORD`** in `config/local.env` (or export it before deploy). When set, `ensure-node-secrets.sh` uses that value for every generated test secret instead of random strings:
+
+- YunoHost admin, alice, bob, parent, kid, Traccar admin (per node)
+
+**Never set `LAB_PASSWORD` on real deployments.** Existing entries in `passwords.env` are not overwritten; delete the relevant keys or remove the file if you change `LAB_PASSWORD` mid-lab.
+
+YunoHost’s password policy requires **at least 8 characters** for admin and user accounts. Shorter `LAB_PASSWORD` values will cause user creation or bootstrap to fail.
+
+Default (unset): each secret is a unique random value.
+
+---
+
 Passwords are generated on spark by `ensure-node-secrets.sh` into `~/.tinywebstack-secrets/passwords.env`:
 
 - `YUNOHOST_ADMIN_PASSWORD_FAMILY_A`

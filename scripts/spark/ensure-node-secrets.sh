@@ -15,7 +15,7 @@ gen_if_missing() {
   if [[ -n "$(read_node_secret "$node" "$kind" || true)" ]]; then
     return 0
   fi
-  write_node_secret "$node" "$kind" "$(openssl rand -base64 18)"
+  write_node_secret "$node" "$kind" "$(generate_test_password)"
 }
 
 while read -r name domain _rest; do
