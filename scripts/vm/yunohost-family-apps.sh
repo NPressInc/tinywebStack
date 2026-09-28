@@ -26,7 +26,7 @@ fi
 MATRIX_D="$(matrix_domain "$MAIN_DOMAIN")"
 ELEMENT_D="$(element_domain "$MAIN_DOMAIN")"
 LOC_D="$(location_domain "$MAIN_DOMAIN")"
-LOCATION_APP="${LOCATION_APP:-traccar}"
+LOCATION_APP="${LOCATION_APP:-owntracks}"
 
 install_app() {
   local app_id=$1
@@ -46,10 +46,16 @@ install_app element element --args "$ELEMENT_ARGS"
 
 if [[ "$LOCATION_APP" == "owntracks" ]]; then
   if [[ -x "${TW_STACK_ROOT}/vm/prep-owntracks-apt.sh" ]]; then
-    "${TW_STACK_ROOT}/vm/prep-owntracks-apt.sh"
+    "${TW_STACK_ROOT}/vm/prep-owntracks-apt.sh" || die "OwnTracks apt prep failed"
   fi
+  # init_main_permission is tightened later by family-groups.sh (parents only for web UI).
   OWNTRACKS_ARGS="domain=${LOC_D}&path=/&init_main_permission=all_users"
-  install_app owntracks "${OWNTRACKS_APP_URL}" --force --args "$OWNTRACKS_ARGS"
+  if ! install_app owntracks "${OWNTRACKS_APP_URL}" --force --args "$OWNTRACKS_ARGS"; then
+    log "owntracks_ynh install failed; ensuring ot-recorder via prep fallback"
+    "${TW_STACK_ROOT}/vm/prep-owntracks-apt.sh"
+    install_app owntracks "${OWNTRACKS_APP_URL}" --force --args "$OWNTRACKS_ARGS" \
+      || die "OwnTracks install failed after apt fallback"
+  fi
 else
   TRACCAR_ARGS="domain=${LOC_D}&init_main_permission=all_users"
   install_app traccar traccar --args "$TRACCAR_ARGS"

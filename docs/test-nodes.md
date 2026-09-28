@@ -20,7 +20,8 @@ Do not use the same directory for the git repo and VM data.
 | YunoHost main | `family-a.family.test` | postinstall domain |
 | Synapse | `matrix.family-a.family.test` | `server_name=family-a.family.test` → `@user:family-a.family.test` |
 | Element | `element.family-a.family.test` | Web client |
-| Location (default) | `traccar.family-a.family.test` | Catalog app; set `LOCATION_APP=owntracks` to try OwnTracks (+ apt key prep) |
+| Location (default) | `owntracks.family-a.family.test` | OwnTracks Recorder + app; set `LOCATION_APP=traccar` for catalog fallback |
+| Family dashboard | `https://family-a.family.test/family/` | Parents group only (after `family-init.sh`) |
 
 `apply-private-dns.sh` adds all of these names to spark’s `/etc/hosts`. Push peer entries to each VM with:
 
@@ -91,6 +92,7 @@ Per node (`NODE_NAME=family-a`, `DOMAIN=family-a.family.test`, `IP=…`):
 ./scripts/vm/remote-run.sh "$IP" yunohost-bootstrap.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/vm/remote-run.sh "$IP" yunohost-family-apps.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/vm/remote-run.sh "$IP" create-matrix-test-users.sh "$DOMAIN" "$NODE_NAME"
+./scripts/vm/remote-run.sh "$IP" family-init.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/spark/sync-vm-peer-hosts.sh "$NODE_NAME" "$IP"
 ```
 
@@ -99,7 +101,8 @@ Passwords are generated on spark by `ensure-node-secrets.sh` into `~/.tinywebsta
 - `YUNOHOST_ADMIN_PASSWORD_FAMILY_A`
 - `ALICE_PASSWORD_FAMILY_A` / `BOB_PASSWORD_FAMILY_B`
 - `TRACCAR_ADMIN_LOGIN_FAMILY_A` (email login, e.g. `admin@family-a.family.test`)
-- `TRACCAR_ADMIN_PASSWORD_FAMILY_A` (Traccar web admin; `setup-traccar-admin.sh` creates the first user via `POST /api/users` without `administrator: true` — Traccar 6.16+ returns HTTP 400 otherwise; the first account is admin automatically)
+- `TRACCAR_ADMIN_PASSWORD_FAMILY_A` (when `LOCATION_APP=traccar`)
+- `PARENT_PASSWORD_FAMILY_A` / `KID_PASSWORD_FAMILY_A` (family layer test users)
 
 `remote-run.sh` passes them in a root-only `remote.env` on the VM (never printed).
 

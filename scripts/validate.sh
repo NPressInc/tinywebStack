@@ -46,6 +46,14 @@ else
 fi
 
 echo "== DRY_RUN deploy =="
+if [[ ! -f "${ADMIN_SSH_PUBKEY:-${HOME}/.ssh/id_ed25519.pub}" ]]; then
+  _validate_key_dir="${TW_STACK_ROOT}/.tools/validate-ssh"
+  mkdir -p "$_validate_key_dir"
+  if [[ ! -f "${_validate_key_dir}/id_ed25519.pub" ]]; then
+    ssh-keygen -t ed25519 -N "" -f "${_validate_key_dir}/id_ed25519" -q
+  fi
+  export ADMIN_SSH_PUBKEY="${_validate_key_dir}/id_ed25519.pub"
+fi
 export DRY_RUN=1
 export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
 export TW_STACK_VM_DIR="${TW_STACK_VM_DIR:-/tmp/tinywebstack-vms-dryrun}"
@@ -73,5 +81,13 @@ p = Path("templates/synapse/tinywebstack-federation.yaml.example")
 yaml.safe_load(p.read_text())
 print("  YAML OK", p)
 PY
+
+echo "== pytest (family module + dashboard) =="
+if ! python3 -m pip install -q -e 'family/synapse_module[test]' -e 'family/dashboard[test]' 2>/dev/null; then
+  echo "  pip install failed — skipped pytest" >&2
+else
+  PATH="${HOME}/.local/bin:${PATH}" python3 -m pytest family/synapse_module/tests family/dashboard/tests -q
+  echo "  pytest passed"
+fi
 
 echo "All local checks passed."

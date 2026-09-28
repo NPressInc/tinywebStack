@@ -4,3 +4,7 @@ config/nodes.conf
 .tools/
 *.partial
 *.tmp
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.tools/validate-ssh/

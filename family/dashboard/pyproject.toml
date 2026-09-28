@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinywebstack-family-dashboard"
+version = "0.1.0"
+description = "Parent family dashboard for tinywebStack"
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.100",
+  "uvicorn[standard]>=0.22",
+  "jinja2>=3.1",
+  "python-multipart>=0.0.6",
+  "itsdangerous>=2.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0", "httpx>=0.24"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tinywebstack_dashboard*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

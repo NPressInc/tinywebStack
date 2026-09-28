@@ -65,6 +65,10 @@ REMOTE_ENV="$(mktemp)"
     [[ -n "$bpw" ]] && printf 'BOB_PASSWORD=%q\n' "$bpw"
     tpw="$(read_node_secret "$NODE_NAME" traccar_admin_password || true)"
     [[ -n "$tpw" ]] && printf 'TRACCAR_ADMIN_PASSWORD=%q\n' "$tpw"
+    ppw="$(read_node_secret "$NODE_NAME" parent_password || true)"
+    [[ -n "$ppw" ]] && printf 'PARENT_PASSWORD=%q\n' "$ppw"
+    kpw="$(read_node_secret "$NODE_NAME" kid_password || true)"
+    [[ -n "$kpw" ]] && printf 'KID_PASSWORD=%q\n' "$kpw"
     tlogin="$(read_node_secret "$NODE_NAME" traccar_admin_login || true)"
     [[ -n "$tlogin" ]] && printf 'TRACCAR_ADMIN_LOGIN=%q\n' "$tlogin"
   fi
@@ -73,6 +77,7 @@ REMOTE_ENV="$(mktemp)"
 
 rsync -az \
   "${TW_STACK_ROOT}/scripts/" \
+  "${TW_STACK_ROOT}/family/" \
   "${TW_STACK_ROOT}/config/defaults.env" \
   "${SSH_TARGET}:~/tinywebstack-staging/"
 rsync -az "$REMOTE_ENV" "${SSH_TARGET}:~/tinywebstack-staging/remote.env"
