@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
 
@@ -24,7 +24,22 @@ from tinywebstack_dashboard.auth import (
 )
 from tinywebstack_dashboard.invite_store import add_pending, load_pending
 from tinywebstack_dashboard.peer_verify import verify_peer_domain
+from tinywebstack_dashboard.members import list_members, matrix_status_label
+from tinywebstack_dashboard.owntracks_setup import (
+    build_owntracks_config,
+    load_stored_credentials,
+    owntracks_otcp_link,
+)
 from tinywebstack_dashboard.policy_store import load_policy, save_policy, set_parent_mxids, sync_kids_from_usernames
+from tinywebstack_dashboard.yunohost_actions import (
+    create_member,
+    delete_member,
+    generate_password,
+    issue_owntracks,
+    reset_password,
+    synapse_user_status,
+    validate_username,
+)
 from tinywebstack_family.invite import create_invite_token, verify_invite_token
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -37,8 +52,12 @@ def config_from_env() -> DashboardConfig:
         policy_path=os.environ.get("TWS_POLICY_PATH", "/etc/tinywebstack/family-policy.json"),
         server_name=os.environ.get("TWS_SERVER_NAME", ""),
         location_base_url=os.environ.get("TWS_LOCATION_URL", ""),
+        location_domain=os.environ.get("TWS_LOCATION_DOMAIN", ""),
         csrf_secret=os.environ.get("TWS_CSRF_SECRET", secrets.token_hex(32)),
         yunohost_cli=os.environ.get("TWS_YUNOHOST_CLI", "yunohost"),
+        owntracks_store_path=os.environ.get(
+            "TWS_OWNTRACKS_KIDS_FILE", "/etc/tinywebstack/owntracks-kids.json"
+        ),
     )
 
 
@@ -235,6 +254,13 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             {"user": user, "csrf": csrf_token(request), "token": token, "message": message},
         )
 
+    def member_role(username: str) -> str | None:
+        if username in list_group_members(cfg.parents_group, cfg.yunohost_cli):
+            return "parent"
+        if username in list_group_members(cfg.kids_group, cfg.yunohost_cli):
+            return "kid"
+        return None
+
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request, user: str = Depends(current_user)):
         policy = refreshed_policy()
@@ -246,9 +272,174 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "user": user,
                 "kids": sorted(kids.keys()),
                 "location_url": cfg.location_base_url,
-                "csrf": csrf_token(request),
+                "member_count": len(list_members(cfg)),
             },
         )
+
+    @app.get("/members", response_class=HTMLResponse)
+    async def members_list(request: Request, user: str = Depends(current_user)):
+        return TEMPLATES.TemplateResponse(
+            request,
+            "members.html",
+            {"user": user, "members": list_members(cfg), "message": request.query_params.get("msg", "")},
+        )
+
+    @app.get("/members/add", response_class=HTMLResponse)
+    async def members_add_form(request: Request, user: str = Depends(current_user)):
+        return TEMPLATES.TemplateResponse(
+            request,
+            "member_add.html",
+            {"user": user, "csrf": csrf_token(request), "error": ""},
+        )
+
+    @app.post("/members/add")
+    async def members_add_submit(
+        request: Request,
+        user: str = Depends(current_user),
+        csrf: str = Form(...),
+        username: str = Form(...),
+        full_name: str = Form(...),
+        role: str = Form(...),
+    ):
+        verify_csrf(request, csrf)
+        try:
+            uname = validate_username(username)
+            if role not in ("parent", "kid"):
+                raise ValueError("Role must be parent or kid")
+            password = generate_password()
+            create_member(uname, full_name.strip(), role, cfg.server_name, password)
+        except ValueError as exc:
+            return TEMPLATES.TemplateResponse(
+                request,
+                "member_add.html",
+                {"user": user, "csrf": csrf_token(request), "error": str(exc)},
+            )
+        return TEMPLATES.TemplateResponse(
+            request,
+            "member_created.html",
+            {
+                "username": uname,
+                "password": password,
+                "role": role,
+                "server_name": cfg.server_name,
+            },
+        )
+
+    @app.get("/members/{username}", response_class=HTMLResponse)
+    async def member_detail(request: Request, username: str, user: str = Depends(current_user)):
+        role = member_role(username)
+        if not role:
+            raise HTTPException(status_code=404, detail="Not a family member")
+        st = synapse_user_status(username, cfg.server_name)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "member_detail.html",
+            {
+                "username": username,
+                "role": role,
+                "mxid": f"@{username}:{cfg.server_name}",
+                "matrix_label": matrix_status_label(st),
+                "csrf": csrf_token(request),
+                "new_password": "",
+            },
+        )
+
+    @app.post("/members/{username}/reset-password")
+    async def member_reset_password(
+        request: Request,
+        username: str,
+        user: str = Depends(current_user),
+        csrf: str = Form(...),
+    ):
+        verify_csrf(request, csrf)
+        if not member_role(username):
+            raise HTTPException(status_code=404, detail="Not a family member")
+        pw = generate_password()
+        reset_password(username, pw)
+        role = member_role(username)
+        st = synapse_user_status(username, cfg.server_name)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "member_detail.html",
+            {
+                "username": username,
+                "role": role,
+                "mxid": f"@{username}:{cfg.server_name}",
+                "matrix_label": matrix_status_label(st),
+                "csrf": csrf_token(request),
+                "new_password": pw,
+            },
+        )
+
+    @app.post("/members/{username}/remove")
+    async def member_remove(
+        request: Request,
+        username: str,
+        user: str = Depends(current_user),
+        csrf: str = Form(...),
+    ):
+        verify_csrf(request, csrf)
+        if username == user:
+            raise HTTPException(status_code=400, detail="You cannot remove your own account here")
+        if not member_role(username):
+            raise HTTPException(status_code=404, detail="Not a family member")
+        delete_member(username)
+        return RedirectResponse(url="/members?msg=Member+removed", status_code=303)
+
+    @app.get("/members/{username}/location", response_class=HTMLResponse)
+    async def member_location_page(request: Request, username: str, user: str = Depends(current_user)):
+        if member_role(username) != "kid":
+            raise HTTPException(status_code=404, detail="Location setup is for child accounts")
+        stored = load_stored_credentials(cfg.owntracks_store_path, username)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "member_location.html",
+            {
+                "username": username,
+                "csrf": csrf_token(request),
+                "has_config": bool(stored),
+                "location_url": cfg.location_base_url,
+            },
+        )
+
+    @app.post("/members/{username}/location")
+    async def member_location_issue(
+        request: Request,
+        username: str,
+        user: str = Depends(current_user),
+        csrf: str = Form(...),
+        regenerate: str = Form(""),
+    ):
+        verify_csrf(request, csrf)
+        if member_role(username) != "kid":
+            raise HTTPException(status_code=404, detail="Location setup is for child accounts")
+        loc_domain = cfg.location_domain or cfg.location_base_url.replace("https://", "").split("/")[0]
+        issue_owntracks(username, cfg.server_name, loc_domain)
+        return RedirectResponse(url=f"/members/{username}/location", status_code=303)
+
+    @app.get("/members/{username}/location/qr.png")
+    async def member_location_qr(username: str, user: str = Depends(current_user)):
+        if member_role(username) != "kid":
+            raise HTTPException(status_code=404, detail="Not found")
+        stored = load_stored_credentials(cfg.owntracks_store_path, username)
+        if not stored:
+            raise HTTPException(status_code=404, detail="No location setup yet")
+        cfg_json = build_owntracks_config(
+            stored.get("publish_url", cfg.location_base_url),
+            stored.get("username", username),
+            stored.get("password", ""),
+            stored.get("device_id", f"{username}-phone"),
+            stored.get("tracker_id", username[:2]),
+        )
+        link = owntracks_otcp_link(cfg_json)
+        import io
+
+        import qrcode
+
+        img = qrcode.make(link)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
 
     @app.get("/kid/{kid_mxid:path}", response_class=HTMLResponse)
     async def edit_kid(request: Request, kid_mxid: str, user: str = Depends(current_user)):

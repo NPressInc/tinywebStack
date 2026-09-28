@@ -1,6 +1,8 @@
 # Family parent dashboard
 
-Small FastAPI app (server-rendered HTML) for parents to manage kid allowlists and quiet hours. It writes `/etc/tinywebstack/family-policy.json` atomically for the Synapse module.
+Small FastAPI app (server-rendered HTML) for parents. **This is the only web interface a non-technical family should need** for day-to-day use. YunoHost, Synapse, and OwnTracks admin screens are for technical users and installers only.
+
+The dashboard writes `/etc/tinywebstack/family-policy.json` for the Synapse module and calls narrowly-scoped **sudo helpers** on the node for account changes.
 
 ## Install
 
@@ -20,19 +22,39 @@ Or use `family-init.sh` which runs groups, module, dashboard, and optional test 
 
 After install: `https://<main-domain>/family/` (proxied to `127.0.0.1:8765`).
 
-Parents see:
+Parents see (plain language):
 
+- **Family members** — add/remove parents and children, reset passwords, see chat (Matrix) status
+- **Location phone setup** — QR code for OwnTracks on each child’s phone; map link for parents only
 - **Household invite** — create or redeem one-time links ([FAMILY_INVITE.md](FAMILY_INVITE.md))
-- List of kids (from the `kids` group)
-- Per-kid contact allowlist (MXIDs + optional whole domains)
-- Quiet hours (start/end/timezone; supports windows past midnight)
-- Link to OwnTracks web UI (parents only)
+- Per-child **contacts & quiet hours** (allowlists, bedtime rules)
 
 Kids do **not** receive dashboard or OwnTracks web permissions (`family-groups.sh`).
 
-## OwnTracks app (kid phone)
+## Privileged helpers (node)
 
-Configure the [OwnTracks app](https://owntracks.org/) in **HTTP mode** to POST to your recorder endpoint (see YunoHost `owntracks_ynh` docs for URL and credentials). Kids publish location; parents view history on the web map.
+Installed by `install-family-dashboard.sh`:
+
+| Path | Purpose |
+|------|---------|
+| `/usr/local/sbin/tws-family-dashboard-privileged` | YunoHost user create/delete/password, Synapse user status, OwnTracks kid credentials |
+| `/usr/local/sbin/tws-family-sync-federation` | Merge `trusted_domains` into Synapse allowlist |
+
+`www-data` may run these via `/etc/sudoers.d/tinywebstack-family-dashboard` (NOPASSWD).
+
+## Synapse admin token (optional, for chat status)
+
+To show “active / not signed in yet” from the Synapse Admin API, place a bearer token in:
+
+`/etc/tinywebstack/synapse-admin-token` (mode `640`, group `www-data`)
+
+If the file is empty, the dashboard still works; chat status copy explains that the child should open Element once.
+
+## OwnTracks on a child’s phone
+
+Use **Family members → child → Location phone setup** to generate a **QR code** (HTTP mode). Parents open the map at the location URL; children do not get the web map tile (`family-groups.sh`).
+
+Manual fallback: [OwnTracks app](https://owntracks.org/) HTTP mode using credentials from `/etc/tinywebstack/owntracks-kids.json` (root-only; use dashboard QR instead).
 
 ## Tests
 

@@ -27,6 +27,7 @@ def client(tmp_path, monkeypatch):
         "TWS_DASHBOARD_MOCK_GROUPS",
         json.dumps({"parents": ["parent1"], "kids": ["kid1"]}),
     )
+    monkeypatch.setenv("TWS_DASHBOARD_MOCK_YUNOHOST", "1")
     cfg = DashboardConfig(
         policy_path=str(policy),
         server_name="family-a.test",

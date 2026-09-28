@@ -53,6 +53,12 @@ TWS_FEDERATION_SYNC_CMD=sudo /usr/local/sbin/tws-family-sync-federation ${MAIN_D
 TWS_PARENTS_GROUP=${TWS_PARENTS_GROUP:-parents}
 TWS_KIDS_GROUP=${TWS_KIDS_GROUP:-kids}
 TWS_LOCATION_URL=https://$(location_domain "$MAIN_DOMAIN")/
+TWS_LOCATION_DOMAIN=$(location_domain "$MAIN_DOMAIN")
+TWS_YUNOHOST_PRIV_HELPER=sudo /usr/local/sbin/tws-family-dashboard-privileged
+TWS_OWNTRACKS_PUBLISH_URL=https://$(location_domain "$MAIN_DOMAIN")/api/
+TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
+TWS_SYNAPSE_ADMIN_TOKEN_FILE=/etc/tinywebstack/synapse-admin-token
+TWS_LAB_TLS_INSECURE=1
 EOF
   log "Wrote ${CSRF_FILE}"
 fi
@@ -86,13 +92,44 @@ fi
 systemctl restart tinywebstack-family-dashboard.service
 
 install -m 755 "${TW_STACK_ROOT}/vm/family-sync-federation.sh" /usr/local/sbin/tws-family-sync-federation
+install -m 755 "${TW_STACK_ROOT}/vm/family-dashboard-privileged.sh" /usr/local/sbin/tws-family-dashboard-privileged
 SUDOERS="/etc/sudoers.d/tinywebstack-family-dashboard"
-if [[ ! -f "$SUDOERS" ]]; then
-  printf '%s\n' \
-    "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-sync-federation *" \
-    >"$SUDOERS"
+TMP_SUDO="$(mktemp)"
+printf '%s\n' \
+  "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-sync-federation *" \
+  "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-dashboard-privileged *" \
+  >"$TMP_SUDO"
+if [[ ! -f "$SUDOERS" ]] || ! cmp -s "$TMP_SUDO" "$SUDOERS"; then
+  mv "$TMP_SUDO" "$SUDOERS"
   chmod 440 "$SUDOERS"
+else
+  rm -f "$TMP_SUDO"
 fi
+
+LOC_D="$(location_domain "$MAIN_DOMAIN")"
+MATRIX_D="$(matrix_domain "$MAIN_DOMAIN")"
+touch /etc/tinywebstack/owntracks-kids.json
+chown root:www-data /etc/tinywebstack/owntracks-kids.json
+chmod 640 /etc/tinywebstack/owntracks-kids.json
+if [[ ! -f /etc/tinywebstack/synapse-admin-token ]]; then
+  install -m 640 /dev/null /etc/tinywebstack/synapse-admin-token
+  chown root:www-data /etc/tinywebstack/synapse-admin-token
+  log "Created empty /etc/tinywebstack/synapse-admin-token (see docs/FAMILY_DASHBOARD.md)"
+fi
+
+# Append dashboard env keys when upgrading an existing install.
+append_env() {
+  local key=$1 val=$2
+  if ! grep -q "^${key}=" "$CSRF_FILE" 2>/dev/null; then
+    printf '%s=%s\n' "$key" "$val" >>"$CSRF_FILE"
+  fi
+}
+append_env TWS_YUNOHOST_PRIV_HELPER "sudo /usr/local/sbin/tws-family-dashboard-privileged"
+append_env TWS_LOCATION_DOMAIN "$LOC_D"
+append_env TWS_OWNTRACKS_PUBLISH_URL "https://${LOC_D}/api/"
+append_env TWS_OWNTRACKS_KIDS_FILE "/etc/tinywebstack/owntracks-kids.json"
+append_env TWS_SYNAPSE_ADMIN_TOKEN_FILE "/etc/tinywebstack/synapse-admin-token"
+append_env TWS_LAB_TLS_INSECURE "${TWS_LAB_TLS_INSECURE:-1}"
 
 # YunoHost permission + nginx snippet (SSOwat on main domain /family/)
 PERM="family-dashboard.main"
