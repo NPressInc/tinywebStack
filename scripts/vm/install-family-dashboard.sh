@@ -39,10 +39,17 @@ CSRF_FILE="/etc/tinywebstack/dashboard.env"
 if [[ ! -f "$CSRF_FILE" ]]; then
   CSRF="$(openssl rand -hex 32)"
   install -m 600 /dev/null "$CSRF_FILE"
+  INVITE_SECRET="$(openssl rand -hex 32)"
+  MATRIX_D="$(matrix_domain "$MAIN_DOMAIN")"
   cat >"$CSRF_FILE" <<EOF
 TWS_CSRF_SECRET=${CSRF}
+TWS_INVITE_SECRET=${INVITE_SECRET}
 TWS_SERVER_NAME=${MAIN_DOMAIN}
+TWS_MATRIX_SERVER=${MATRIX_D}
 TWS_POLICY_PATH=/etc/tinywebstack/family-policy.json
+TWS_PENDING_INVITES_PATH=/etc/tinywebstack/pending-invites.json
+TWS_PUBLIC_BASE_URL=https://${MAIN_DOMAIN}/family
+TWS_FEDERATION_SYNC_CMD=sudo /usr/local/sbin/tws-family-sync-federation ${MAIN_DOMAIN}
 TWS_PARENTS_GROUP=${TWS_PARENTS_GROUP:-parents}
 TWS_KIDS_GROUP=${TWS_KIDS_GROUP:-kids}
 TWS_LOCATION_URL=https://$(location_domain "$MAIN_DOMAIN")/
@@ -78,6 +85,15 @@ else
 fi
 systemctl restart tinywebstack-family-dashboard.service
 
+install -m 755 "${TW_STACK_ROOT}/vm/family-sync-federation.sh" /usr/local/sbin/tws-family-sync-federation
+SUDOERS="/etc/sudoers.d/tinywebstack-family-dashboard"
+if [[ ! -f "$SUDOERS" ]]; then
+  printf '%s\n' \
+    "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-sync-federation *" \
+    >"$SUDOERS"
+  chmod 440 "$SUDOERS"
+fi
+
 # YunoHost permission + nginx snippet (SSOwat on main domain /family/)
 PERM="family-dashboard.main"
 if ! yunohost user permission list 2>/dev/null | grep -qw "$PERM"; then
@@ -92,6 +108,10 @@ NGINX_SNIP="/etc/nginx/conf.d/tinywebstack-family-dashboard.conf"
 TMP="$(mktemp)"
 cat >"$TMP" <<'EOF'
 # Managed by tinywebStack — SSOwat protects /family/ via YunoHost permission family-dashboard.main
+location /.well-known/tinywebstack-family.json {
+    proxy_pass http://127.0.0.1:8765/.well-known/tinywebstack-family.json;
+    proxy_set_header Host $host;
+}
 location /family/ {
     proxy_pass http://127.0.0.1:8765/;
     proxy_set_header Host $host;

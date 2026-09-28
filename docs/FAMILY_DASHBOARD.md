@@ -22,6 +22,7 @@ After install: `https://<main-domain>/family/` (proxied to `127.0.0.1:8765`).
 
 Parents see:
 
+- **Household invite** — create or redeem one-time links ([FAMILY_INVITE.md](FAMILY_INVITE.md))
 - List of kids (from the `kids` group)
 - Per-kid contact allowlist (MXIDs + optional whole domains)
 - Quiet hours (start/end/timezone; supports windows past midnight)
