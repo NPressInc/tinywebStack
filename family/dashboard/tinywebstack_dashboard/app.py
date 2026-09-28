@@ -508,18 +508,23 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         qh_end: str = Form(""),
         qh_timezone: str = Form("UTC"),
         events_enabled: str = Form("0"),
+        _events_field: str = Form(""),
     ):
         verify_csrf(request, csrf)
         policy = refreshed_policy()
         if kid_mxid not in (policy.get("kids") or {}):
             raise HTTPException(status_code=404, detail="Unknown kid")
+        prev_entry = dict((policy.get("kids") or {}).get(kid_mxid) or {})
         mxids = [ln.strip() for ln in allowlist_mxids.splitlines() if ln.strip()]
         domains = [ln.strip() for ln in allowlist_domains.splitlines() if ln.strip()]
         entry: Dict[str, Any] = {
             "allowlist_mxids": mxids,
             "allowlist_domains": domains,
-            "events_enabled": events_enabled in ("1", "on", "true", "yes"),
         }
+        if _events_field == "1":
+            entry["events_enabled"] = events_enabled in ("1", "on", "true", "yes")
+        else:
+            entry["events_enabled"] = prev_entry.get("events_enabled", True)
         if qh_start and qh_end:
             entry["quiet_hours"] = {
                 "start": qh_start,
