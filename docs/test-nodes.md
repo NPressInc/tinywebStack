@@ -21,6 +21,7 @@ Do not use the same directory for the git repo and VM data.
 | Synapse | `matrix.family-a.family.test` | `server_name=family-a.family.test` → `@user:family-a.family.test` |
 | Element | `element.family-a.family.test` | Web client |
 | Location (default) | `owntracks.family-a.family.test` | OwnTracks Recorder + app; set `LOCATION_APP=traccar` for catalog fallback |
+| Events (Mobilizon) | `mobilizon.family-a.family.test` | SSO/LDAP; arm64 catalog package; see [EVENTS.md](EVENTS.md) |
 | Family dashboard | `https://family-a.family.test/family/` | Parents group only (after `family-init.sh`) |
 
 `apply-private-dns.sh` adds all of these names to spark’s `/etc/hosts`. Push peer entries to each VM with:
@@ -93,6 +94,8 @@ Per node (`NODE_NAME=family-a`, `DOMAIN=family-a.family.test`, `IP=…`):
 ./scripts/vm/remote-run.sh "$IP" yunohost-family-apps.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/vm/remote-run.sh "$IP" create-matrix-test-users.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/vm/remote-run.sh "$IP" family-init.sh "$DOMAIN" "$NODE_NAME"
+# family-init installs Mobilizon; or explicitly:
+# ./scripts/vm/remote-run.sh "$IP" install-mobilizon.sh "$DOMAIN" "$NODE_NAME"
 ./scripts/spark/sync-vm-peer-hosts.sh "$NODE_NAME" "$IP"
 ```
 
@@ -128,9 +131,25 @@ Federation:
   family-a family-b \
   family-a.family.test family-b.family.test \
   alice bob matrix.org
+
+./scripts/spark/verify-events-e2e.sh \
+  family-a family-b \
+  family-a.family.test family-b.family.test \
+  mobilizon.fr
 ```
 
 Verification uses the **lab CA** for TLS, has **bob join** the room, polls `/messages`, and expects **`M_FORBIDDEN`** / federation denied for `matrix.org`.
+
+Mobilizon verification logs in as **`parent`** (SSO) on each node, syncs trusted instances, creates an event on family-a and RSVPs from family-b, and checks a **non-trusted** probe host (`mobilizon.fr` by default) is not approved.
+
+### Manual steps on spark
+
+With `LAB_PASSWORD=dummydummy` in `config/local.env` (≥8 characters), after both nodes reach `family-init.sh`:
+
+1. Ensure Mobilizon is installed on both VMs (`yunohost app list | grep mobilizon` or re-run `install-mobilizon.sh`).
+2. Run `configure-federation-pair.sh` (Matrix + Mobilizon sync) if not already linked via dashboard invite.
+3. Run `verify-events-e2e.sh` as above; fix DNS (`apply-private-dns.sh`) if HTTPS to `mobilizon.*` fails.
+4. Optional: open `https://family-a.family.test/family/` → **open events** and toggle **Events** for a child under chat rules.
 
 ---
 

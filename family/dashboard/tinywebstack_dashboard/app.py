@@ -56,6 +56,7 @@ def config_from_env() -> DashboardConfig:
         server_name=os.environ.get("TWS_SERVER_NAME", ""),
         location_base_url=os.environ.get("TWS_LOCATION_URL", ""),
         location_domain=os.environ.get("TWS_LOCATION_DOMAIN", ""),
+        events_base_url=os.environ.get("TWS_EVENTS_URL", ""),
         csrf_secret=os.environ.get("TWS_CSRF_SECRET", secrets.token_hex(32)),
         yunohost_cli=os.environ.get("TWS_YUNOHOST_CLI", "yunohost"),
         owntracks_store_path=os.environ.get(
@@ -79,6 +80,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     invite_secret = os.environ.get("TWS_INVITE_SECRET", "")
     matrix_server = os.environ.get("TWS_MATRIX_SERVER", cfg.server_name)
     federation_sync_cmd = os.environ.get("TWS_FEDERATION_SYNC_CMD", "")
+    events_perms_cmd = os.environ.get("TWS_EVENTS_PERMS_CMD", "")
 
     def current_user(request: Request) -> str:
         user = username_from_headers(dict(request.headers))
@@ -298,6 +300,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "user": user,
                 "kids": sorted(kids.keys()),
                 "location_url": cfg.location_base_url,
+                "events_url": cfg.events_base_url,
                 "member_count": len(list_members(cfg)),
             },
         )
@@ -488,6 +491,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "qh_start": qh.get("start", ""),
                 "qh_end": qh.get("end", ""),
                 "qh_timezone": qh.get("timezone", "UTC"),
+                "events_enabled": entry.get("events_enabled", True),
                 "csrf": csrf_token(request),
             },
         )
@@ -503,6 +507,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         qh_start: str = Form(""),
         qh_end: str = Form(""),
         qh_timezone: str = Form("UTC"),
+        events_enabled: str = Form("0"),
     ):
         verify_csrf(request, csrf)
         policy = refreshed_policy()
@@ -513,6 +518,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         entry: Dict[str, Any] = {
             "allowlist_mxids": mxids,
             "allowlist_domains": domains,
+            "events_enabled": events_enabled in ("1", "on", "true", "yes"),
         }
         if qh_start and qh_end:
             entry["quiet_hours"] = {
@@ -523,6 +529,8 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             }
         policy["kids"][kid_mxid] = entry
         save_policy(policy_path, policy)
+        if events_perms_cmd:
+            subprocess.run(events_perms_cmd.split(), check=False, timeout=120)
         return RedirectResponse(url=dash_url("/", root_path), status_code=303)
 
     return app

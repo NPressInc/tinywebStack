@@ -1,0 +1,12 @@
+# Example fragment merged into Mobilizon config.exs by mobilizon-family-config.sh
+# (registrations closed — accounts come from YunoHost LDAP/SSO only).
+
+import Config
+
+config :mobilizon, :instance,
+  registrations_open: false,
+  federating: true,
+  allow_relay: true
+
+config :mobilizon, :restrictions,
+  only_admin_can_create_groups: true

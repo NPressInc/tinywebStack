@@ -22,6 +22,9 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 "${TW_STACK_ROOT}/vm/family-groups.sh"
+if [[ -x "${TW_STACK_ROOT}/vm/install-mobilizon.sh" ]]; then
+  "${TW_STACK_ROOT}/vm/install-mobilizon.sh" "$MAIN_DOMAIN" "${NODE_NAME:-}"
+fi
 "${TW_STACK_ROOT}/vm/install-family-module.sh" "$MAIN_DOMAIN"
 "${TW_STACK_ROOT}/vm/install-family-dashboard.sh" "$MAIN_DOMAIN"
 if [[ -x "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" ]]; then

@@ -39,4 +39,7 @@ if [[ ${#PEERS[@]} -eq 0 ]]; then
 fi
 
 "${TW_STACK_ROOT}/vm/synapse-federation-allowlist.sh" "$MAIN_DOMAIN" "${PEERS[@]}"
+if [[ -x "${TW_STACK_ROOT}/vm/mobilizon-federation-sync.sh" ]]; then
+  "${TW_STACK_ROOT}/vm/mobilizon-federation-sync.sh" "$MAIN_DOMAIN" || log "WARN: Mobilizon federation sync failed"
+fi
 log "Federation synced for ${MAIN_DOMAIN}: ${PEERS[*]}"

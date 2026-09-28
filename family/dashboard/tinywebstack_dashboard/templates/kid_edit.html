@@ -19,6 +19,11 @@
   <input name="qh_end" value="{{ qh_end }}" placeholder="07:00">
   <label>Timezone</label>
   <input name="qh_timezone" value="{{ qh_timezone }}" placeholder="America/Los_Angeles">
+  <h2>Events</h2>
+  <label>
+    <input type="checkbox" name="events_enabled" value="1" {% if events_enabled %}checked{% endif %}>
+    Allow this child to open the family events app (RSVPs)
+  </label>
   <button type="submit">Save</button>
 </form>
 {% endblock %}

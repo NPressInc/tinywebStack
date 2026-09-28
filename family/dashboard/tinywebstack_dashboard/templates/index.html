@@ -19,6 +19,9 @@
     {% if location_url %}
     <li>View locations (parents only): <a href="{{ location_url }}">open map</a></li>
     {% endif %}
+    {% if events_url %}
+    <li>Family events &amp; RSVPs: <a href="{{ events_url }}">open events</a></li>
+    {% endif %}
     <li><a href="{{ url('/invite') }}">Invite another household</a> · <a href="{{ url('/invite/redeem') }}">Redeem an invite</a></li>
   </ul>
 </div>

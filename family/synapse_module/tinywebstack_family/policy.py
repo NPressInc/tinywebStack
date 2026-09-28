@@ -55,6 +55,7 @@ class KidPolicy:
     allowlist_mxids: Set[str] = field(default_factory=set)
     allowlist_domains: Set[str] = field(default_factory=set)
     quiet_hours: Optional[QuietHours] = None
+    events_enabled: bool = True
 
 
 @dataclass
@@ -90,11 +91,15 @@ class FamilyPolicy:
                     timezone=str(qh_raw.get("timezone", "UTC")),
                     days=[int(d) for d in qh_raw.get("days", list(range(7)))],
                 )
+            events_on = cfg.get("events_enabled", True)
+            if not isinstance(events_on, bool):
+                events_on = bool(events_on)
             kids[mxid] = KidPolicy(
                 mxid=mxid,
                 allowlist_mxids=allow_mx,
                 allowlist_domains=allow_dom,
                 quiet_hours=qh,
+                events_enabled=events_on,
             )
         return cls(
             server_name=server,
@@ -221,6 +226,7 @@ def policy_to_dict(policy: FamilyPolicy) -> Dict[str, Any]:
         entry: Dict[str, Any] = {
             "allowlist_mxids": sorted(kp.allowlist_mxids),
             "allowlist_domains": sorted(kp.allowlist_domains),
+            "events_enabled": kp.events_enabled,
         }
         if kp.quiet_hours:
             entry["quiet_hours"] = {

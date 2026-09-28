@@ -5,6 +5,8 @@ set -euo pipefail
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/lib/common.sh"
+# shellcheck source=scripts/lib/portal_tiles.sh
+source "${TW_STACK_ROOT}/lib/portal_tiles.sh"
 load_config
 
 usage() {
@@ -70,10 +72,6 @@ perm_remove() {
   }
 }
 
-hide_portal_tile() {
-  yunohost user permission update "$1" --show_tile false 2>/dev/null || true
-}
-
 ensure_group "$PARENTS_GROUP"
 ensure_group "$KIDS_GROUP"
 ensure_group "$FED_TEST_GROUP"
@@ -102,7 +100,21 @@ if ynh_perm_exists "$DASH_PERM"; then
   perm_remove "$DASH_PERM" all_users || true
   perm_remove "$DASH_PERM" visitors || true
   perm_add "$DASH_PERM" "$PARENTS_GROUP"
-  yunohost user permission update "$DASH_PERM" --show_tile True --label "Family home" 2>/dev/null || true
+  show_portal_tile "$DASH_PERM" --label "Family home"
+fi
+
+EVENTS_APP="${EVENTS_APP:-mobilizon}"
+if [[ "$EVENTS_APP" == "mobilizon" ]] && ynh_perm_exists "mobilizon.main"; then
+  perm_remove mobilizon.main all_users || true
+  perm_remove mobilizon.main visitors || true
+  perm_add mobilizon.main "$PARENTS_GROUP"
+  perm_add mobilizon.main "$KIDS_GROUP"
+  perm_add mobilizon.main "$FED_TEST_GROUP"
+  show_portal_tile mobilizon.main --label "Events"
+  APPLY_PY="${TW_STACK_ROOT}/lib/apply_mobilizon_permissions.py"
+  if [[ -f "$APPLY_PY" && -f /etc/tinywebstack/family-policy.json ]]; then
+    python3 "$APPLY_PY" --kids-group "$KIDS_GROUP" || log "WARN: mobilizon kid permissions"
+  fi
 fi
 
 # Traccar is fallback-only; Owntracks map is linked from the dashboard (avoid broken portal tiles).
