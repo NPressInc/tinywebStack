@@ -24,6 +24,8 @@ while read -r name domain _rest; do
   gen_if_missing "$name" alice_password
   gen_if_missing "$name" bob_password
   gen_if_missing "$name" traccar_admin_password
+  gen_if_missing "$name" parent_password
+  gen_if_missing "$name" kid_password
   if [[ -n "$domain" && -z "$(read_node_secret "$name" traccar_admin_login || true)" ]]; then
     write_node_secret "$name" traccar_admin_login "admin@${domain}"
   fi
