@@ -23,32 +23,54 @@ class DashboardConfig:
 
 
 def username_from_headers(headers: dict) -> Optional[str]:
-    for key in ("Remote-User", "YNH_USER", "X-Remote-User"):
-        val = headers.get(key) or headers.get(key.lower())
-        if val:
-            return str(val).strip().split("@")[0]
+    """Trust only YNH_USER set by SSOwat (nginx must clear Remote-User)."""
+    val = headers.get("YNH_USER") or headers.get("ynh_user")
+    if val:
+        return str(val).strip().split("@")[0]
     return None
 
 
-def list_group_members(group: str, yunohost_cli: str = "yunohost") -> List[str]:
+def _helper_cmd() -> list[str]:
+    path = os.environ.get(
+        "TWS_YUNOHOST_PRIV_HELPER",
+        "sudo /usr/local/sbin/tws-family-dashboard-privileged",
+    )
+    return path.split()
+
+
+def _fetch_users_payload() -> dict:
     if os.environ.get("TWS_DASHBOARD_MOCK_GROUPS"):
         raw = os.environ.get("TWS_DASHBOARD_MOCK_GROUPS", "{}")
         mapping = json.loads(raw)
-        return list(mapping.get(group, []))
+        users = {}
+        for group, names in mapping.items():
+            for name in names:
+                users.setdefault(name, {"groups": []})
+                users[name]["groups"].append(group)
+        return {"users": users}
+    out = subprocess.check_output(
+        [*_helper_cmd(), "list-users"],
+        text=True,
+        stderr=subprocess.STDOUT,
+    )
+    data = json.loads(out)
+    if "users" in data:
+        return data
+    return {"users": data}
+
+
+def list_group_members(group: str, yunohost_cli: str = "yunohost") -> List[str]:
+    del yunohost_cli  # list-users goes through sudo helper
     try:
-        out = subprocess.check_output(
-            [yunohost_cli, "user", "list", "--output-as", "json"],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-        users = json.loads(out)
+        payload = _fetch_users_payload()
     except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):
         return []
     members: List[str] = []
+    users = payload.get("users") or {}
     for name, info in users.items():
-        groups = info.get("group") or info.get("groups") or []
+        groups = info.get("groups") or info.get("group") or []
         if isinstance(groups, dict):
-            groups = groups.keys()
+            groups = list(groups.keys())
         if group in groups:
             members.append(name)
     return sorted(members)

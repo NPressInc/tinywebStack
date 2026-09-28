@@ -5,6 +5,8 @@ set -euo pipefail
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/lib/common.sh"
+# shellcheck source=scripts/lib/matrix-server.sh
+source "${TW_STACK_ROOT}/lib/matrix-server.sh"
 load_config
 
 usage() {
@@ -44,10 +46,11 @@ PIP="$(find_synapse_pip)" || die "Could not find Synapse venv pip"
 log "Installing tinywebstack-family via ${PIP}"
 "$PIP" install -q --upgrade --no-deps -e "$MODULE_SRC"
 
-CONF_D="/etc/matrix-synapse/conf.d"
-SNIPPET="${CONF_D}/tinywebstack-family.yaml"
 POLICY_PATH="${TWS_POLICY_PATH:-/etc/tinywebstack/family-policy.json}"
-mkdir -p /etc/tinywebstack
+install -d -m 775 -o root -g www-data /etc/tinywebstack
+if getent group synapse >/dev/null 2>&1; then
+  usermod -aG www-data synapse || true
+fi
 if [[ ! -f "$POLICY_PATH" ]]; then
   SERVER="${MAIN_DOMAIN:-local.test}"
   cat >"$POLICY_PATH" <<EOF
@@ -59,13 +62,13 @@ if [[ ! -f "$POLICY_PATH" ]]; then
   "kids": {}
 }
 EOF
-  chmod 640 "$POLICY_PATH"
-  if getent group synapse >/dev/null 2>&1; then
-    chown root:synapse "$POLICY_PATH"
-  fi
   log "Created empty policy at ${POLICY_PATH}"
 fi
+chown root:www-data "$POLICY_PATH"
+chmod 664 "$POLICY_PATH"
 
+CONF_D="/etc/matrix-synapse/conf.d"
+SNIPPET="${CONF_D}/tinywebstack-family.yaml"
 mkdir -p "$CONF_D"
 TMP="$(mktemp)"
 cat >"$TMP" <<EOF
@@ -91,13 +94,25 @@ else
   log "Wrote ${SNIPPET}"
 fi
 
+if [[ -n "$MAIN_DOMAIN" ]]; then
+  MATRIX_HOST="$(matrix_public_host "$MAIN_DOMAIN")"
+  DASH_ENV="/etc/tinywebstack/dashboard.env"
+  if [[ -f "$DASH_ENV" ]]; then
+    if grep -q '^TWS_MATRIX_SERVER=' "$DASH_ENV"; then
+      sed -i "s|^TWS_MATRIX_SERVER=.*|TWS_MATRIX_SERVER=${MATRIX_HOST}|" "$DASH_ENV"
+    else
+      printf 'TWS_MATRIX_SERVER=%s\n' "$MATRIX_HOST" >>"$DASH_ENV"
+    fi
+  fi
+fi
+
 restart_synapse() {
   if systemctl list-unit-files synapse.service >/dev/null 2>&1; then
     systemctl restart synapse
   elif systemctl list-unit-files matrix-synapse.service >/dev/null 2>&1; then
     systemctl restart matrix-synapse
   else
-    systemctl restart synapse 2>/dev/null || systemctl restart matrix-synapse
+    systemctl restart synapse || systemctl restart matrix-synapse
   fi
 }
 

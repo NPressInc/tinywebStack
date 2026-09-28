@@ -28,6 +28,17 @@ def client(tmp_path, monkeypatch):
         json.dumps({"parents": ["parent1"], "kids": ["kid1"]}),
     )
     monkeypatch.setenv("TWS_DASHBOARD_MOCK_YUNOHOST", "1")
+    monkeypatch.setenv(
+        "TWS_DASHBOARD_MOCK_LIST_USERS",
+        json.dumps(
+            {
+                "users": {
+                    "parent1": {"groups": ["parents"]},
+                    "kid1": {"groups": ["kids"]},
+                }
+            }
+        ),
+    )
     cfg = DashboardConfig(
         policy_path=str(policy),
         server_name="family-a.test",
@@ -40,26 +51,26 @@ def client(tmp_path, monkeypatch):
 
 def test_auth_required(client):
     c, _ = client
-    assert c.get("/").status_code == 401
+    assert c.get("/", headers={"Remote-User": "parent1"}).status_code == 401
 
 
 def test_parent_can_list_kids(client):
     c, policy = client
-    r = c.get("/", headers={"Remote-User": "parent1"})
+    r = c.get("/", headers={"YNH_USER": "parent1"})
     assert r.status_code == 200
     assert "@kid1:family-a.test" in r.text
 
 
 def test_non_parent_forbidden(client):
     c, _ = client
-    r = c.get("/", headers={"Remote-User": "kid1"})
+    r = c.get("/", headers={"YNH_USER": "kid1"})
     assert r.status_code == 403
 
 
 def test_save_allowlist(client):
     c, policy = client
     kid = "@kid1:family-a.test"
-    page = c.get(f"/kid/{kid}", headers={"Remote-User": "parent1"})
+    page = c.get(f"/kid/{kid}", headers={"YNH_USER": "parent1"})
     assert page.status_code == 200
     # Extract csrf from form (hidden input)
     import re
@@ -69,7 +80,7 @@ def test_save_allowlist(client):
     csrf = m.group(1)
     r = c.post(
         f"/kid/{kid}",
-        headers={"Remote-User": "parent1"},
+        headers={"YNH_USER": "parent1"},
         data={
             "csrf": csrf,
             "allowlist_mxids": "@friend:family-b.test",

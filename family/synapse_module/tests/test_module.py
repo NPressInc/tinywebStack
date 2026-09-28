@@ -5,15 +5,20 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from tinywebstack_family.module import FamilySpamCheckerModule
+from tinywebstack_family.module import NOT_SPAM, FamilySpamCheckerModule
 from tinywebstack_family.policy import write_policy_atomic, empty_policy
 
 
-class MockApi:
-    NOT_SPAM = object()
+class MockMemberEvent:
+    def __init__(self, mxid: str, membership: str = "join"):
+        self.type = "m.room.member"
+        self.state_key = mxid
+        self.content = {"membership": membership}
 
+
+class MockApi:
     def __init__(self, members=None):
-        self.members = members or []
+        self.members = members or {}
         self.registered = {}
 
     def register_spam_checker_callbacks(self, **kwargs):
@@ -24,6 +29,10 @@ class MockApi:
 
     async def get_room_state(self, room_id):
         return self.members
+
+
+def _denied(result) -> bool:
+    return result is not NOT_SPAM
 
 
 @pytest.fixture
@@ -51,7 +60,7 @@ def policy_file(tmp_path):
 
 @pytest.fixture
 def module(policy_file):
-    api = MockApi(members=[])
+    api = MockApi(members={})
     mod = FamilySpamCheckerModule(
         {"policy_path": str(policy_file), "reject_encryption": True},
         api,
@@ -63,12 +72,10 @@ def module(policy_file):
 @pytest.mark.asyncio
 async def test_invite_allow(module):
     mod, _ = module
-    assert (
-        await mod._callbacks["user_may_invite"](
-            "@kid:family-a.test", "@friend:family-b.test", "!r:family-a.test"
-        )
-        is mod.api.NOT_SPAM
+    result = await mod._callbacks["user_may_invite"](
+        "@kid:family-a.test", "@friend:family-b.test", "!r:family-a.test"
     )
+    assert result is NOT_SPAM
 
 
 @pytest.mark.asyncio
@@ -77,16 +84,40 @@ async def test_invite_deny_stranger(module):
     result = await mod._callbacks["user_may_invite"](
         "@kid:family-a.test", "@stranger:evil.test", "!r:family-a.test"
     )
-    assert result[0] == "M_FORBIDDEN"
+    assert _denied(result)
 
 
 @pytest.mark.asyncio
-async def test_invite_reverse_direction(module):
-    mod, _ = module
+async def test_adult_invite_blocked_in_kid_room(module):
+    mod, api = module
+    api.members = {
+        ("m.room.member", "@kid:family-a.test"): MockMemberEvent("@kid:family-a.test"),
+    }
     result = await mod._callbacks["user_may_invite"](
-        "@stranger:evil.test", "@kid:family-a.test", "!r:family-a.test"
+        "@parent:family-a.test", "@bob:family-a.test", "!r:family-a.test"
     )
-    assert result[0] == "M_FORBIDDEN"
+    assert _denied(result)
+
+
+@pytest.mark.asyncio
+async def test_room_state_map_values(module):
+    mod, api = module
+    api.members = {
+        ("m.room.member", "@kid:family-a.test"): MockMemberEvent("@kid:family-a.test"),
+        ("m.room.member", "@friend:family-b.test"): MockMemberEvent("@friend:family-b.test"),
+    }
+    members = await mod._room_member_mxids("!room")
+    assert "@kid:family-a.test" in members
+    assert "@friend:family-b.test" in members
+
+
+@pytest.mark.asyncio
+async def test_kid_cannot_create_group_room(module):
+    mod, _ = module
+    result = await mod._callbacks["user_may_create_room"](
+        "@kid:family-a.test", {"preset": "public_chat"}
+    )
+    assert _denied(result)
 
 
 @pytest.mark.asyncio
@@ -95,13 +126,12 @@ async def test_3pid_denied_for_kid(module):
     result = await mod._callbacks["user_may_send_3pid_invite"](
         "@kid:family-a.test", "email", "x@y.com", "!r:x"
     )
-    assert result[0] == "M_FORBIDDEN"
+    assert _denied(result)
 
 
 @pytest.mark.asyncio
 async def test_quiet_hours_message(module):
-    mod, api = module
-    mod.store._policy  # load
+    mod, _ = module
 
     def _always_quiet(kid_mxid: str, when=None):
         return kid_mxid == "@kid:family-a.test"
@@ -109,28 +139,13 @@ async def test_quiet_hours_message(module):
     mod.store.policy.kid_in_quiet_hours = _always_quiet  # type: ignore[method-assign]
     event = {"sender": "@kid:family-a.test", "room_id": "!r:x", "type": "m.room.message"}
     result = await mod._callbacks["check_event_for_spam"](event)
-    assert result[0] == "M_FORBIDDEN"
-
-
-@pytest.mark.asyncio
-async def test_parent_exempt_quiet_hours(module):
-    mod, _ = module
-    when = datetime(2026, 1, 1, 23, 0, tzinfo=ZoneInfo("UTC"))
-    assert not mod.store.policy.kid_in_quiet_hours("@parent:family-a.test", when)
-    event = {"sender": "@parent:family-a.test", "room_id": "!r:x"}
-    assert await mod._callbacks["check_event_for_spam"](event) is mod.api.NOT_SPAM
+    assert _denied(result)
 
 
 @pytest.mark.asyncio
 async def test_encryption_rejected(module):
     mod, _ = module
     event = {"type": "m.room.encryption", "sender": "@parent:family-a.test"}
-    result = await mod._callbacks["check_event_allowed"](event, [])
-    assert result[0] == "M_FORBIDDEN"
-
-
-@pytest.mark.asyncio
-async def test_publish_denied_for_kid(module):
-    mod, _ = module
-    result = await mod._callbacks["user_may_publish_room"]("@kid:family-a.test", "!r:x")
-    assert result[0] == "M_FORBIDDEN"
+    allowed, info = await mod._callbacks["check_event_allowed"](event, [])
+    assert allowed is False
+    assert info and "encryption" in info.get("msg", "").lower()

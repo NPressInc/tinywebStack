@@ -32,7 +32,7 @@ KID_PASSWORD="${KID_PASSWORD:-$(read_node_secret "$NODE_NAME" kid_password || tr
 
 create_user() {
   local user=$1 pass=$2 full=$3
-  if yunohost user list 2>/dev/null | grep -qw "$user"; then
+  if yunohost user list --output-as json | python3 -c "import json,sys; u=sys.argv[1]; d=json.load(sys.stdin); users=d.get('users',d); sys.exit(0 if u in users else 1)" "$user"; then
     log "User ${user} already exists"
   else
     yunohost user create "$user" -F "$full" -p "$pass" -d "$MAIN_DOMAIN"
@@ -40,13 +40,12 @@ create_user() {
 }
 
 add_to_group() {
-  local user=$1 group=$2
-  yunohost user group adduser "$group" "$user" 2>/dev/null || true
+  yunohost user group add "$1" "$2"
 }
 
 create_user parent "$PARENT_PASSWORD" "Parent Test"
 create_user kid "$KID_PASSWORD" "Kid Test"
-add_to_group parent "$PARENTS_GROUP"
-add_to_group kid "$KIDS_GROUP"
+add_to_group "$PARENTS_GROUP" parent
+add_to_group "$KIDS_GROUP" kid
 
 log "Family test users parent/kid ready on ${MAIN_DOMAIN}"

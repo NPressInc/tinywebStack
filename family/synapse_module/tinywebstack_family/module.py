@@ -3,14 +3,23 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from tinywebstack_family.policy import FamilyPolicy, PolicyStore
 
 log = logging.getLogger(__name__)
 
-# Synapse provides these at runtime; tests inject mocks.
-NOT_SPAM: Any = object()
+try:
+    from synapse.module_api import NOT_SPAM
+except ImportError:  # unit tests without Synapse
+    NOT_SPAM = object()  # type: ignore[misc, assignment]
+
+try:
+    from synapse.api.errors import Codes
+except ImportError:
+    Codes = None  # type: ignore[misc, assignment]
+
+EventAllowResult = Tuple[bool, Optional[dict]]
 DenyResult = Union[Any, Tuple[str, dict]]
 
 
@@ -19,8 +28,6 @@ class FamilySpamCheckerModule:
 
     def __init__(self, config: dict, api: Any) -> None:
         self.api = api
-        global NOT_SPAM
-        NOT_SPAM = api.NOT_SPAM
 
         policy_path = config.get("policy_path", "/etc/tinywebstack/family-policy.json")
         self.store = PolicyStore(policy_path)
@@ -45,13 +52,47 @@ class FamilySpamCheckerModule:
 
     def _deny(self, msg: str) -> DenyResult:
         log.info("Family policy deny: %s", msg)
-        return ("M_FORBIDDEN", {"msg": msg})
+        code = Codes.FORBIDDEN if Codes is not None else "M_FORBIDDEN"
+        return (code, {"msg": msg})
 
     def _policy(self) -> FamilyPolicy:
         p = self.store.policy
         if self.reject_encryption:
             p.reject_encryption = True
         return p
+
+    def _room_is_direct(self, room_config: Any) -> bool:
+        if isinstance(room_config, dict):
+            if room_config.get("is_direct"):
+                return True
+            preset = room_config.get("preset") or room_config.get("creation_content", {}).get(
+                "preset"
+            )
+            if preset in ("trusted_private_chat", "private_chat"):
+                return True
+        if isinstance(room_config, bool):
+            return room_config
+        return False
+
+    async def _kids_in_room(self, policy: FamilyPolicy, member_mxids: List[str]) -> List[str]:
+        return [m for m in member_mxids if policy.is_kid(m)]
+
+    async def _room_ok_for_kids(
+        self, policy: FamilyPolicy, member_mxids: List[str], extra: Optional[str] = None
+    ) -> bool:
+        prospective = list(member_mxids)
+        if extra:
+            prospective.append(extra)
+        kids = await self._kids_in_room(policy, prospective)
+        if not kids:
+            return True
+        for kid in kids:
+            for member in prospective:
+                if member == kid:
+                    continue
+                if not policy.contact_allowed_between(kid, member):
+                    return False
+        return True
 
     async def user_may_invite(
         self,
@@ -64,6 +105,9 @@ class FamilySpamCheckerModule:
             return self._deny("Quiet hours: kid may not send invites")
         if not policy.contact_allowed_between(inviter, invitee):
             return self._deny("Contact not on kid allowlist")
+        members = await self._room_member_mxids(room_id)
+        if not await self._room_ok_for_kids(policy, members, extra=invitee):
+            return self._deny("Invite would add a non-allowlisted user to a child's room")
         return NOT_SPAM
 
     async def user_may_join_room(
@@ -73,34 +117,30 @@ class FamilySpamCheckerModule:
         is_invited: bool,
     ) -> DenyResult:
         policy = self._policy()
-        if not policy.is_kid(user):
-            return NOT_SPAM
-        if policy.kid_in_quiet_hours(user):
-            return self._deny("Quiet hours: kid may not join rooms")
-        # Fail closed when policy invalid.
-        if policy.fail_closed_kids:
-            return self._deny("Family policy unavailable")
-        # Invited joins: inviter must be allowlisted (checked via room state when possible).
+        if policy.is_kid(user):
+            if policy.kid_in_quiet_hours(user):
+                return self._deny("Quiet hours: kid may not join rooms")
+            if policy.fail_closed_kids:
+                return self._deny("Family policy unavailable")
         members = await self._room_member_mxids(room_id)
-        if members:
-            for member in members:
-                if member == user:
-                    continue
-                if not policy.contact_allowed_between(user, member):
-                    return self._deny("Room member not on kid allowlist")
+        if policy.is_kid(user):
+            if not await self._room_ok_for_kids(policy, members, extra=user):
+                return self._deny("Room member not on kid allowlist")
+        elif not await self._room_ok_for_kids(policy, members, extra=user):
+            return self._deny("Join would add a non-allowlisted user to a child's room")
         return NOT_SPAM
 
     async def user_may_create_room(
         self,
         user: str,
-        is_direct: bool,
+        room_config: Any,
     ) -> DenyResult:
         policy = self._policy()
         if not policy.is_kid(user):
             return NOT_SPAM
         if policy.kid_in_quiet_hours(user):
             return self._deny("Quiet hours: kid may not create rooms")
-        if not is_direct:
+        if not self._room_is_direct(room_config):
             return self._deny("Kids may not create group rooms")
         return NOT_SPAM
 
@@ -129,33 +169,45 @@ class FamilySpamCheckerModule:
             return NOT_SPAM
         if policy.is_kid(sender) and policy.kid_in_quiet_hours(sender):
             return self._deny("Quiet hours: kid may not send messages")
+        room_id = getattr(event, "room_id", None) or event.get("room_id")
+        members = await self._room_member_mxids(room_id) if room_id else []
         if policy.is_kid(sender):
-            room_id = getattr(event, "room_id", None) or event.get("room_id")
-            members = await self._room_member_mxids(room_id) if room_id else []
-            for member in members:
-                if member == sender:
-                    continue
-                if not policy.contact_allowed_between(sender, member):
-                    return self._deny("Message room contains non-allowlisted member")
+            if not await self._room_ok_for_kids(policy, members):
+                return self._deny("Message room contains non-allowlisted member")
+        elif not await self._room_ok_for_kids(policy, members):
+            return self._deny("Message room contains non-allowlisted member for a child")
         return NOT_SPAM
 
     async def check_event_allowed(
         self,
         event: Any,
         state_events: Any,
-    ) -> DenyResult:
+    ) -> EventAllowResult:
         policy = self._policy()
         if not policy.reject_encryption:
-            return NOT_SPAM
+            return True, None
         ev_type = getattr(event, "type", None) or event.get("type")
         if ev_type != "m.room.encryption":
-            return NOT_SPAM
+            return True, None
         sender = getattr(event, "sender", None) or event.get("sender")
         if policy.is_kid(sender) or policy.fail_closed_kids:
-            return self._deny("End-to-end encryption is disabled for family rooms")
+            return False, {"msg": "End-to-end encryption is disabled for family rooms"}
         if self.reject_encryption:
-            return self._deny("End-to-end encryption is disabled on this server")
-        return NOT_SPAM
+            return False, {"msg": "End-to-end encryption is disabled on this server"}
+        return True, None
+
+    def _member_from_state_event(self, ev: Any) -> Optional[str]:
+        ev_type = getattr(ev, "type", None)
+        if ev_type is None and isinstance(ev, dict):
+            ev_type = ev.get("type")
+        if ev_type != "m.room.member":
+            return None
+        state_key = getattr(ev, "state_key", None) or (ev.get("state_key") if isinstance(ev, dict) else None)
+        content = getattr(ev, "content", None) or (ev.get("content") if isinstance(ev, dict) else {}) or {}
+        membership = content.get("membership") if isinstance(content, dict) else None
+        if membership in ("join", "invite") and state_key:
+            return state_key
+        return None
 
     async def _room_member_mxids(self, room_id: str) -> List[str]:
         if not room_id:
@@ -168,13 +220,16 @@ class FamilySpamCheckerModule:
             except Exception:
                 return []
         members: List[str] = []
-        for ev in room or []:
-            ev_type = getattr(ev, "type", None) or (ev.get("type") if isinstance(ev, dict) else None)
-            if ev_type != "m.room.member":
-                continue
-            state_key = getattr(ev, "state_key", None) or ev.get("state_key")
-            content = getattr(ev, "content", None) or ev.get("content") or {}
-            membership = content.get("membership") if isinstance(content, dict) else None
-            if membership in ("join", "invite") and state_key:
-                members.append(state_key)
+        if room is None:
+            return members
+        if hasattr(room, "values"):
+            events = room.values()
+        elif isinstance(room, dict):
+            events = room.values()
+        else:
+            events = room
+        for ev in events:
+            mxid = self._member_from_state_event(ev)
+            if mxid:
+                members.append(mxid)
         return members

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Prepare OwnTracks apt repo (current signing key + signed-by) before owntracks_ynh.
-# Idempotent; falls back to direct .deb install when apt still fails.
+# Prepare OwnTracks apt signing key before owntracks_ynh (avoid Signed-By conflicts).
 set -euo pipefail
 
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -11,10 +10,8 @@ load_config
 KEY_URL="${OWNTRACKS_APT_KEY_URL:-https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo-v2.owntracks.org.gpg.key}"
 LEGACY_KEY_URL="https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo.owntracks.org.gpg.key"
 KEY_ASC="/etc/apt/trusted.gpg.d/owntracks.asc"
-KEYRING="/usr/share/keyrings/owntracks-archive-keyring.gpg"
-REPO_URI="http://repo.owntracks.org/debian/"
-SOURCES_DEB822="/etc/apt/sources.list.d/owntracks-tinywebstack.sources"
 PACKAGE="ot-recorder"
+REPO_URI="http://repo.owntracks.org/debian/"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root" >&2
@@ -37,56 +34,25 @@ debian_arch() {
   dpkg --print-architecture
 }
 
-fetch_key() {
-  local url=$1 dest=$2
+install_apt_key() {
+  local url=$1
   local tmp
   tmp="$(mktemp)"
   curl -fsSL "$url" -o "$tmp"
   grep -q "BEGIN PGP" "$tmp" || die "Downloaded key from ${url} does not look like a PGP key"
-  install -m 644 "$tmp" "$dest"
+  gpg --dearmor --yes -o "$KEY_ASC" "$tmp"
   rm -f "$tmp"
+  chmod 644 "$KEY_ASC"
+  log "Installed dearmored OwnTracks apt key at ${KEY_ASC}"
 }
 
-install_keys() {
-  fetch_key "$KEY_URL" "$KEY_ASC"
-  gpg --dearmor --yes -o "$KEYRING" "$KEY_ASC" 2>/dev/null || cp "$KEY_ASC" "$KEYRING"
-  log "Installed OwnTracks apt key → ${KEY_ASC} and ${KEYRING}"
-}
-
-write_sources() {
-  local suite=$1
-  local tmp
-  tmp="$(mktemp)"
-  cat >"$tmp" <<EOF
-Types: deb
-URIs: ${REPO_URI}
-Suites: ${suite}
-Components: main
-Signed-By: ${KEY_ASC}
-EOF
-  if [[ -f "$SOURCES_DEB822" ]] && cmp -s "$tmp" "$SOURCES_DEB822"; then
-    rm -f "$tmp"
-    return 0
-  fi
-  mv "$tmp" "$SOURCES_DEB822"
-  log "Wrote ${SOURCES_DEB822} (suite=${suite})"
-}
-
-patch_ynh_list_if_needed() {
-  # owntracks_ynh manifest uses the legacy key URL; ensure any list uses Signed-By: owntracks.asc
-  local f
-  for f in /etc/apt/sources.list.d/owntracks.list /etc/apt/sources.list.d/owntracks*.list; do
-    [[ -f "$f" ]] || continue
-    if grep -q "repo.owntracks.org" "$f" && ! grep -q "signed-by" "$f"; then
-      sed -i 's|^deb |deb [signed-by='"${KEY_ASC}"'] |' "$f" || true
-      log "Patched signed-by in ${f}"
-    fi
-  done
+remove_conflicting_sources() {
+  rm -f /etc/apt/sources.list.d/owntracks-tinywebstack.sources
 }
 
 try_apt_install() {
-  apt-get update -qq
-  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq "$PACKAGE"
+  apt-get update
+  DEBIAN_FRONTEND=noninteractive apt-get install -y "$PACKAGE"
 }
 
 install_deb_fallback() {
@@ -104,24 +70,18 @@ install_deb_fallback() {
   )"
   [[ -n "$deb_url" ]] || die "Could not resolve ${PACKAGE} .deb for ${suite}/${arch}"
   curl -fsSL "${REPO_URI}${deb_url}" -o "$tmpdeb"
-  dpkg -i "$tmpdeb" || apt-get install -f -y -qq
+  dpkg -i "$tmpdeb" || apt-get install -f -y
   rm -f "$tmpdeb"
   log "Installed ${PACKAGE} from ${deb_url}"
 }
-
-if [[ "$(id -u)" -ne 0 ]]; then
-  echo "Run as root" >&2
-  exit 1
-fi
 
 if dpkg -s "$PACKAGE" >/dev/null 2>&1; then
   log "${PACKAGE} already installed"
   exit 0
 fi
 
-install_keys
-write_sources "$(debian_suite)"
-patch_ynh_list_if_needed
+remove_conflicting_sources
+install_apt_key "$KEY_URL"
 
 if try_apt_install; then
   log "${PACKAGE} installed via apt"
@@ -129,8 +89,7 @@ if try_apt_install; then
 fi
 
 log "apt install ${PACKAGE} failed; trying legacy key"
-fetch_key "$LEGACY_KEY_URL" "$KEY_ASC"
-gpg --dearmor --yes -o "$KEYRING" "$KEY_ASC" 2>/dev/null || true
+install_apt_key "$LEGACY_KEY_URL"
 if try_apt_install; then
   log "${PACKAGE} installed via apt (legacy key)"
   exit 0
