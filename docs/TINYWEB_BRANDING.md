@@ -29,7 +29,7 @@ This uses `yunohost domain config set` only (no core file patches).
 
 ### After login
 
-The script tries to set **`feature.app.default_app`** to `synapse.family_dashboard` so opening the main domain can land on the family dashboard instead of the generic app grid. If your YunoHost version rejects that value, set **Domains → your domain → Features → Default app** to the Family / `/family` entry in the webadmin.
+The script sets **`feature.app.default_app`** to **`synapse`** (app ID only). Parents reach the family UI via the **Family home** portal tile and the nginx redirect from `/` to `/family/`. If default app cannot be set automatically, use **Domains → your domain → Features → Default app** → synapse in the webadmin.
 
 The **user intro** always includes a clear **Open your family home** link to `/family/`.
 

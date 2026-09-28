@@ -70,6 +70,10 @@ perm_remove() {
   }
 }
 
+hide_portal_tile() {
+  yunohost user permission update "$1" --show_tile false 2>/dev/null || true
+}
+
 ensure_group "$PARENTS_GROUP"
 ensure_group "$KIDS_GROUP"
 ensure_group "$FED_TEST_GROUP"
@@ -98,6 +102,11 @@ if ynh_perm_exists "$DASH_PERM"; then
   perm_remove "$DASH_PERM" all_users || true
   perm_remove "$DASH_PERM" visitors || true
   perm_add "$DASH_PERM" "$PARENTS_GROUP"
+  yunohost user permission update "$DASH_PERM" --show_tile True --label "Family home" 2>/dev/null || true
 fi
+
+# Traccar is fallback-only; Owntracks map is linked from the dashboard (avoid broken portal tiles).
+hide_portal_tile traccar.main
+hide_portal_tile owntracks.main
 
 log "Family groups and permissions applied (${PARENTS_GROUP}, ${KIDS_GROUP}, ${FED_TEST_GROUP})"

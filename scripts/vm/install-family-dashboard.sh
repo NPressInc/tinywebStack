@@ -88,12 +88,12 @@ TWS_MATRIX_SERVER=${MATRIX_HOST}
 TWS_POLICY_PATH=/etc/tinywebstack/family-policy.json
 TWS_PENDING_INVITES_PATH=/etc/tinywebstack/pending-invites.json
 TWS_PUBLIC_BASE_URL=https://${MAIN_DOMAIN}/family
-TWS_FEDERATION_SYNC_CMD=sudo /usr/local/sbin/tws-family-sync-federation ${MAIN_DOMAIN}
+TWS_FEDERATION_SYNC_CMD="sudo /usr/local/sbin/tws-family-sync-federation ${MAIN_DOMAIN}"
 TWS_PARENTS_GROUP=${TWS_PARENTS_GROUP:-parents}
 TWS_KIDS_GROUP=${TWS_KIDS_GROUP:-kids}
 TWS_LOCATION_URL=https://${LOC_D}/
 TWS_LOCATION_DOMAIN=${LOC_D}
-TWS_YUNOHOST_PRIV_HELPER=sudo /usr/local/sbin/tws-family-dashboard-privileged
+TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"
 TWS_OWNTRACKS_PUBLISH_URL=https://${LOC_D}/recorder/pub
 TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
 TWS_OWNTRACKS_HTPASSWD=/etc/tinywebstack/owntracks-recorder.htpasswd
@@ -114,7 +114,12 @@ if [[ ! -f "$CSRF_FILE" ]]; then
 else
   grep -q '^TWS_MATRIX_SERVER=' "$CSRF_FILE" && sed -i "s|^TWS_MATRIX_SERVER=.*|TWS_MATRIX_SERVER=${MATRIX_HOST}|" "$CSRF_FILE" || printf 'TWS_MATRIX_SERVER=%s\n' "$MATRIX_HOST" >>"$CSRF_FILE"
   grep -q '^TWS_OWNTRACKS_PUBLISH_URL=' "$CSRF_FILE" || printf 'TWS_OWNTRACKS_PUBLISH_URL=https://%s/recorder/pub\n' "$LOC_D" >>"$CSRF_FILE"
-  grep -q '^TWS_YUNOHOST_PRIV_HELPER=' "$CSRF_FILE" || printf 'TWS_YUNOHOST_PRIV_HELPER=sudo /usr/local/sbin/tws-family-dashboard-privileged\n' >>"$CSRF_FILE"
+  grep -q '^TWS_YUNOHOST_PRIV_HELPER=' "$CSRF_FILE" \
+    && sed -i 's|^TWS_YUNOHOST_PRIV_HELPER=.*|TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"|' "$CSRF_FILE" \
+    || printf '%s\n' 'TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"' >>"$CSRF_FILE"
+  if grep -q '^TWS_FEDERATION_SYNC_CMD=' "$CSRF_FILE"; then
+    sed -i "s|^TWS_FEDERATION_SYNC_CMD=.*|TWS_FEDERATION_SYNC_CMD=\"sudo /usr/local/sbin/tws-family-sync-federation ${MAIN_DOMAIN}\"|" "$CSRF_FILE"
+  fi
   if [[ -n "$CA_LINE" ]] && ! grep -q '^TWS_CA_BUNDLE=' "$CSRF_FILE"; then
     printf '%s\n' "$CA_LINE" >>"$CSRF_FILE"
   fi
@@ -197,6 +202,8 @@ runpy.run_path('${PERMS_PY}', run_name='__main__')
 " || die "YunoHost permission setup failed"
 
 yunohost user permission add "$DASH_PERM" "${TWS_PARENTS_GROUP:-parents}" || true
+yunohost user permission update "$DASH_PERM" --show_tile True --label "Family home" 2>/dev/null \
+  || log "WARN: could not enable Family home portal tile for ${DASH_PERM}"
 
 NGINX_DIR="/etc/nginx/conf.d/${MAIN_DOMAIN}.d"
 install -d "$NGINX_DIR"
@@ -204,6 +211,9 @@ NGINX_SNIP="${NGINX_DIR}/tinywebstack-family.conf"
 TMP="$(mktemp)"
 cat >"$TMP" <<EOF
 # Managed by tinywebStack family dashboard
+location = / {
+    return 302 /family/;
+}
 location /.well-known/tinywebstack-family.json {
     proxy_pass http://127.0.0.1:8765/.well-known/tinywebstack-family.json;
     proxy_set_header Host \$host;
