@@ -98,7 +98,8 @@ Passwords are generated on spark by `ensure-node-secrets.sh` into `~/.tinywebsta
 
 - `YUNOHOST_ADMIN_PASSWORD_FAMILY_A`
 - `ALICE_PASSWORD_FAMILY_A` / `BOB_PASSWORD_FAMILY_B`
-- `TRACCAR_ADMIN_PASSWORD_FAMILY_A` (Traccar web admin; created via API after install)
+- `TRACCAR_ADMIN_LOGIN_FAMILY_A` (email login, e.g. `admin@family-a.family.test`)
+- `TRACCAR_ADMIN_PASSWORD_FAMILY_A` (Traccar web admin; `setup-traccar-admin.sh` creates the first user via `POST /api/users` without `administrator: true` — Traccar 6.16+ returns HTTP 400 otherwise; the first account is admin automatically)
 
 `remote-run.sh` passes them in a root-only `remote.env` on the VM (never printed).
 

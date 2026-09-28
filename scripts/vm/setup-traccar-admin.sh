@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Create Traccar admin user and disable open registration (idempotent).
+# Create Traccar first admin via API (idempotent). Traccar 6.16+ rejects administrator:true on empty DB.
 set -euo pipefail
 
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,6 +33,7 @@ LOC_D="$(location_domain "$MAIN_DOMAIN")"
 BASE="https://${LOC_D}"
 PASS="${TRACCAR_ADMIN_PASSWORD:-}"
 [[ -n "$PASS" ]] || die "TRACCAR_ADMIN_PASSWORD must be set (spark secrets)"
+EMAIL="${TRACCAR_ADMIN_LOGIN:-admin@${MAIN_DOMAIN}}"
 
 require_cmd curl python3
 
@@ -42,10 +43,10 @@ USERS_CODE="$(curl -ksS -o "$USERS_JSON" -w '%{http_code}' "${BASE}/api/users" |
 admin_exists=0
 if [[ "$USERS_CODE" == "200" ]]; then
   admin_exists="$(python3 - <<PY
-import json,sys
+import json
 with open("$USERS_JSON") as f:
     data=json.load(f)
-print(1 if isinstance(data,list) and any(u.get("administrator") for u in data) else 0)
+print(1 if isinstance(data, list) and len(data) > 0 else 0)
 PY
 )"
 elif [[ "$USERS_CODE" == "401" || "$USERS_CODE" == "403" ]]; then
@@ -54,33 +55,13 @@ fi
 rm -f "$USERS_JSON"
 
 if [[ "$admin_exists" == "1" ]]; then
-  log "Traccar administrator already exists on ${LOC_D}"
+  log "Traccar admin already exists on ${LOC_D}"
 else
-  EMAIL="admin@${MAIN_DOMAIN}"
   HTTP_CODE="$(curl -ksS -o /tmp/traccar-user.json -w '%{http_code}' -X POST "${BASE}/api/users" \
     -H 'Content-Type: application/json' \
-    -d "{\"name\":\"Admin\",\"email\":\"${EMAIL}\",\"password\":\"${PASS}\",\"administrator\":true}")"
+    -d "{\"name\":\"Admin\",\"email\":\"${EMAIL}\",\"password\":\"${PASS}\"}")"
   if [[ "$HTTP_CODE" != "200" && "$HTTP_CODE" != "201" ]]; then
     die "Traccar admin create failed HTTP ${HTTP_CODE}: $(cat /tmp/traccar-user.json 2>/dev/null)"
   fi
-  log "Created Traccar admin ${EMAIL} on ${LOC_D}"
-fi
-
-TRACCAR_XML=""
-for candidate in \
-  /var/www/traccar/conf/traccar.xml \
-  /opt/traccar/conf/traccar.xml \
-  /etc/traccar/traccar.xml; do
-  [[ -f "$candidate" ]] && TRACCAR_XML="$candidate" && break
-done
-
-if [[ -n "$TRACCAR_XML" ]]; then
-  if grep -q "web.registration" "$TRACCAR_XML"; then
-    sed -i "s|<entry key='web.registration'>true</entry>|<entry key='web.registration'>false</entry>|g" "$TRACCAR_XML"
-    sed -i "s|<entry key='web.registration'>.*</entry>|<entry key='web.registration'>false</entry>|g" "$TRACCAR_XML"
-  else
-    sed -i "/<\/properties>/i\\  <entry key='web.registration'>false</entry>" "$TRACCAR_XML" 2>/dev/null || true
-  fi
-  systemctl restart traccar 2>/dev/null || yunohost service restart traccar 2>/dev/null || true
-  log "Disabled Traccar open registration in ${TRACCAR_XML}"
+  log "Created Traccar admin ${EMAIL} on ${LOC_D} (first user is administrator)"
 fi

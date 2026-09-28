@@ -65,6 +65,8 @@ REMOTE_ENV="$(mktemp)"
     [[ -n "$bpw" ]] && printf 'BOB_PASSWORD=%q\n' "$bpw"
     tpw="$(read_node_secret "$NODE_NAME" traccar_admin_password || true)"
     [[ -n "$tpw" ]] && printf 'TRACCAR_ADMIN_PASSWORD=%q\n' "$tpw"
+    tlogin="$(read_node_secret "$NODE_NAME" traccar_admin_login || true)"
+    [[ -n "$tlogin" ]] && printf 'TRACCAR_ADMIN_LOGIN=%q\n' "$tlogin"
   fi
   printf 'TW_STACK_SECRETS_SOURCE=spark\nTW_STACK_IS_REMOTE=1\n'
 } > "$REMOTE_ENV"
