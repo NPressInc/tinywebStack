@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from itsdangerous import BadSignature, URLSafeSerializer
 
@@ -67,7 +68,11 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     cfg = cfg or config_from_env()
     root_path = dashboard_root_path()
     TEMPLATES.env.globals["url"] = lambda path="/": dash_url(path, root_path)
-    app = FastAPI(title="tinywebStack Family Dashboard", root_path=root_path)
+    # Nginx strips /family/ before proxying; do not set FastAPI root_path (breaks static mounts).
+    app = FastAPI(title="TinyWeb Family")
+    static_dir = Path(__file__).parent / "static"
+    if static_dir.is_dir():
+        app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
     serializer = URLSafeSerializer(cfg.csrf_secret, salt="tws-csrf")
     policy_path = Path(cfg.policy_path)
     pending_path = Path(os.environ.get("TWS_PENDING_INVITES_PATH", "/etc/tinywebstack/pending-invites.json"))

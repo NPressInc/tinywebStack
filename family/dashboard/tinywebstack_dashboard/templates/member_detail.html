@@ -1,43 +1,28 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>{{ username }}</title>
-  {% include "base_styles.html" %}
-</head>
-<body>
-  <nav><a href="{{ url('/members') }}">← Family members</a></nav>
-  <h1>{{ username }}</h1>
-  <p>{% if role == 'parent' %}Parent account{% else %}Child account{% endif %} · Chat name <code>{{ mxid }}</code></p>
-  <div class="card">
-    <h2>Chat (Element on phone)</h2>
-    <p>{{ matrix_label }}</p>
-    {% if role == 'kid' %}
-    <p><a href="{{ url('/kid/' ~ mxid) }}">Contacts &amp; quiet hours</a></p>
-    {% endif %}
-  </div>
-  {% if new_password %}
-  <div class="card">
-    <h2>New password (copy now)</h2>
-    <p class="hint">This is shown once. They use it to sign in to Element and other apps.</p>
-    <textarea rows="2" readonly>{{ new_password }}</textarea>
-  </div>
-  {% endif %}
-  <div class="card">
-    <h2>Reset password</h2>
-    <p class="hint">Choose a new password if they forgot it.</p>
-    <form method="post" action="{{ url('/members/' ~ username ~ '/reset-password') }}">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button type="submit">Generate new password</button>
-    </form>
-  </div>
-  <div class="card danger">
-    <h2>Remove from family</h2>
-    <p class="hint">Deletes their login on this home server. This cannot be undone.</p>
-    <form method="post" action="{{ url('/members/' ~ username ~ '/remove') }}" onsubmit="return confirm('Remove {{ username }}?');">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <button type="submit" class="danger">Remove member</button>
-    </form>
-  </div>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}{{ username }} · TinyWeb{% endblock %}
+{% block nav %}
+<nav class="tw-nav"><a href="{{ url('/members') }}">← Family members</a></nav>
+{% endblock %}
+{% block content %}
+<h1>{{ username }}</h1>
+<p>{% if role == 'parent' %}Parent{% else %}Child{% endif %} · {{ matrix_label }}</p>
+<p class="hint">Chat ID: {{ mxid }}</p>
+{% if role == 'kid' %}
+<p><a href="{{ url('/kid/' ~ mxid) }}">Contacts &amp; quiet hours</a></p>
+{% endif %}
+{% if new_password %}
+<div class="card">
+  <p><strong>New password:</strong> <code>{{ new_password }}</code></p>
+</div>
+{% endif %}
+<div class="card">
+  <form method="post" action="{{ url('/members/' ~ username ~ '/reset-password') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit">Generate a new password</button>
+  </form>
+  <form method="post" action="{{ url('/members/' ~ username ~ '/remove') }}" onsubmit="return confirm('Remove {{ username }}?');">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" class="danger">Remove from family</button>
+  </form>
+</div>
+{% endblock %}

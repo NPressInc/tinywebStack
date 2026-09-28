@@ -1,29 +1,25 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Add family member</title>
-  {% include "base_styles.html" %}
-</head>
-<body>
-  <nav><a href="{{ url('/members') }}">← Family members</a></nav>
-  <h1>Add someone to your family</h1>
-  <p class="hint">This creates their login for chat apps and this website. You can give them the password on paper or reset it anytime.</p>
-  {% if error %}
-  <p class="danger">{{ error }}</p>
-  {% endif %}
-  <form method="post">
-    <input type="hidden" name="csrf" value="{{ csrf }}">
-    <label>First name (for display)</label>
-    <input name="full_name" required placeholder="Alex">
-    <label>Username (login name, lowercase)</label>
-    <input name="username" required pattern="[a-z0-9][a-z0-9_-]{1,30}" placeholder="alex">
-    <label>Are they a parent or a child?</label>
-    <select name="role">
-      <option value="kid">Child</option>
-      <option value="parent">Parent / caregiver</option>
-    </select>
-    <button type="submit">Create account</button>
-  </form>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Add member · TinyWeb{% endblock %}
+{% block nav %}
+<nav class="tw-nav"><a href="{{ url('/members') }}">← Family members</a></nav>
+{% endblock %}
+{% block content %}
+<h1>Add someone to your family</h1>
+<p class="hint">Creates their login for chat and this site. Share the password on paper, or reset it anytime.</p>
+{% if error %}
+<p class="danger">{{ error }}</p>
+{% endif %}
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label>First name (shown in apps)</label>
+  <input name="full_name" required placeholder="Alex">
+  <label>Username (login name, lowercase)</label>
+  <input name="username" required pattern="[a-z0-9][a-z0-9_-]{1,30}" placeholder="alex">
+  <label>Are they a parent or a child?</label>
+  <select name="role">
+    <option value="kid">Child</option>
+    <option value="parent">Parent / caregiver</option>
+  </select>
+  <button type="submit">Create account</button>
+</form>
+{% endblock %}

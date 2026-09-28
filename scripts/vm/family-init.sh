@@ -24,6 +24,9 @@ fi
 "${TW_STACK_ROOT}/vm/family-groups.sh"
 "${TW_STACK_ROOT}/vm/install-family-module.sh" "$MAIN_DOMAIN"
 "${TW_STACK_ROOT}/vm/install-family-dashboard.sh" "$MAIN_DOMAIN"
+if [[ -x "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" ]]; then
+  "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" "$MAIN_DOMAIN"
+fi
 
 if [[ -n "$NODE_NAME" && -x "${TW_STACK_ROOT}/vm/create-family-test-users.sh" ]]; then
   "${TW_STACK_ROOT}/vm/create-family-test-users.sh" "$MAIN_DOMAIN" "$NODE_NAME"

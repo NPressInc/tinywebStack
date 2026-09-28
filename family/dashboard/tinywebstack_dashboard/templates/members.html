@@ -1,34 +1,30 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>Your family</title>
-  {% include "base_styles.html" %}
-</head>
-<body>
-  <nav>
-    <a href="{{ url('/') }}">Home</a>
-    <a href="{{ url('/members') }}">Family members</a>
-    <a href="{{ url('/invite') }}">Link another home</a>
-  </nav>
-  <h1>Who is on this home server</h1>
-  <p class="hint">Add parents and children here. You do not need the YunoHost admin panel for everyday changes.</p>
-  <p><a class="btn" href="{{ url('/members/add') }}">Add a family member</a></p>
-  {% if message %}
-  <p><strong>{{ message }}</strong></p>
-  {% endif %}
-  <ul class="members">
-    {% for m in members %}
-    <li class="card">
-      <strong>{{ m.username }}</strong>
-      {% if m.role == 'parent' %} (parent){% else %} (child){% endif %}
-      <br><span class="hint">{{ m.matrix_label }}</span>
-      <br><a href="{{ url('/members/' ~ m.username) }}">Manage</a>
-      {% if m.role == 'kid' %}
-       · <a href="{{ url('/members/' ~ m.username ~ '/location') }}">Location phone setup</a>
-      {% endif %}
-    </li>
-    {% endfor %}
-  </ul>
-</body>
-</html>
+{% extends "base.html" %}
+{% block title %}Family members · TinyWeb{% endblock %}
+{% block nav %}
+<nav class="tw-nav">
+  <a href="{{ url('/') }}">Home</a>
+  <a href="{{ url('/members') }}">Family members</a>
+  <a href="{{ url('/invite') }}">Link another home</a>
+</nav>
+{% endblock %}
+{% block content %}
+<h1>Who is on this home</h1>
+<p class="hint">Add parents and children here. You never need a technical admin panel for everyday changes.</p>
+<p><a class="btn" href="{{ url('/members/add') }}">Add a family member</a></p>
+{% if message %}
+<p><strong>{{ message }}</strong></p>
+{% endif %}
+<ul class="members">
+  {% for m in members %}
+  <li class="card">
+    <strong>{{ m.username }}</strong>
+    {% if m.role == 'parent' %} (parent){% else %} (child){% endif %}
+    <br><span class="hint">{{ m.matrix_label }}</span>
+    <br><a href="{{ url('/members/' ~ m.username) }}">Manage</a>
+    {% if m.role == 'kid' %}
+     · <a href="{{ url('/members/' ~ m.username ~ '/location') }}">Phone location setup</a>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+{% endblock %}

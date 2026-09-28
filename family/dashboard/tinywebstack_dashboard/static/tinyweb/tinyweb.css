@@ -1,0 +1,180 @@
+/* TinyWeb family dashboard — derived from https://tinyweb.win (vendored assets) */
+:root {
+  --tw-blue-deep: #2e468f;
+  --tw-blue-sky: #45c3f8;
+  --tw-blue-accent: #0085fa;
+  --tw-bg-soft: #ecf4ff;
+  --tw-text: #1a2332;
+  --tw-text-muted: #4a5568;
+  --tw-border: #d8e2f0;
+  --tw-radius: 12px;
+  --tw-shadow: 0 6px 12px rgba(46, 70, 143, 0.08);
+  --tw-font: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: var(--tw-font);
+  color: var(--tw-text);
+  background: var(--tw-bg-soft);
+  line-height: 1.55;
+  min-height: 100vh;
+}
+
+.tw-header {
+  background: linear-gradient(105deg, var(--tw-blue-deep) 0%, var(--tw-blue-sky) 100%);
+  color: #fff;
+  padding: 0.75rem 1rem;
+  box-shadow: var(--tw-shadow);
+}
+
+.tw-header-inner {
+  max-width: 42rem;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.tw-header img.tw-logo-icon {
+  height: 2.25rem;
+  width: auto;
+}
+
+.tw-header img.tw-logo-text {
+  height: 1.75rem;
+  width: auto;
+}
+
+.tw-header-tagline {
+  font-size: 0.85rem;
+  opacity: 0.92;
+  margin: 0;
+  flex: 1 1 100%;
+}
+
+@media (min-width: 520px) {
+  .tw-header-tagline {
+    flex: 1 1 auto;
+    text-align: right;
+  }
+}
+
+.tw-main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 2.5rem;
+}
+
+nav.tw-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--tw-border);
+}
+
+nav.tw-nav a {
+  color: var(--tw-blue-deep);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+nav.tw-nav a:hover {
+  color: var(--tw-blue-accent);
+}
+
+h1 {
+  font-size: 1.65rem;
+  margin: 0 0 0.5rem;
+  color: var(--tw-blue-deep);
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.5rem;
+  color: var(--tw-blue-deep);
+}
+
+a {
+  color: var(--tw-blue-accent);
+}
+
+.card {
+  background: #fff;
+  border: 1px solid var(--tw-border);
+  border-radius: var(--tw-radius);
+  padding: 1rem 1.15rem;
+  margin: 1rem 0;
+  box-shadow: var(--tw-shadow);
+}
+
+.hint {
+  color: var(--tw-text-muted);
+  font-size: 0.95rem;
+}
+
+label {
+  display: block;
+  margin-top: 1rem;
+  font-weight: 600;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  font: inherit;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--tw-border);
+  border-radius: 8px;
+  margin-top: 0.25rem;
+}
+
+button,
+.btn {
+  display: inline-block;
+  margin-top: 1rem;
+  padding: 0.55rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  border-radius: 8px;
+  background: var(--tw-blue-accent);
+  color: #fff;
+  text-decoration: none;
+}
+
+button:hover,
+.btn:hover {
+  background: var(--tw-blue-deep);
+  color: #fff;
+}
+
+.danger {
+  color: #b42318;
+}
+
+ul.members {
+  list-style: none;
+  padding: 0;
+}
+
+ul.members li {
+  margin: 0.75rem 0;
+}
+
+.tw-footer {
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  color: var(--tw-text-muted);
+  text-align: center;
+}
