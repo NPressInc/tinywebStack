@@ -9,7 +9,7 @@ load_config
 
 KEY_URL="${OWNTRACKS_APT_KEY_URL:-https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo-v2.owntracks.org.gpg.key}"
 LEGACY_KEY_URL="https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo.owntracks.org.gpg.key"
-KEY_ASC="/etc/apt/trusted.gpg.d/owntracks.asc"
+KEY_GPG="/etc/apt/trusted.gpg.d/owntracks.gpg"
 PACKAGE="ot-recorder"
 REPO_URI="http://repo.owntracks.org/debian/"
 
@@ -40,10 +40,11 @@ install_apt_key() {
   tmp="$(mktemp)"
   curl -fsSL "$url" -o "$tmp"
   grep -q "BEGIN PGP" "$tmp" || die "Downloaded key from ${url} does not look like a PGP key"
-  gpg --dearmor --yes -o "$KEY_ASC" "$tmp"
+  gpg --dearmor --yes -o "$KEY_GPG" "$tmp"
   rm -f "$tmp"
-  chmod 644 "$KEY_ASC"
-  log "Installed dearmored OwnTracks apt key at ${KEY_ASC}"
+  chmod 644 "$KEY_GPG"
+  rm -f /etc/apt/trusted.gpg.d/owntracks.asc
+  log "Installed dearmored OwnTracks apt key at ${KEY_GPG}"
 }
 
 remove_conflicting_sources() {

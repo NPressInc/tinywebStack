@@ -54,9 +54,14 @@ def _fetch_users_payload() -> dict:
         stderr=subprocess.STDOUT,
     )
     data = json.loads(out)
-    if "users" in data:
-        return data
-    return {"users": data}
+    try:
+        from tinywebstack_family.yunohost_json import users_map
+
+        return {"users": dict(users_map(data))}
+    except ImportError:
+        if "users" in data:
+            return data
+        return {"users": data}
 
 
 def list_group_members(group: str, yunohost_cli: str = "yunohost") -> List[str]:

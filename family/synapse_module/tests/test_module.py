@@ -115,7 +115,7 @@ async def test_room_state_map_values(module):
 async def test_kid_cannot_create_group_room(module):
     mod, _ = module
     result = await mod._callbacks["user_may_create_room"](
-        "@kid:family-a.test", {"preset": "public_chat"}
+        "@kid:family-a.test", {"preset": "public_chat", "is_direct": False}
     )
     assert _denied(result)
 
@@ -148,4 +148,4 @@ async def test_encryption_rejected(module):
     event = {"type": "m.room.encryption", "sender": "@parent:family-a.test"}
     allowed, info = await mod._callbacks["check_event_allowed"](event, [])
     assert allowed is False
-    assert info and "encryption" in info.get("msg", "").lower()
+    assert info and "encryption" in info.get("tws_reason", "").lower()

@@ -46,7 +46,9 @@ Installed by `install-family-dashboard.sh`:
 
 To show “active / not signed in yet” from the Synapse Admin API, place a bearer token in:
 
-`/etc/tinywebstack/synapse-admin-token` (mode `640`, group `www-data`)
+`/etc/tinywebstack/synapse-admin-token` (mode `600`, group `www-data`; auto-provisioned on install when Synapse is reachable)
+
+Dashboard SSO permissions are created on the **Synapse app** (e.g. `synapse.family_dashboard`, `synapse.family_public`), not `core_family.*`. Match `TWS_DASHBOARD_PERM` / `TWS_DASHBOARD_PUB_PERM` in `dashboard.env`.
 
 If the file is empty, the dashboard still works; chat status copy explains that the child should open Element once.
 

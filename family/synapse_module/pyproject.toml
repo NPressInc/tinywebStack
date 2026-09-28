@@ -11,7 +11,7 @@ requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
-test = ["pytest>=7.0", "pytest-asyncio>=0.21"]
+test = ["pytest>=7.0", "pytest-asyncio>=0.21", "matrix-synapse==1.160.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]

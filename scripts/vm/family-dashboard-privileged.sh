@@ -66,7 +66,7 @@ init_owntracks_store() {
 
 case "$CMD" in
   list-users)
-    yunohost user list --fields username,groups --output-as json
+    yunohost user list --fields username groups --output-as json
     ;;
 
   user-create)
@@ -86,7 +86,9 @@ case "$CMD" in
     G="$KIDS_GROUP"
     [[ "$ROLE" == parent ]] && G="$PARENTS_GROUP"
     yunohost_group_add "$G" "$USER"
-    "${TW_STACK_ROOT}/vm/family-groups.sh"
+    if ! "${TW_STACK_ROOT}/vm/family-groups.sh"; then
+      log "WARN: family-groups sync failed after creating ${USER} (user is in ${G})"
+    fi
     printf 'OK user=%s role=%s\n' "$USER" "$ROLE"
     ;;
 
@@ -94,6 +96,22 @@ case "$CMD" in
     [[ $# -eq 1 ]] || usage
     USER=$1
     valid_username "$USER" || die "Invalid username"
+    SERVER="${TWS_SERVER_NAME:-}"
+    if [[ -z "$SERVER" && -f /etc/tinywebstack/dashboard.env ]]; then
+      SERVER="$(grep -E '^TWS_SERVER_NAME=' /etc/tinywebstack/dashboard.env | cut -d= -f2- | tr -d '"')"
+    fi
+    if [[ -n "$SERVER" && -s "$SYNAPSE_TOKEN_FILE" ]]; then
+      TOKEN="$(tr -d '\n' < "$SYNAPSE_TOKEN_FILE")"
+      MXID="@${USER}:${SERVER}"
+      HOST="$(matrix_public_host "$SERVER")"
+      ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$MXID")"
+      URL="https://${HOST}/_synapse/admin/v1/deactivate/${ENC}"
+      CURL_OPTS=(-fsS -X POST -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" -d '{"erase": false}')
+      CA="${TWS_CA_BUNDLE:-}"
+      [[ -n "$CA" && -f "$CA" ]] && CURL_OPTS+=(--cacert "$CA")
+      [[ "${TWS_LAB_TLS_INSECURE:-0}" == "1" ]] && CURL_OPTS+=(-k)
+      curl "${CURL_OPTS[@]}" "$URL" || log "WARN: Synapse deactivate failed for ${MXID}"
+    fi
     if user_exists "$USER"; then
       yunohost user delete "$USER"
     fi
@@ -119,7 +137,7 @@ PY
     valid_username "$USER" || die "Invalid username"
     yunohost user update "$USER" -p "$PASS"
     if [[ -f "$HTPASSWD" ]] && grep -q "^${USER}:" "$HTPASSWD" 2>/dev/null; then
-      htpasswd -b "$HTPASSWD" "$USER" "$PASS"
+      printf '%s\n' "$PASS" | htpasswd -i "$HTPASSWD" "$USER"
     fi
     printf 'OK password-reset=%s\n' "$USER"
     ;;
@@ -171,6 +189,9 @@ PY
     LOC=$3
     valid_username "$USER" || die "Invalid username"
     require_cmd htpasswd openssl
+    if ! command -v htpasswd >/dev/null 2>&1; then
+      die "htpasswd not installed (install apache2-utils)"
+    fi
     DEV_ID="${USER}-phone"
     PASS="$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
     PUB_URL="${TWS_OWNTRACKS_PUBLISH_URL:-https://${LOC}/recorder/pub}"
@@ -178,7 +199,7 @@ PY
     touch "$HTPASSWD"
     chown root:www-data "$HTPASSWD"
     chmod 640 "$HTPASSWD"
-    htpasswd -b "$HTPASSWD" "$USER" "$PASS"
+    printf '%s\n' "$PASS" | htpasswd -i "$HTPASSWD" "$USER"
     init_owntracks_store
     python3 - <<PY
 import json

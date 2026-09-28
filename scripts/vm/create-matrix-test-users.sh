@@ -27,15 +27,23 @@ ALICE_PASSWORD="${ALICE_PASSWORD:-$(read_node_secret "$NODE_NAME" alice_password
 BOB_PASSWORD="${BOB_PASSWORD:-$(read_node_secret "$NODE_NAME" bob_password || true)}"
 [[ -n "$ALICE_PASSWORD" && -n "$BOB_PASSWORD" ]] || die "ALICE_PASSWORD and BOB_PASSWORD required (from spark secrets)"
 
+FED_TEST_GROUP="${TWS_FEDERATION_TEST_GROUP:-federation-test}"
+
 create_user() {
   local user=$1 pass=$2 full=$3
-  if yunohost user list 2>/dev/null | grep -qw "$user"; then
+  if yunohost user list --output-as json | python3 -c "import json,sys; u=sys.argv[1]; d=json.load(sys.stdin); users=d.get('users',d); sys.exit(0 if u in users else 1)" "$user"; then
     log "User ${user} already exists"
-    return 0
+  else
+    yunohost user create "$user" -F "$full" -p "$pass" -d "$MAIN_DOMAIN"
   fi
-  yunohost user create "$user" -F "$full" -p "$pass" -d "$MAIN_DOMAIN"
+  yunohost user group add "$FED_TEST_GROUP" "$user" || true
 }
+
+if ! yunohost user group list --output-as json | python3 -c "import json,sys; g=sys.argv[1]; d=json.load(sys.stdin); groups=d.get('groups',d); sys.exit(0 if g in groups else 1)" "$FED_TEST_GROUP"; then
+  yunohost user group create "$FED_TEST_GROUP"
+fi
 
 create_user alice "$ALICE_PASSWORD" "Alice Test"
 create_user bob "$BOB_PASSWORD" "Bob Test"
-log "Matrix test users ready on ${MAIN_DOMAIN}"
+"${TW_STACK_ROOT}/vm/family-groups.sh" || log "WARN: family-groups after matrix test users"
+log "Matrix test users ready on ${MAIN_DOMAIN} (group ${FED_TEST_GROUP})"

@@ -7,9 +7,9 @@
 </head>
 <body>
   <nav>
-    <a href="/">Home</a>
-    <a href="/members">Family members ({{ member_count }})</a>
-    <a href="/invite">Link another home</a>
+    <a href="{{ url('/') }}">Home</a>
+    <a href="{{ url('/members') }}">Family members ({{ member_count }})</a>
+    <a href="{{ url('/invite') }}">Link another home</a>
   </nav>
   <h1>Your family home</h1>
   <p class="hint">This is the only website you need for day-to-day family setup. Technical tools (YunoHost, Synapse, OwnTracks admin) are optional.</p>
@@ -17,12 +17,12 @@
   <div class="card">
     <h2>Quick links</h2>
     <ul>
-      <li><a href="/members">Manage parents and children</a></li>
-      <li><a href="/members/add">Add a child or parent</a></li>
+      <li><a href="{{ url('/members') }}">Manage parents and children</a></li>
+      <li><a href="{{ url('/members/add') }}">Add a child or parent</a></li>
       {% if location_url %}
       <li>View locations (parents only): <a href="{{ location_url }}">open map</a></li>
       {% endif %}
-      <li><a href="/invite">Invite another household</a> · <a href="/invite/redeem">Redeem invite</a></li>
+      <li><a href="{{ url('/invite') }}">Invite another household</a> · <a href="{{ url('/invite/redeem') }}">Redeem invite</a></li>
     </ul>
   </div>
   <h2>Children — chat rules</h2>
@@ -30,11 +30,11 @@
   {% if kids %}
   <ul>
     {% for kid in kids %}
-    <li><a href="/kid/{{ kid }}">{{ kid }}</a></li>
+    <li><a href="{{ url('/kid/' ~ kid) }}">{{ kid }}</a></li>
     {% endfor %}
   </ul>
   {% else %}
-  <p>No children yet. <a href="/members/add">Add a child</a> first.</p>
+  <p>No children yet. <a href="{{ url('/members/add') }}">Add a child</a> first.</p>
   {% endif %}
 </body>
 </html>
