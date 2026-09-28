@@ -9,7 +9,7 @@ packages:
   - sudo
   - qemu-guest-agent
 users:
-  - name: admin
+  - name: ${PROVISION_SSH_USER}
     groups: [sudo]
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL

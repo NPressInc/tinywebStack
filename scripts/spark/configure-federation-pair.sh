@@ -12,7 +12,7 @@ usage() {
 Usage: configure-federation-pair.sh NODE_A_SSH NODE_B_SSH
 
 Example:
-  configure-federation-pair.sh admin@10.0.0.11 admin@10.0.0.12
+  configure-federation-pair.sh twsadmin@10.0.0.11 twsadmin@10.0.0.12
 
 Reads domains from config/nodes.conf (first two nodes).
 EOF

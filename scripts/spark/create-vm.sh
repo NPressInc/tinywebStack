@@ -5,7 +5,10 @@ set -euo pipefail
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/scripts/lib/common.sh"
+# shellcheck source=scripts/lib/virt-install-args.sh
+source "${TW_STACK_ROOT}/scripts/lib/virt-install-args.sh"
 load_config
+ensure_libvirt_system_uri
 
 usage() {
   cat <<'EOF'
@@ -31,6 +34,10 @@ if ! dry_run_is_active; then
   require_cmd virt-install virsh qemu-img
 fi
 
+if [[ -z "${DEBIAN_CLOUD_IMAGE:-}" ]]; then
+  DEBIAN_CLOUD_IMAGE="${TW_STACK_IMAGE_DIR}/debian-12-genericcloud-$(debian_cloud_arch).qcow2"
+fi
+
 if [[ ! -f "${DEBIAN_CLOUD_IMAGE}" ]]; then
   if dry_run_is_active; then
     log "DRY_RUN: base image missing; skipping disk check"
@@ -47,6 +54,7 @@ fi
 ensure_dir "$(dirname "$DISK")"
 ensure_dir "${TW_STACK_VM_DIR}/${DOMAIN}/seed"
 
+export PROVISION_SSH_USER="${PROVISION_SSH_USER:-twsadmin}"
 "${TW_STACK_ROOT}/scripts/spark/render-cloud-init.sh" "$NODE_NAME" "$FQDN"
 
 SEED_ISO="${TW_STACK_VM_DIR}/${DOMAIN}/seed/cloud-init.iso"
@@ -61,6 +69,10 @@ if [[ ! -f "$DISK" ]]; then
   qemu-img create -f qcow2 -F qcow2 -b "${DEBIAN_CLOUD_IMAGE}" "$DISK" "${DISK_GB}G"
 fi
 
+mapfile -t _arch_args < <(virt_install_arch_args)
+mapfile -t _uefi_args < <(virt_install_uefi_disk_args "$DOMAIN")
+
+# shellcheck disable=SC2068
 virt-install \
   --name "$DOMAIN" \
   --memory "$RAM_MB" \
@@ -69,9 +81,10 @@ virt-install \
   --disk "path=${DISK},format=qcow2,bus=virtio" \
   --disk "path=${SEED_ISO},device=cdrom" \
   --network "network=${LIBVIRT_NETWORK},model=virtio" \
-  --osinfo debian12 \
   --graphics none \
   --console pty,target_type=serial \
-  --noautoconsole
+  --noautoconsole \
+  "${_arch_args[@]}" \
+  "${_uefi_args[@]}"
 
 log "VM ${DOMAIN} created. DHCP address: virsh domifaddr ${DOMAIN} (may take a minute after first boot)"

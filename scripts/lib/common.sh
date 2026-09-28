@@ -2,7 +2,18 @@
 # Shared helpers for tinywebStack VM scripts.
 set -euo pipefail
 
-TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Preserve TW_STACK_ROOT when sourced from VM deploy tree (/opt/tinywebstack).
+if [[ -z "${TW_STACK_ROOT:-}" ]]; then
+  _common_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "${_common_lib_dir}/../defaults.env" ]]; then
+    TW_STACK_ROOT="$(cd "${_common_lib_dir}/.." && pwd)"
+  elif [[ -f "${_common_lib_dir}/../../config/defaults.env" ]]; then
+    TW_STACK_ROOT="$(cd "${_common_lib_dir}/../.." && pwd)"
+  else
+    TW_STACK_ROOT="$(cd "${_common_lib_dir}/.." && pwd)"
+  fi
+  unset _common_lib_dir
+fi
 
 log() { printf '[tinywebstack] %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
@@ -15,14 +26,37 @@ require_cmd() {
 }
 
 load_config() {
-  if [[ -f "${TW_STACK_ROOT}/config/defaults.env" ]]; then
-    # shellcheck source=/dev/null
-    source "${TW_STACK_ROOT}/config/defaults.env"
-  fi
-  if [[ -f "${TW_STACK_ROOT}/config/local.env" ]]; then
-    # shellcheck source=/dev/null
-    source "${TW_STACK_ROOT}/config/local.env"
-  fi
+  local f
+  for f in \
+    "${TW_STACK_ROOT}/config/defaults.env" \
+    "${TW_STACK_ROOT}/defaults.env" \
+    "${TW_STACK_ROOT}/config/local.env" \
+    "${TW_STACK_ROOT}/local.env"
+  do
+    if [[ -f "$f" ]]; then
+      # shellcheck source=/dev/null
+      source "$f"
+    fi
+  done
+}
+
+host_debian_arch() {
+  dpkg --print-architecture 2>/dev/null || uname -m
+}
+
+debian_cloud_arch() {
+  case "$(host_debian_arch)" in
+    amd64) echo amd64 ;;
+    arm64) echo arm64 ;;
+    armhf) echo armhf ;;
+    *)
+      die "Unsupported architecture for Debian cloud images: $(host_debian_arch)"
+      ;;
+  esac
+}
+
+ensure_libvirt_system_uri() {
+  export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
 }
 
 vm_domain_name() {
@@ -49,13 +83,14 @@ run_or_echo() {
 ensure_dir() {
   local d=$1
   if dry_run_is_active; then
-    log "DRY_RUN: mkdir -p ${d}"
+    log "DRY_RUN: would mkdir -p ${d}"
+    return 0
   fi
   mkdir -p "$d"
 }
 
 read_nodes_conf() {
-  local conf="${TW_STACK_ROOT}/config/nodes.conf"
+  local conf="${TW_NODES_CONF:-${TW_STACK_ROOT}/config/nodes.conf}"
   [[ -f "$conf" ]] || die "Missing ${conf} — copy from config/nodes.conf.example"
   grep -Ev '^[[:space:]]*(#|$)' "$conf"
 }

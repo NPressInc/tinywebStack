@@ -4,12 +4,10 @@ set -euo pipefail
 
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
-if [[ -f "${TW_STACK_ROOT}/lib/common.sh" ]]; then
-  source "${TW_STACK_ROOT}/lib/common.sh"
-  load_config
-else
-  OWNTRACKS_APP_URL="${OWNTRACKS_APP_URL:-https://github.com/YunoHost-Apps/owntracks_ynh}"
-fi
+source "${TW_STACK_ROOT}/lib/common.sh"
+load_config
+
+OWNTRACKS_APP_URL="${OWNTRACKS_APP_URL:-https://github.com/YunoHost-Apps/owntracks_ynh}"
 
 usage() {
   echo "Usage: yunohost-family-apps.sh MAIN_DOMAIN"
@@ -34,12 +32,14 @@ install_app() {
   yunohost app install "$@"
 }
 
-# Catalog apps (stable IDs in YunoHost)
-install_app synapse synapse
-install_app element element
-install_app owntracks "${OWNTRACKS_APP_URL}"
+SYNAPSE_ARGS="domain=${MAIN_DOMAIN} server_name= is_free_registration=false init_main_permission=all_users"
+ELEMENT_ARGS="domain=${MAIN_DOMAIN} path=/element default_home_server=${MAIN_DOMAIN} init_main_permission=visitors"
+OWNTRACKS_ARGS="domain=${MAIN_DOMAIN} path=/owntracks init_main_permission=all_users"
 
-# Ensure Element points at local Synapse (YunoHost usually wires this via SSOWAT).
-yunohost app change-url element "/element" || true
+install_app synapse synapse --args "$SYNAPSE_ARGS"
+install_app element element --args "$ELEMENT_ARGS"
+install_app owntracks "${OWNTRACKS_APP_URL}" --args "$OWNTRACKS_ARGS"
+
+yunohost app change-url element -d "${MAIN_DOMAIN}" -p /element 2>/dev/null || true
 
 echo "Apps installed on ${MAIN_DOMAIN}. Configure permissions via yunohost user permission."
