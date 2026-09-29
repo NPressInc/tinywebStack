@@ -86,7 +86,7 @@ done
 
 if ynh_perm_exists nextcloud.main; then
   perm_remove nextcloud.main all_users || true
-  perm_remove nextcloud.main visitors || true
+  perm_add nextcloud.main visitors || true
   perm_add nextcloud.main "$PARENTS_GROUP"
   perm_add nextcloud.main "$KIDS_GROUP"
   perm_add nextcloud.main "$FED_TEST_GROUP"

@@ -66,13 +66,17 @@ fi
 CA_ARG=()
 [[ -n "$CAFILE" ]] && CA_ARG=(--cafile "$CAFILE")
 
+run_nextcloud_occ ldap:check-group "$FAMILY_GROUP" --update 2>/dev/null || true
+
+export TWS_CALENDAR_SETUP_OWNER_PASSWORD="$PARENT_PASSWORD"
+
 "${VENV}/bin/python" -m tinywebstack_calendar.setup \
   "$MAIN_DOMAIN" "$NODE_NAME" \
   --occ-path "$OCC" \
   --occ-user "$OCC_USER" \
   --owner parent \
-  --owner-password "$PARENT_PASSWORD" \
   --nextcloud-path "$NC_PATH" \
+  --federation-test-group "${TWS_FEDERATION_TEST_GROUP:-federation-test}" \
   --users "parent,kid,alice,bob" \
   "${CA_ARG[@]}"
 
