@@ -120,7 +120,8 @@ if [[ "$EVENTS_APP" == "mobilizon" ]] && ynh_perm_exists "mobilizon.main"; then
     python3 "$SETUP_PY" \
       --parents-group "$PARENTS_GROUP" \
       --federation-test-group "$FED_TEST_GROUP" \
-      --admin-user "$MOB_ADMIN" || log "WARN: mobilizon SSO/federation permissions"
+      --admin-user "$MOB_ADMIN" || die "mobilizon SSO/federation permissions failed"
+    hide_portal_tile mobilizon.federation || true
   fi
   perm_remove mobilizon.main all_users || true
   perm_remove mobilizon.main visitors || true
@@ -136,7 +137,18 @@ if [[ "$EVENTS_APP" == "mobilizon" ]] && ynh_perm_exists "mobilizon.main"; then
     # shellcheck source=scripts/lib/mobilizon_python_path.sh
     source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
     export_mobilizon_pythonpath
-    python3 "$APPLY_PY" --kids-group "$KIDS_GROUP" || log "WARN: mobilizon kid permissions"
+    MAIN_DOMAIN="${TWS_SERVER_NAME:-}"
+    if [[ -z "$MAIN_DOMAIN" && -f /etc/tinywebstack/dashboard.env ]]; then
+      # shellcheck source=/dev/null
+      source /etc/tinywebstack/dashboard.env
+      MAIN_DOMAIN="${TWS_SERVER_NAME:-}"
+    fi
+    python3 "$APPLY_PY" \
+      --kids-group "$KIDS_GROUP" \
+      --parents-group "$PARENTS_GROUP" \
+      --federation-test-group "$FED_TEST_GROUP" \
+      --admin-user "$MOB_ADMIN" \
+      --main-domain "$MAIN_DOMAIN" || log "WARN: mobilizon kid permissions"
   fi
 fi
 

@@ -7,10 +7,9 @@ import ssl
 import time
 import urllib.error
 import urllib.request
-import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Set
 
 
 def events_domain(main_domain: str) -> str:
@@ -28,18 +27,51 @@ def peer_events_hosts(trusted_main_domains: Iterable[str]) -> List[str]:
 def relay_address_from_follower(follower: Dict[str, Any]) -> Optional[str]:
     """Best-effort hostname for acceptRelay/rejectRelay from a relayFollowers element."""
     actor = follower.get("actor") or {}
-    for key in ("preferredUsername", "domain", "url"):
+
+    def _host_from_value(key: str, val: str) -> Optional[str]:
+        text = val.strip()
+        if not text:
+            return None
+        if key == "url" and "://" in text:
+            text = text.split("://", 1)[1].split("/", 1)[0]
+        if key == "preferredUsername" and text.lower() == "relay":
+            return None
+        if key == "preferredUsername" and "." not in text:
+            return None
+        return text.lower()
+
+    for key in ("domain", "url", "preferredUsername"):
         val = actor.get(key)
-        if isinstance(val, str) and val.strip():
-            text = val.strip()
-            if key == "url" and "://" in text:
-                text = text.split("://", 1)[1].split("/", 1)[0]
-            return text.lower()
+        if isinstance(val, str):
+            host = _host_from_value(key, val)
+            if host:
+                return host
     target = follower.get("targetActor") or {}
-    val = target.get("preferredUsername") or target.get("domain")
-    if isinstance(val, str) and val.strip():
-        return val.strip().lower()
+    for key in ("domain", "preferredUsername"):
+        val = target.get(key)
+        if isinstance(val, str) and val.strip():
+            text = val.strip().lower()
+            if key == "preferredUsername" and text == "relay":
+                continue
+            if key == "preferredUsername" and "." not in text:
+                continue
+            return text
     return None
+
+
+def _is_already_following_error(message: str) -> bool:
+    lower = message.lower()
+    return "already following" in lower or "already follow" in lower
+
+
+def _is_not_found_error(message: str) -> bool:
+    lower = message.lower()
+    return (
+        "not_found" in lower
+        or "not found" in lower
+        or "event_not_found" in lower
+        or "couldn't find" in lower
+    )
 
 
 @dataclass
@@ -81,22 +113,28 @@ class MobilizonClient:
         *,
         ssl_context: Optional[ssl.SSLContext] = None,
         timeout: int = 30,
+        allow_errors: bool = False,
     ) -> Dict[str, Any]:
         headers = {"Authorization": f"Bearer {self.access_token}"}
         body: Dict[str, Any] = {"query": query}
         if variables is not None:
             body["variables"] = variables
         data = _post_json(self.api_url, body, headers=headers, ssl_context=ssl_context, timeout=timeout)
-        if data.get("errors"):
+        if data.get("errors") and not allow_errors:
             raise RuntimeError(json.dumps(data["errors"], ensure_ascii=False))
         return data.get("data") or {}
 
     def add_instance(self, domain: str, **kwargs: Any) -> None:
-        self.gql(
-            'mutation AddInstance($domain: String!) { addInstance(domain: $domain) { domain } }',
-            {"domain": domain},
-            **kwargs,
-        )
+        try:
+            self.gql(
+                'mutation AddInstance($domain: String!) { addInstance(domain: $domain) { domain } }',
+                {"domain": domain},
+                **kwargs,
+            )
+        except RuntimeError as exc:
+            if _is_already_following_error(str(exc)):
+                return
+            raise
 
     def accept_relay(self, address: str, **kwargs: Any) -> None:
         self.gql(
@@ -106,11 +144,16 @@ class MobilizonClient:
         )
 
     def reject_relay(self, address: str, **kwargs: Any) -> None:
-        self.gql(
-            'mutation RejectRelay($address: String!) { rejectRelay(address: $address) { id } }',
-            {"address": address},
-            **kwargs,
-        )
+        try:
+            self.gql(
+                'mutation RejectRelay($address: String!) { rejectRelay(address: $address) { id } }',
+                {"address": address},
+                **kwargs,
+            )
+        except RuntimeError as exc:
+            if "422" in str(exc) or "unprocessable" in str(exc).lower():
+                return
+            raise
 
     def list_relay_followers(self, *, limit: int = 50, **kwargs: Any) -> List[Dict[str, Any]]:
         data = self.gql(
@@ -121,13 +164,36 @@ class MobilizonClient:
         return list((data.get("relayFollowers") or {}).get("elements") or [])
 
     def instance_followed_status(self, domain: str, **kwargs: Any) -> str:
+        try:
+            data = self.gql(
+                "query InstanceStatus($domain: ID!) { instance(domain: $domain) { domain followedStatus followerStatus } }",
+                {"domain": domain},
+                **kwargs,
+            )
+        except RuntimeError as exc:
+            if _is_not_found_error(str(exc)):
+                return "NONE"
+            raise
+        inst = data.get("instance")
+        if not inst:
+            return "NONE"
+        return str(inst.get("followedStatus") or "NONE")
+
+    def list_person_actors(self, **kwargs: Any) -> List[Dict[str, Any]]:
         data = self.gql(
-            "query InstanceStatus($domain: ID!) { instance(domain: $domain) { domain followedStatus followerStatus } }",
-            {"domain": domain},
+            "query { loggedUser { id actors { id preferredUsername type } defaultActor { id } } }",
             **kwargs,
         )
-        inst = data.get("instance") or {}
-        return str(inst.get("followedStatus") or "NONE")
+        user = data.get("loggedUser") or {}
+        actors = user.get("actors") or []
+        return [a for a in actors if isinstance(a, dict) and a.get("id")]
+
+    def set_default_actor(self, actor_id: str, **kwargs: Any) -> None:
+        self.gql(
+            "mutation SetDefault($id: ID!) { updateUser(defaultActorId: $id) { id defaultActor { id } } }",
+            {"id": actor_id},
+            **kwargs,
+        )
 
     def ensure_default_actor(self, username: str, **kwargs: Any) -> str:
         ident = self.gql(
@@ -138,15 +204,25 @@ class MobilizonClient:
         if actor.get("id"):
             return str(actor["id"])
         slug = username.split("@")[0].replace(".", "-").lower()[:30] or "family"
-        created = self.gql(
-            "mutation CreatePerson($u: String!, $n: String!) { createPerson(preferredUsername: $u, name: $n) { id preferredUsername } }",
-            {"u": slug, "n": username.split("@")[0].title()},
-            **kwargs,
-        )
-        person = created.get("createPerson") or {}
-        if not person.get("id"):
+        try:
+            created = self.gql(
+                "mutation CreatePerson($u: String!, $n: String!) { createPerson(preferredUsername: $u, name: $n) { id preferredUsername } }",
+                {"u": slug, "n": username.split("@")[0].title()},
+                **kwargs,
+            )
+            person = created.get("createPerson") or {}
+            if person.get("id"):
+                return str(person["id"])
             raise RuntimeError(f"createPerson failed: {created}")
-        return str(person["id"])
+        except RuntimeError as exc:
+            if "already exists" not in str(exc).lower():
+                raise
+        actors = self.list_person_actors(**kwargs)
+        if not actors:
+            raise RuntimeError(f"Mobilizon user has no person actor to select as default: {ident}")
+        actor_id = str(actors[0]["id"])
+        self.set_default_actor(actor_id, **kwargs)
+        return actor_id
 
     def create_public_event(
         self,
@@ -155,18 +231,19 @@ class MobilizonClient:
         begins_on: datetime,
         ends_on: datetime,
         organizer_actor_id: str,
+        visibility: str = "UNLISTED",
         **kwargs: Any,
     ) -> Dict[str, Any]:
         data = self.gql(
             """
-            mutation CreateEvent($title: String!, $begins: DateTime!, $ends: DateTime!, $org: ID!) {
+            mutation CreateEvent($title: String!, $begins: DateTime!, $ends: DateTime!, $org: ID!, $vis: EventVisibility!) {
               createEvent(
                 title: $title
                 description: "tinywebStack lab event"
                 beginsOn: $begins
                 endsOn: $ends
                 status: CONFIRMED
-                visibility: PUBLIC
+                visibility: $vis
                 organizerActorId: $org
               ) { id uuid url }
             }
@@ -176,6 +253,7 @@ class MobilizonClient:
                 "begins": begins_on.isoformat(),
                 "ends": ends_on.isoformat(),
                 "org": organizer_actor_id,
+                "vis": visibility,
             },
             **kwargs,
         )
@@ -185,11 +263,16 @@ class MobilizonClient:
         return ev
 
     def event_by_uuid(self, event_uuid: str, **kwargs: Any) -> Optional[Dict[str, Any]]:
-        data = self.gql(
-            "query EventByUuid($uuid: UUID!) { event(uuid: $uuid) { id uuid url } }",
-            {"uuid": event_uuid},
-            **kwargs,
-        )
+        try:
+            data = self.gql(
+                "query EventByUuid($uuid: UUID!) { event(uuid: $uuid) { id uuid url } }",
+                {"uuid": event_uuid},
+                **kwargs,
+            )
+        except RuntimeError as exc:
+            if _is_not_found_error(str(exc)):
+                return None
+            raise
         ev = data.get("event")
         return ev if isinstance(ev, dict) else None
 
@@ -264,10 +347,18 @@ def sync_instance_federation(
         if peer == local_events:
             continue
         try:
+            status = client.instance_followed_status(peer, ssl_context=ssl_context, timeout=timeout)
+            if status in ("APPROVED", "PENDING"):
+                result.outgoing_ok.append(peer)
+                continue
             client.add_instance(peer, ssl_context=ssl_context, timeout=timeout)
             result.outgoing_ok.append(peer)
         except RuntimeError as exc:
-            result.outgoing_errors[peer] = str(exc)
+            msg = str(exc)
+            if _is_already_following_error(msg):
+                result.outgoing_ok.append(peer)
+            else:
+                result.outgoing_errors[peer] = msg
 
     for follower in client.list_relay_followers(ssl_context=ssl_context, timeout=timeout):
         if follower.get("approved"):
@@ -276,8 +367,12 @@ def sync_instance_federation(
         if not address:
             continue
         if is_trusted_relay(address, trusted_hosts, local_events):
-            client.accept_relay(address, ssl_context=ssl_context, timeout=timeout)
-            result.accepted_relays.append(address)
+            try:
+                client.accept_relay(address, ssl_context=ssl_context, timeout=timeout)
+                result.accepted_relays.append(address)
+            except RuntimeError as exc:
+                if "422" not in str(exc):
+                    result.outgoing_errors.setdefault(f"relay:{address}", str(exc))
         else:
             client.reject_relay(address, ssl_context=ssl_context, timeout=timeout)
             result.rejected_relays.append(address)
@@ -313,11 +408,44 @@ def wait_for_federated_event(
     deadline = time.time() + timeout_sec
     last = None
     while time.time() < deadline:
-        last = client.event_by_uuid(event_uuid, ssl_context=ssl_context)
+        try:
+            last = client.event_by_uuid(event_uuid, ssl_context=ssl_context)
+        except RuntimeError as exc:
+            if not _is_not_found_error(str(exc)):
+                raise
+            last = None
         if last and last.get("id"):
             return last
         time.sleep(poll_interval)
     raise RuntimeError(f"Federated event {event_uuid} not visible within {timeout_sec}s (last={last})")
+
+
+def revoke_mobilizon_sessions_for_email(
+    base_url: str,
+    admin_email: str,
+    admin_password: str,
+    target_email: str,
+    *,
+    ssl_context: Optional[ssl.SSLContext] = None,
+) -> None:
+    """Best-effort: admin clears sessions for a user (after LDAP login gate)."""
+    admin = MobilizonClient.login(base_url, admin_email, admin_password, ssl_context=ssl_context)
+    data = admin.gql(
+        "query UserByEmail($email: String!) { userByEmail(email: $email) { id } }",
+        {"email": target_email},
+        ssl_context=ssl_context,
+        allow_errors=True,
+    )
+    user = data.get("userByEmail") or {}
+    user_id = user.get("id")
+    if not user_id:
+        return
+    admin.gql(
+        "mutation LogoutSessions($id: ID!) { logoutUserSessions(userId: $id) }",
+        {"id": user_id},
+        ssl_context=ssl_context,
+        allow_errors=True,
+    )
 
 
 def kid_events_enabled(kid_entry: Dict[str, Any]) -> bool:

@@ -2,7 +2,9 @@
 
 tinywebStack uses **[Mobilizon](https://joinmobilizon.org/)** from the YunoHost catalog as the family **events** app: groups, invites, and RSVPs (roughly “Facebook Events” for self-hosted homes). The portal tile is labeled **Events** (TinyWeb stack, not YunoHost branding).
 
-**Authentication:** YunoHost SSO opens the Mobilizon web UI, but Mobilizon still performs its own **LDAP login** (email + password). There is no single sign-on token pass-through today. New LDAP users may have no Mobilizon profile until first login; family scripts call `createPerson` when needed (verify script and operators should ensure a **default actor** exists). **`mobilizon.main`** uses `auth_header=false` so SSOwat does not overwrite Mobilizon’s `Authorization: Bearer` header (required for GraphQL and browser sessions).
+**Product decision (2026):** Keep Mobilizon **with cross-family federation** on trusted homes. **Event pages, profiles, and ActivityPub objects are intentionally reachable without portal login** on `mobilizon.federation` URL paths — SSOwat cannot distinguish a browser from a federated peer. Parents should default new events to the **most private visibility that still replicates to trusted instances** (typically **`UNLISTED`** in Mobilizon: not listed locally, but federates to followed peers). **`PUBLIC`** is still used in lab verify scripts where a stable URL is required.
+
+**Authentication:** YunoHost SSO opens the Mobilizon web UI, but Mobilizon performs a **second LDAP login** (same email/password as the YunoHost user). There is no OIDC/SSO token pass-through in the catalog app today. The family dashboard notes this next to **open events**. LDAP login is restricted to members of the **`events-users`** group (parents, federation-test, enabled kids, `twsowner`); toggled-off kids are removed from that group and cannot authenticate via `/api` even though federation URLs stay public.
 
 **Lab architecture:** one Mobilizon instance per family node at `mobilizon.<main-domain>` (see [test-nodes.md](test-nodes.md)). The catalog package supports **arm64** (spark VMs) and amd64.
 
@@ -10,51 +12,43 @@ tinywebStack uses **[Mobilizon](https://joinmobilizon.org/)** from the YunoHost 
 
 | Action | Parents | Kids (events enabled) | Kids (events disabled) | Federation-test group | Visitors / public |
 |--------|---------|------------------------|-------------------------|----------------------|-------------------|
-| Open Mobilizon UI (`mobilizon.main`) | Yes | Yes (per-user grant) | **No** | Yes (lab) | No |
-| ActivityPub / GraphQL API (`mobilizon.federation` paths) | — | — | — | — | **Yes** (no portal cookie) |
+| Open Mobilizon UI (`mobilizon.main`) | Yes | Yes (per-user grant) | **No** (SSO redirect) | Yes (lab) | No |
+| ActivityPub + public pages (`mobilizon.federation`) | — | — | — | — | **Yes** |
+| LDAP / GraphQL login (`events-users` + `/api`) | Yes | Yes | **No** | Yes | No* |
 | Create groups / org-wide admin | Yes (Mobilizon + **`twsowner`**) | No | No | — | No |
-| Create events | Yes | Yes (within instance) | N/A | Yes | No |
-| See local family events | Yes | Yes | N/A | Yes | No |
-| See **trusted** linked home’s public federated events | Yes | Yes* | N/A | Yes | No |
+| Create events | Yes | Yes | N/A | Yes | No |
+| See **trusted** linked home’s federated events | Yes | Yes | N/A | Yes | Via public URL if known |
 | See **non-trusted** federated instances | No** | No** | N/A | No** | No |
-| Self-service Mobilizon registration | No (`registrations_open: false`) | No | No | No | No |
-| Parent toggles kid access to events | Via dashboard checkbox on child chat rules | — | — | — | — |
+| Self-service Mobilizon registration | No | No | No | No | No |
+| Parent toggles kid access | Dashboard **Events** checkbox | — | — | — | — |
 
-\*Kids still only see federated content from **instances your home follows and approved** (ActivityPub). Pairwise trust is driven by `trusted_domains` in `/etc/tinywebstack/family-policy.json`, same as Matrix (see [FAMILY_INVITE.md](FAMILY_INVITE.md)).
+\*Public `/api` is reachable without portal cookie, but **login** still requires LDAP membership in `events-users`.
 
-\*\*Enforced by **`mobilizon-federation-sync.sh`**: outgoing `addInstance` only for trusted peers; incoming relays **accepted** only for trusted Mobilizon hostnames and **rejected** otherwise. **Never** call `addInstance` for a public probe (e.g. `mobilizon.fr`) during sync — the lab verify script uses a **passive** check only (`instance.followedStatus`).
+\*\*Enforced by **`mobilizon-federation-sync.sh`**: outgoing `addInstance` only for trusted peers; incoming relays **accepted** only for trusted Mobilizon hostnames. **Never** probe public instances during sync — lab verify uses a **passive** `instance.followedStatus` check only.
 
 ### Kid toggle
 
-The **`kids` YunoHost group is not granted** `mobilizon.main` (group-wide remove would block per-kid toggles). `scripts/lib/apply_mobilizon_permissions.py` adds or removes **`mobilizon.main` per kid** from `events_enabled` in policy JSON.
-
-### Not enforced server-side today
-
-| Concern | Limitation |
-|---------|------------|
-| Kid only RSVPs to “allowlisted contacts” events | Mobilizon has no per-user federation ACL; kid SSO gate + trusted-instance federation are the server levers. |
-| Private event visibility across homes | Only **public** federated events replicate. |
-| Mobilizon `createUser` when registrations are closed | Upstream may return HTTP 500 (`FunctionClauseError`); expected — no account must be created. |
+- **`mobilizon.main`:** per-kid YunoHost permission (no whole-`kids` group grant).
+- **`events-users` LDAP group:** maintained by `scripts/lib/apply_mobilizon_permissions.py` — toggled-off kids lose LDAP login and (best-effort) active Mobilizon sessions.
 
 ## Scripts
 
 | Script | Role |
 |--------|------|
-| `scripts/vm/install-mobilizon.sh` | Catalog install, lab TLS, lab CA trust drop-in, family config |
-| `scripts/lib/setup_mobilizon_permissions.py` | `mobilizon.federation` (visitors) + `mobilizon.main` (`auth_header=false`) |
-| `scripts/vm/mobilizon-family-config.sh` | Registrations off + family config snippet |
-| `scripts/vm/mobilizon-federation-sync.sh` | ActivityPub allowlist ↔ `trusted_domains` (**admin: `twsowner`**) |
-| `scripts/vm/family-sync-federation.sh` | Matrix allowlist **and** Mobilizon sync |
-| `scripts/lib/apply_mobilizon_permissions.py` | Per-kid `events_enabled` → `mobilizon.main` |
-| `scripts/spark/verify-events-e2e.sh` | Lab check: public federation URLs, admin sync, cross-home RSVP, passive probe |
+| `scripts/vm/install-mobilizon.sh` | Catalog install, lab TLS, bundled CA patch |
+| `scripts/vm/mobilizon-lab-ca-trust.sh` | Lab-only append to Mobilizon castore/certifi bundles |
+| `scripts/lib/setup_mobilizon_permissions.py` | `mobilizon.federation` + `mobilizon.main` (`yunohost.init`, fail loud) |
+| `scripts/vm/mobilizon-family-config.sh` | Registrations off, LDAP `events-users` filter |
+| `scripts/vm/mobilizon-federation-sync.sh` | ActivityPub allowlist ↔ `trusted_domains` |
+| `scripts/lib/apply_mobilizon_permissions.py` | Kid SSO + `events-users` membership |
+| `scripts/spark/verify-events-e2e.sh` | Lab end-to-end check |
 
-`family-init.sh` installs Mobilizon after base groups. Portal tile logo: `brand/portal/events-tile.png` via `scripts/lib/portal_tiles.sh`.
+Portal tile logo: `brand/portal/events-tile.png`. Manual spark steps: [templates/spark-events-manual-steps.md](templates/spark-events-manual-steps.md).
 
-## Lab-only: TLS and Mobilizon outbound HTTPS
+## Lab-only TLS
 
-- **`yunohost-lab-tls.sh`** issues a lab CA cert for `mobilizon.<domain>` during install.
-- Mobilizon’s Elixir HTTP client uses its own CA bundle; on test nodes, `install-mobilizon.sh` installs a **systemd drop-in** (`SSL_CERT_FILE` / `ERLANG_SSL_CACERTFILE` → combined system + lab CA). Do not use this pattern on production nodes with public CAs only.
+Mobilizon’s Elixir client uses **bundled** CA files, not only system trust. On test nodes, `mobilizon-lab-ca-trust.sh` appends the lab CA to those bundles (idempotent marker `# tinywebstack-lab-ca-append`). Re-run after Mobilizon package upgrades. **Do not run on production.**
 
 ## Dashboard
 
-Parents open **Family home → open events** (when `TWS_EVENTS_URL` is set). On each child’s **Chat rules** page, **Allow this child to open the family events app** maps to `events_enabled` in policy JSON and triggers `family-events-perms.sh` / permission refresh.
+Parents use **Family home → open events** (`TWS_EVENTS_URL`). Expect one Mobilizon LDAP sign-in with the same credentials as YunoHost. Child **Chat rules → Events** updates policy and runs `family-events-perms.sh`.

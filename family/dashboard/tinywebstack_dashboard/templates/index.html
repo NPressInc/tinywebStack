@@ -21,7 +21,8 @@
     {% endif %}
     <li><a href="{{ url('/calendar') }}">Set up phone calendars (CalDAV)</a></li>
     {% if events_url %}
-    <li>Family events &amp; RSVPs: <a href="{{ events_url }}">open events</a></li>
+    <li>Family events &amp; RSVPs: <a href="{{ events_url }}">open events</a>
+      <span class="hint">(after the portal opens Mobilizon, sign in once with the same email and password as YunoHost/LDAP)</span></li>
     {% endif %}
     <li><a href="{{ url('/invite') }}">Invite another household</a> · <a href="{{ url('/invite/redeem') }}">Redeem an invite</a></li>
   </ul>

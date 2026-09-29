@@ -48,6 +48,10 @@ config :mobilizon, :instance,
 
 config :mobilizon, :restrictions,
   only_admin_can_create_groups: true
+
+# LDAP login only for members of the events-users group (parents, enabled kids, lab testers).
+config :mobilizon, :ldap,
+  group: "cn=events-users,ou=groups,dc=yunohost,dc=org"
 EXS
 chmod 644 "$SNIPPET"
 

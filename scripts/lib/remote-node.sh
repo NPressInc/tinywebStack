@@ -13,7 +13,7 @@ node_name_from_remote_script() {
         printf 'unknown\n'
       fi
       ;;
-    yunohost-family-apps.sh | install-nextcloud-calendar.sh | mobilizon-family-config.sh)
+    yunohost-family-apps.sh | install-nextcloud-calendar.sh | mobilizon-family-config.sh | mobilizon-lab-ca-trust.sh)
       if [[ $# -ge 2 ]]; then
         printf '%s\n' "$2"
       fi
