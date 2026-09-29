@@ -3,18 +3,13 @@
 set -euo pipefail
 
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "${_script_dir}/../lib/common.sh" ]]; then
-  TW_STACK_ROOT="$(cd "${_script_dir}/.." && pwd)"
-  # shellcheck source=scripts/lib/common.sh
-  source "${TW_STACK_ROOT}/lib/common.sh"
-  # shellcheck source=scripts/lib/domains.sh
-  source "${TW_STACK_ROOT}/lib/domains.sh"
-  # shellcheck source=scripts/lib/secrets.sh
-  source "${TW_STACK_ROOT}/lib/secrets.sh"
-  # shellcheck source=scripts/lib/mobilizon_python_path.sh
-  source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
-else
-  TW_STACK_ROOT="$(cd "${_script_dir}/../.." && pwd)"
+# shellcheck source=scripts/lib/tw_stack_root.sh
+source "${_script_dir}/../lib/tw_stack_root.sh"
+TW_STACK_ROOT="$(tw_stack_root_from_script_dir "$_script_dir")" || {
+  echo "[tinywebstack] ERROR: Cannot locate tinywebStack root from ${_script_dir}" >&2
+  exit 1
+}
+if [[ -f "${TW_STACK_ROOT}/scripts/lib/common.sh" ]]; then
   # shellcheck source=scripts/lib/common.sh
   source "${TW_STACK_ROOT}/scripts/lib/common.sh"
   # shellcheck source=scripts/lib/domains.sh
@@ -23,6 +18,15 @@ else
   source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
   # shellcheck source=scripts/lib/mobilizon_python_path.sh
   source "${TW_STACK_ROOT}/scripts/lib/mobilizon_python_path.sh"
+else
+  # shellcheck source=scripts/lib/common.sh
+  source "${TW_STACK_ROOT}/lib/common.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/lib/domains.sh"
+  # shellcheck source=scripts/lib/secrets.sh
+  source "${TW_STACK_ROOT}/lib/secrets.sh"
+  # shellcheck source=scripts/lib/mobilizon_python_path.sh
+  source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
 fi
 load_config
 load_secrets
@@ -83,7 +87,6 @@ python3 - <<'PY'
 import json
 import os
 import ssl
-import sys
 import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -116,6 +119,11 @@ email_a = f"parent@{domain_a}"
 email_b = f"parent@{domain_b}"
 reject = os.environ["REJECT_HOST"]
 
+NODEINFO_PATHS = (
+    "/.well-known/nodeinfo/2.0",
+    "/.well-known/nodeinfo/2.1",
+)
+
 
 def check_federation_public(url: str) -> None:
     req = urllib.request.Request(url, method="GET")
@@ -133,11 +141,9 @@ def check_federation_public(url: str) -> None:
 
 
 print("== Federation discovery (no portal SSO) ==")
-for url in (
-    f"{base_a}/.well-known/nodeinfo/2.0.json",
-    f"{base_b}/.well-known/nodeinfo/2.0.json",
-):
-    check_federation_public(url)
+for base in (base_a, base_b):
+    for path in NODEINFO_PATHS:
+        check_federation_public(base + path)
 print("  OK nodeinfo reachable without redirect")
 
 print("== Federation sync (trusted pair, admin API) ==")

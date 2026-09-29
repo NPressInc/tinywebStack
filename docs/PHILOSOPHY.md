@@ -49,7 +49,7 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 **Source:** [TinyWebC `README.md`](https://github.com/NPressInc/TinyWebC/blob/main/README.md) — families “join each other's network with the right permissions”; kids interact with “trusted members of the community”; parents coordinate events and playdates.
 
-**tinywebStack:** **Adapted.** Cross-household trust is modeled as **explicit federation allowlists** and per-kid contact rules (see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md)), not gossip peer lists or a custom proximity protocol. A centralized “cross-family” server is **deferred**; pairwise federation between known homes is the current model ([test-nodes.md](test-nodes.md)).
+**tinywebStack:** **Adapted.** Cross-household trust is modeled as **explicit federation allowlists** and per-kid contact rules (see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md)), not gossip peer lists or a custom proximity protocol. A centralized “cross-family” server is **deferred**; pairwise federation between known homes is the current model ([test-nodes.md](test-nodes.md)). **Events (Mobilizon)** federate between trusted homes; federated **event pages and profiles are public URLs by design** (ActivityPub), while **who may log in and create RSVPs** is gated by YunoHost SSO, LDAP group `events-users`, and parent toggles ([EVENTS.md](EVENTS.md)).
 
 ---
 

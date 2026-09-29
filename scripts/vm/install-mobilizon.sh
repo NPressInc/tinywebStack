@@ -44,23 +44,9 @@ install_app() {
 }
 
 install_mobilizon_lab_ca_trust() {
-  local lab_ca="${TW_STACK_ROOT}/lab-certs/lab-ca.crt.pem"
-  local dst="/etc/tinywebstack/lab-ca.pem"
-  local combined="/etc/tinywebstack/mobilizon-combined-ca.pem"
-  [[ -f "$lab_ca" ]] || return 0
-  install -d -m 755 /etc/tinywebstack
-  install -m 644 "$lab_ca" "$dst"
-  cat /etc/ssl/certs/ca-certificates.crt "$lab_ca" >"$combined"
-  chmod 644 "$combined"
-  install -d -m 755 /etc/systemd/system/mobilizon.service.d
-  cat >/etc/systemd/system/mobilizon.service.d/tinywebstack-lab-ca.conf <<EOF
-[Service]
-Environment=SSL_CERT_FILE=${combined}
-Environment=ERLANG_SSL_CACERTFILE=${combined}
-EOF
-  systemctl daemon-reload
-  systemctl restart mobilizon 2>/dev/null || yunohost service restart mobilizon 2>/dev/null || true
-  log "Mobilizon systemd configured to trust lab CA (test lab only)"
+  if [[ -x "${TW_STACK_ROOT}/vm/mobilizon-lab-ca-trust.sh" ]]; then
+    "${TW_STACK_ROOT}/vm/mobilizon-lab-ca-trust.sh"
+  fi
 }
 
 if ! yunohost domain list 2>/dev/null | grep -qw "$EVENTS_D"; then

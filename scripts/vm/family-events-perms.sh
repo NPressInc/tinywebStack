@@ -17,5 +17,16 @@ fi
 
 PY="${TW_STACK_ROOT}/lib/apply_mobilizon_permissions.py"
 [[ -f "$PY" ]] || die "Missing ${PY}"
-python3 "$PY" --kids-group "${TWS_KIDS_GROUP:-kids}"
+MAIN_DOMAIN="${TWS_SERVER_NAME:-}"
+if [[ -z "$MAIN_DOMAIN" && -f /etc/tinywebstack/dashboard.env ]]; then
+  # shellcheck source=/dev/null
+  source /etc/tinywebstack/dashboard.env
+  MAIN_DOMAIN="${TWS_SERVER_NAME:-}"
+fi
+python3 "$PY" \
+  --kids-group "${TWS_KIDS_GROUP:-kids}" \
+  --parents-group "${TWS_PARENTS_GROUP:-parents}" \
+  --federation-test-group "${TWS_FEDERATION_TEST_GROUP:-federation-test}" \
+  --admin-user "${MOBILIZON_ADMIN_USER:-${YUNOHOST_ADMIN_USER:-twsowner}}" \
+  --main-domain "$MAIN_DOMAIN"
 log "Mobilizon kid permissions refreshed"
