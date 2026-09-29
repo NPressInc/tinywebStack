@@ -9,11 +9,14 @@ source "${TW_STACK_ROOT}/lib/common.sh"
 source "${TW_STACK_ROOT}/lib/domains.sh"
 # shellcheck source=scripts/lib/secrets.sh
 source "${TW_STACK_ROOT}/lib/secrets.sh"
+# shellcheck source=scripts/lib/mobilizon_python_path.sh
+source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
 load_config
+export_mobilizon_pythonpath
 
 usage() {
   cat <<'EOF'
-Usage: mobilizon-federation-sync.sh MAIN_DOMAIN [NODE_NAME]
+Usage: mobilizon-federation-sync.sh MAIN_DOMAIN [NODE_NAME] [EXTRA_PEER_DOMAIN ...]
 
 Uses family-policy.json trusted_domains and Mobilizon admin GraphQL API.
 EOF
@@ -49,26 +52,25 @@ POLICY="${TWS_POLICY_PATH:-/etc/tinywebstack/family-policy.json}"
 [[ -f "$POLICY" ]] || die "Missing policy ${POLICY}"
 
 EVENTS_D="$(events_domain "$MAIN_DOMAIN")"
-ADMIN_USER="${MOBILIZON_ADMIN_USER:-parent}"
+ADMIN_USER="${MOBILIZON_ADMIN_USER:-${YUNOHOST_ADMIN_USER:-twsowner}}"
 ADMIN_EMAIL="${MOBILIZON_ADMIN_EMAIL:-${ADMIN_USER}@${MAIN_DOMAIN}}"
-ADMIN_PASSWORD="${MOBILIZON_ADMIN_PASSWORD:-${PARENT_PASSWORD:-}}"
+ADMIN_PASSWORD="${MOBILIZON_ADMIN_PASSWORD:-${YUNOHOST_ADMIN_PASSWORD:-}}"
 if [[ -z "$ADMIN_PASSWORD" && -n "$NODE_NAME" ]]; then
-  ADMIN_PASSWORD="$(read_node_secret "$NODE_NAME" parent_password || true)"
+  ADMIN_PASSWORD="$(read_node_secret "$NODE_NAME" yunohost_admin_password || true)"
 fi
-[[ -n "$ADMIN_PASSWORD" ]] || die "MOBILIZON_ADMIN_PASSWORD or parent_password secret required"
+[[ -n "$ADMIN_PASSWORD" ]] || die "MOBILIZON_ADMIN_PASSWORD or yunohost_admin_password secret required"
 
-REJECT_PROBE="${MOBILIZON_REJECT_PROBE:-mobilizon.fr}"
 EXTRA_PEERS_JSON="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${EXTRA_PEERS[@]}")"
-export MAIN_DOMAIN EVENTS_D ADMIN_EMAIL ADMIN_PASSWORD POLICY REJECT_PROBE TW_STACK_ROOT EXTRA_PEERS_JSON
+export MAIN_DOMAIN EVENTS_D ADMIN_EMAIL ADMIN_PASSWORD POLICY TW_STACK_ROOT EXTRA_PEERS_JSON
 
 python3 - <<'PY'
 import json
 import os
 import ssl
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
-sys.path.insert(0, os.path.join(os.environ["TW_STACK_ROOT"], "family", "synapse_module"))
 from tinywebstack_family.mobilizon import MobilizonClient, sync_instance_federation
 
 main = os.environ["MAIN_DOMAIN"]
@@ -97,10 +99,10 @@ result = sync_instance_federation(
     client,
     local_main_domain=main,
     trusted_main_domains=trusted,
-    reject_probe_host=os.environ.get("REJECT_PROBE"),
     ssl_context=ctx,
 )
-print(json.dumps(result, indent=2))
+result.raise_on_errors()
+print(json.dumps(asdict(result), indent=2))
 PY
 
 log "Mobilizon federation synced for ${MAIN_DOMAIN}"

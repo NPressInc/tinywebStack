@@ -89,3 +89,28 @@ configure_element_tile_logo() {
   install_element_tile_png "$logo" || return 1
   ynh_permission_update "$perm" --logo "$logo"
 }
+
+install_events_tile_png() {
+  local dst=${1:-/usr/share/yunohost/portal/customassets/events-tile.png}
+  install -d /usr/share/yunohost/portal/customassets
+  local src="${TW_STACK_ROOT}/brand/portal/events-tile.png"
+  local svg="${TW_STACK_ROOT}/brand/portal/tinyweb-logo.svg"
+  if [[ -f "$src" ]]; then
+    install -m 644 "$src" "$dst"
+    return 0
+  fi
+  if command -v rsvg-convert >/dev/null 2>&1 && [[ -f "$svg" ]]; then
+    rsvg-convert -w 256 -h 256 "$svg" -o "$dst"
+    chmod 644 "$dst"
+    return 0
+  fi
+  log "WARN: missing ${src} (and no rsvg-convert); Events tile logo not installed"
+  return 1
+}
+
+configure_events_tile_logo() {
+  local perm=${1:-mobilizon.main}
+  local logo=/usr/share/yunohost/portal/customassets/events-tile.png
+  install_events_tile_png "$logo" || return 1
+  ynh_permission_update "$perm" --show_tile True --label "Events" --logo "$logo"
+}

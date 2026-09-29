@@ -127,6 +127,20 @@ label {
   font-weight: 600;
 }
 
+label.tw-check-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  margin-top: 1rem;
+}
+
+label.tw-check-label input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+  flex-shrink: 0;
+}
+
 input,
 select,
 textarea {

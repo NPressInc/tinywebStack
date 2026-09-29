@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mobilizon events: SSO login, cross-family federation + RSVP, reject non-trusted instance.
+# Mobilizon events: federation paths, LDAP login, cross-family RSVP, passive non-trusted probe.
 set -euo pipefail
 
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -7,17 +7,26 @@ if [[ -f "${_script_dir}/../lib/common.sh" ]]; then
   TW_STACK_ROOT="$(cd "${_script_dir}/.." && pwd)"
   # shellcheck source=scripts/lib/common.sh
   source "${TW_STACK_ROOT}/lib/common.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/lib/domains.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "${TW_STACK_ROOT}/lib/secrets.sh"
+  # shellcheck source=scripts/lib/mobilizon_python_path.sh
+  source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
 else
   TW_STACK_ROOT="$(cd "${_script_dir}/../.." && pwd)"
   # shellcheck source=scripts/lib/common.sh
   source "${TW_STACK_ROOT}/scripts/lib/common.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/scripts/lib/domains.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+  # shellcheck source=scripts/lib/mobilizon_python_path.sh
+  source "${TW_STACK_ROOT}/scripts/lib/mobilizon_python_path.sh"
 fi
 load_config
 load_secrets
+export_mobilizon_pythonpath
 
 usage() {
   cat <<'EOF'
@@ -39,15 +48,19 @@ REJECT_HOST=${5:-${MOBILIZON_REJECT_PROBE:-mobilizon.fr}}
 
 require_cmd python3
 
+ADMIN_A_PW="${MOBILIZON_ADMIN_PASSWORD:-${YUNOHOST_ADMIN_PASSWORD:-$(read_node_secret "$NODE_A" yunohost_admin_password || true)}}"
+ADMIN_B_PW="${MOBILIZON_ADMIN_PASSWORD:-${YUNOHOST_ADMIN_PASSWORD:-$(read_node_secret "$NODE_B" yunohost_admin_password || true)}}"
 PARENT_A_PW="${PARENT_PASSWORD:-$(read_node_secret "$NODE_A" parent_password || true)}"
 PARENT_B_PW="${PARENT_PASSWORD:-$(read_node_secret "$NODE_B" parent_password || true)}"
-[[ -n "$PARENT_A_PW" && -n "$PARENT_B_PW" ]] || die "parent passwords required in secrets (use LAB_PASSWORD=dummydummy on spark)"
+[[ -n "$ADMIN_A_PW" && -n "$ADMIN_B_PW" && -n "$PARENT_A_PW" && -n "$PARENT_B_PW" ]] || \
+  die "yunohost_admin and parent passwords required in $(secrets_file)"
 
 resolve_lab_ca() {
   local c
   for c in \
     "${TW_STACK_LAB_CA_DIR:-}/lab-ca.crt.pem" \
-    "${TW_STACK_SECRETS_DIR}/lab-ca/lab-ca.crt.pem"; do
+    "${TW_STACK_ROOT}/lab-certs/lab-ca.crt.pem" \
+    "${TW_STACK_SECRETS_DIR:-}/lab-ca/lab-ca.crt.pem"; do
     if [[ -f "$c" ]]; then
       printf '%s\n' "$c"
       return 0
@@ -60,10 +73,11 @@ CA_PEM=""
 if CA_PEM="$(resolve_lab_ca)"; then
   export TWS_CA_BUNDLE="$CA_PEM"
 else
-  export TWS_LAB_TLS_INSECURE=1
+  die "Lab CA not found (set TW_STACK_LAB_CA_DIR or run stage-lab-certs.sh)"
 fi
 
-export DOMAIN_A DOMAIN_B NODE_A NODE_B PARENT_A_PW PARENT_B_PW REJECT_HOST TW_STACK_ROOT
+MOB_ADMIN="${MOBILIZON_ADMIN_USER:-${YUNOHOST_ADMIN_USER:-twsowner}}"
+export DOMAIN_A DOMAIN_B NODE_A NODE_B PARENT_A_PW PARENT_B_PW ADMIN_A_PW ADMIN_B_PW REJECT_HOST MOB_ADMIN
 
 python3 - <<'PY'
 import json
@@ -74,16 +88,19 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 
-sys.path.insert(0, os.path.join(os.environ["TW_STACK_ROOT"], "family", "synapse_module"))
-from tinywebstack_family.mobilizon import MobilizonClient, events_domain, sync_instance_federation
+from tinywebstack_family.mobilizon import (
+    MobilizonClient,
+    events_domain,
+    sync_instance_federation,
+    verify_passive_untrusted_probe,
+    wait_for_federated_event,
+)
 
 def ssl_ctx():
-    if os.environ.get("TWS_LAB_TLS_INSECURE") == "1":
-        return ssl._create_unverified_context()
     ca = os.environ.get("TWS_CA_BUNDLE")
     if ca and os.path.isfile(ca):
         return ssl.create_default_context(cafile=ca)
-    return ssl._create_unverified_context()
+    raise SystemExit("TWS_CA_BUNDLE missing")
 
 ctx = ssl_ctx()
 domain_a = os.environ["DOMAIN_A"]
@@ -92,90 +109,83 @@ host_a = events_domain(domain_a)
 host_b = events_domain(domain_b)
 base_a = f"https://{host_a}"
 base_b = f"https://{host_b}"
+admin = os.environ["MOB_ADMIN"]
+admin_a = f"{admin}@{domain_a}"
+admin_b = f"{admin}@{domain_b}"
 email_a = f"parent@{domain_a}"
 email_b = f"parent@{domain_b}"
 reject = os.environ["REJECT_HOST"]
 
-def check_sso(url: str) -> None:
+
+def check_federation_public(url: str) -> None:
     req = urllib.request.Request(url, method="GET")
-    code = 0
-    body = ""
     try:
         with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
             code = resp.getcode()
-            body = resp.read(8000).decode("utf-8", errors="replace")
+            body = resp.read(4000).decode("utf-8", errors="replace")
     except urllib.error.HTTPError as exc:
         code = exc.code
-        body = exc.read(8000).decode("utf-8", errors="replace")
-    if code in (401, 403):
-        return
-    if code < 500:
-        return
-    raise SystemExit(f"SSO check failed for {url}: HTTP {code} body={body[:200]!r}")
+        body = exc.read(4000).decode("utf-8", errors="replace")
+    if code in (301, 302, 303, 307, 308):
+        raise SystemExit(f"Federation URL redirected to SSO (expected public): {url} HTTP {code}")
+    if code >= 400:
+        raise SystemExit(f"Federation URL failed: {url} HTTP {code} body={body[:200]!r}")
 
-print("== Mobilizon installed (HTTPS reachable) ==")
-check_sso(base_a + "/")
-check_sso(base_b + "/")
-print("  OK reachability + SSO gateway")
 
-print("== Federation sync (trusted pair) ==")
-client_a = MobilizonClient.login(base_a, email_a, os.environ["PARENT_A_PW"], ssl_context=ctx)
-client_b = MobilizonClient.login(base_b, email_b, os.environ["PARENT_B_PW"], ssl_context=ctx)
+print("== Federation discovery (no portal SSO) ==")
+for url in (
+    f"{base_a}/.well-known/nodeinfo/2.0.json",
+    f"{base_b}/.well-known/nodeinfo/2.0.json",
+):
+    check_federation_public(url)
+print("  OK nodeinfo reachable without redirect")
+
+print("== Federation sync (trusted pair, admin API) ==")
+admin_a_client = MobilizonClient.login(base_a, admin_a, os.environ["ADMIN_A_PW"], ssl_context=ctx)
+admin_b_client = MobilizonClient.login(base_b, admin_b, os.environ["ADMIN_B_PW"], ssl_context=ctx)
 sync_a = sync_instance_federation(
-    client_a, local_main_domain=domain_a, trusted_main_domains=[domain_b], ssl_context=ctx
+    admin_a_client, local_main_domain=domain_a, trusted_main_domains=[domain_b], ssl_context=ctx
 )
 sync_b = sync_instance_federation(
-    client_b, local_main_domain=domain_b, trusted_main_domains=[domain_a], ssl_context=ctx
+    admin_b_client, local_main_domain=domain_b, trusted_main_domains=[domain_a], ssl_context=ctx
 )
-print(json.dumps({"A": sync_a, "B": sync_b}, indent=2))
+sync_a.raise_on_errors()
+sync_b.raise_on_errors()
+print(json.dumps({"A": sync_a.__dict__, "B": sync_b.__dict__}, indent=2, default=list))
 
-print("== Cross-home event + RSVP ==")
+print("== Cross-home event + RSVP (parent LDAP) ==")
+client_a = MobilizonClient.login(base_a, email_a, os.environ["PARENT_A_PW"], ssl_context=ctx)
+client_b = MobilizonClient.login(base_b, email_b, os.environ["PARENT_B_PW"], ssl_context=ctx)
+actor_a = client_a.ensure_default_actor(email_a, ssl_context=ctx)
+actor_b = client_b.ensure_default_actor(email_b, ssl_context=ctx)
 start = datetime.now(timezone.utc) + timedelta(days=2)
 end = start + timedelta(hours=2)
 title = f"tinywebStack lab {int(start.timestamp())}"
-create_q = """
-mutation CreateEvent($title: String!, $begins: DateTime!, $ends: DateTime!) {
-  createEvent(title: $title, description: "lab", beginsOn: $begins, endsOn: $ends, status: CONFIRMED, visibility: PUBLIC) {
-    id
-    uuid
-  }
-}
-"""
-created = client_a.gql(
-    create_q,
-    {"title": title, "begins": start.isoformat(), "ends": end.isoformat()},
+created = client_a.create_public_event(
+    title=title,
+    begins_on=start,
+    ends_on=end,
+    organizer_actor_id=actor_a,
     ssl_context=ctx,
 )
-event_id = (created.get("createEvent") or {}).get("id")
-if not event_id:
-    raise SystemExit(f"createEvent failed: {created}")
-ident_q = "query { loggedUser { id defaultActor { id } } }"
-ident_b = client_b.gql(ident_q, ssl_context=ctx)
-actor_b = ((ident_b.get("loggedUser") or {}).get("defaultActor") or {}).get("id")
-if not actor_b:
-    raise SystemExit(f"No default actor on B: {ident_b}")
-join_q = """
-mutation Join($eventId: ID!, $actorId: ID!) {
-  joinEvent(eventId: $eventId, actorId: $actorId) { id }
-}
-"""
-joined = client_b.gql(join_q, {"eventId": event_id, "actorId": actor_b}, ssl_context=ctx)
-if not (joined.get("joinEvent") or {}).get("id"):
-    raise SystemExit(f"joinEvent failed: {joined}")
-print(f"  OK event {event_id} joined from {host_b}")
+event_uuid = created.get("uuid")
+if not event_uuid:
+    raise SystemExit(f"createEvent missing uuid: {created}")
+remote = wait_for_federated_event(client_b, str(event_uuid), ssl_context=ctx)
+remote_id = remote.get("id")
+if not remote_id:
+    raise SystemExit(f"Federated event not on B: {remote}")
+client_b.join_event(str(remote_id), actor_b, ssl_context=ctx)
+print(f"  OK event uuid={event_uuid} joined on {host_b}")
 
-print("== Non-trusted instance probe ==")
-probe = sync_instance_federation(
-    client_a,
-    local_main_domain=domain_a,
-    trusted_main_domains=[domain_b],
-    reject_probe_host=reject,
-    ssl_context=ctx,
-)
-status = probe.get("reject_probe_followed_status")
-if status == "APPROVED":
-    raise SystemExit(f"Reject probe {reject} unexpectedly APPROVED")
-print(f"  OK probe {reject} not approved (status={status})")
+print("== Passive non-trusted instance probe ==")
+probe = verify_passive_untrusted_probe(admin_a_client, reject, ssl_context=ctx)
+if probe.get("must_not_follow"):
+    raise SystemExit(
+        f"Instance must not follow {reject}; status={probe.get('followed_status')!r} "
+        "(run federation sync without outbound probes)"
+    )
+print(f"  OK not following {reject} (status={probe.get('followed_status')})")
 print("All Mobilizon event checks passed.")
 PY
 
