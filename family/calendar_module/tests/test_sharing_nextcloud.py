@@ -55,17 +55,17 @@ def test_open_caldav_raises_on_redirect(monkeypatch: pytest.MonkeyPatch) -> None
         )
 
 
-def test_list_sharees_parses_propfind_hrefs() -> None:
+def test_list_sharees_parses_oc_invite_hrefs() -> None:
     xml = """<?xml version="1.0"?>
 <d:multistatus xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">
   <d:response>
     <d:propstat>
       <d:prop>
-        <oc:sharees>
+        <oc:invite>
           <oc:sharee>
             <d:href>principal:principals/groups/parents</d:href>
           </oc:sharee>
-        </oc:sharees>
+        </oc:invite>
       </d:prop>
     </d:propstat>
   </d:response>
@@ -74,3 +74,11 @@ def test_list_sharees_parses_propfind_hrefs() -> None:
     with mock.patch("tinywebstack_calendar.sharing._open_caldav", return_value=(207, xml, {})):
         sharees = list_calendar_sharees("https://nc.example/cal/", "parent", "secret")
     assert sharees == {"principal:principals/groups/parents"}
+
+
+def test_list_sharees_propfind_404_returns_empty() -> None:
+    with mock.patch(
+        "tinywebstack_calendar.sharing._open_caldav",
+        side_effect=RuntimeError("CalDAV request failed (404): not found"),
+    ):
+        assert list_calendar_sharees("https://nc.example/cal/", "parent", "secret") == set()

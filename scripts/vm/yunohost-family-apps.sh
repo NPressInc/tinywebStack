@@ -64,8 +64,10 @@ else
   fi
 fi
 
-if [[ -x "${TW_STACK_ROOT}/vm/install-nextcloud-calendar.sh" ]]; then
-  "${TW_STACK_ROOT}/vm/install-nextcloud-calendar.sh" "$MAIN_DOMAIN" "$NODE_NAME"
+if [[ -f "${TW_STACK_ROOT}/vm/install-nextcloud-calendar.sh" ]]; then
+  bash "${TW_STACK_ROOT}/vm/install-nextcloud-calendar.sh" "$MAIN_DOMAIN" "$NODE_NAME"
+else
+  die "Missing ${TW_STACK_ROOT}/vm/install-nextcloud-calendar.sh (Nextcloud calendar install required)"
 fi
 
 echo "Apps on ${MAIN_DOMAIN}: Synapse https://${MATRIX_D} | Element https://${ELEMENT_D} | ${LOCATION_APP} https://${LOC_D}"

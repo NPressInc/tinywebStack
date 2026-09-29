@@ -82,6 +82,22 @@ yaml.safe_load(p.read_text())
 print("  YAML OK", p)
 PY
 
+echo "== git executable bits (scripts/*.sh) =="
+python3 - <<'PY'
+import subprocess
+from pathlib import Path
+root = Path(".")
+out = subprocess.check_output(["git", "ls-files", "-s", "scripts"], text=True)
+bad = []
+for line in out.splitlines():
+    mode, _, _, path = line.split(maxsplit=3)
+    if path.endswith(".sh") and mode != "100755":
+        bad.append(path)
+if bad:
+    raise SystemExit("Non-executable scripts in git index:\n" + "\n".join(bad))
+print("  all scripts/*.sh mode 100755")
+PY
+
 echo "== pytest (family module + dashboard) =="
 if ! python3 -m pip install -q -e 'family/synapse_module[test]' -e 'family/dashboard[test]' -e 'family/calendar_module[test]' 2>/dev/null; then
   echo "  pip install failed — skipped pytest" >&2

@@ -7,7 +7,7 @@ The dashboard writes `/etc/tinywebstack/family-policy.json` for the Synapse modu
 ## Install
 
 ```bash
-./scripts/vm/remote-run.sh "$IP" install-family-dashboard.sh family-a.family.test
+./scripts/vm/remote-run.sh "$IP" install-family-dashboard.sh family-a.family.test family-a
 ```
 
 Or use `family-init.sh` which runs groups, module, dashboard, and optional test users.
