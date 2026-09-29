@@ -2,14 +2,15 @@
 
 This document breaks down the **family layer** described in [PLAN.md](../PLAN.md) (sections 1–5) into implementable features. It maps each feature to what **YunoHost**, **Synapse**, **Element**, and **OwnTracks** (with **Traccar** fallback) already provide, what **custom code** is still required, and a suggested **order** and **v1 vs later** priority.
 
-**Current lab state** (see [test-nodes.md](test-nodes.md)):
+**Current lab state** (see [test-nodes.md](test-nodes.md), PRs #14–#25):
 
-- Two YunoHost nodes (`family-a`, `family-b`) with Synapse, Element, and OwnTracks (default; `LOCATION_APP=traccar` for fallback).
+- Two YunoHost nodes (`family-a`, `family-b`) with Synapse, Element, OwnTracks (default; `LOCATION_APP=traccar` for fallback), Nextcloud CalDAV, and Mobilizon events.
 - Matrix federation works **pairwise** with `federation_domain_whitelist`; `matrix.org` is rejected in e2e checks.
-- Test users (`alice`, `bob`) are created via `yunohost user create`; apps install with broad permissions (`all_users` / `visitors`).
-- **Not built yet:** family groups, kid provisioning, contact allowlists, location permission automation, or a parent-facing setup wizard.
+- Test users (`alice`, `bob`, `parent`, `kid`) are created via `yunohost user create`.
+- **Built and shipped:** family groups (`parents` / `kids` / `federation-test`, `family-groups.sh`), kid provisioning via the family dashboard + privileged helper (`family-dashboard-privileged.sh`), the `tinywebstack_family` Synapse module (per-kid contact allowlists, 3PID-invite denial, quiet hours, E2EE rejection), location permissions (web UI parents-only), and the parent-facing dashboard at `https://<main>/family/` ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
+- Production install path documented in [production-setup.md](production-setup.md) (S5.2); remaining script gaps listed there under "Known gaps for v1.1".
 
-**Explicitly out of scope (v1):** Android ROM lockdown; centralized cross-family server; production TLS (lab uses private CA).
+**Explicitly out of scope (v1):** Android ROM lockdown; centralized cross-family server. (Production TLS is now covered by [production-setup.md](production-setup.md) — the lab uses a private CA.)
 
 ---
 
@@ -115,7 +116,7 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 | ID | Feature | Parent / kid value | Stack already provides | Gap (custom) | Smallest approach | Depends on | Order | v1 |
 |----|---------|-------------------|------------------------|--------------|-------------------|------------|-------|-----|
 | S5.1 | **Lab / test node path** | Developers prove federation. | [test-nodes.md](test-nodes.md), spark scripts | Maintain docs | Keep scripts idempotent | — | Done | **Must** |
-| S5.2 | **Production install runbook** | Parent with hardware gets a family node. | YunoHost installer | Single markdown path: OS → YunoHost → apps → family CLI | `docs/production-setup.md` (future) + reuse vm scripts | F1.* | 6 | **Must** |
+| S5.2 | **Production install runbook** | Parent with hardware gets a family node. | YunoHost installer + vm scripts | Documented; script gaps tracked in the doc | [production-setup.md](production-setup.md) (reuses vm scripts; Let's Encrypt and member provisioning are manual steps today) | F1.* | Done | **Must** |
 | S5.3 | **`family-init` orchestrator** | One command after postinstall. | Individual vm scripts | Wrapper: groups, module, dashboard, test users | [family-init.sh](../scripts/vm/family-init.sh) | F1.3, P3.1, G4.2 | 6 | **Must** |
 | S5.4 | **Synapse family module packaging** | Repeatable install on YunoHost. | `conf.d` snippets pattern | Debian package or YunoHost hook dropping module + venv | `.deb` or `yunohost` custom service doc | P3.2 | 6 | **Must** |
 | S5.5 | **Validate script** | CI catches broken shell. | [validate.sh](../scripts/validate.sh) | Extend checks for new scripts | Add shellcheck targets | S5.3 | 7 | **Must** |
@@ -169,4 +170,5 @@ William Floyd confirmed:
 
 - [PLAN.md](../PLAN.md) — direction and milestones  
 - [PHILOSOPHY.md](PHILOSOPHY.md) — design principles adapted from TinyWebC  
-- [test-nodes.md](test-nodes.md) — lab topology and federation verification  
+- [test-nodes.md](test-nodes.md) — lab topology and federation verification
+- [production-setup.md](production-setup.md) — production family-node runbook (S5.2)  
