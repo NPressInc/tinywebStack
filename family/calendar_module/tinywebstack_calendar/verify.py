@@ -73,26 +73,54 @@ def _find_event_by_uid(client: caldav.DAVClient, uid: str, *, wait_seconds: floa
     return None
 
 
-def _delete_events_with_uid(client: caldav.DAVClient, uid: str) -> None:
-    principal = client.principal()
-    for cal in principal.calendars():
-        for event in list(cal.events()):
-            if uid in (event.data or ""):
-                try:
-                    event.delete()
-                except Exception:
-                    pass
+def _calendar_url(cal: object) -> str:
+    url = getattr(cal, "url", "")
+    if hasattr(url, "path"):
+        return url.path
+    return str(url)
+
+
+def _delete_events_in_collection(collection: object, uid: str) -> None:
     try:
-        inbox = principal.schedule_inbox()
+        events = list(collection.events())  # type: ignore[attr-defined]
     except Exception:
-        inbox = None
-    if inbox is not None:
-        for event in list(inbox.events()):
-            if uid in (event.data or ""):
-                try:
-                    event.delete()
-                except Exception:
-                    pass
+        return
+    for event in events:
+        if uid in (event.data or ""):
+            try:
+                event.delete()
+            except Exception:
+                pass
+
+
+def _scheduling_collections(principal: object) -> List[object]:
+    cols: List[object] = []
+    for name in ("schedule_inbox", "schedule_outbox"):
+        try:
+            col = getattr(principal, name)()
+        except Exception:
+            col = None
+        if col is not None:
+            cols.append(col)
+    return cols
+
+
+def _purge_uid_residue(client: caldav.DAVClient, uid: str) -> None:
+    """Delete verify events from calendars, Nextcloud trashbin, and scheduling mailboxes."""
+    principal = client.principal()
+
+    def _pass() -> None:
+        for cal in principal.calendars():
+            _delete_events_in_collection(cal, uid)
+        for col in _scheduling_collections(principal):
+            _delete_events_in_collection(col, uid)
+
+    _pass()
+    # Deleted events land in Nextcloud's CalDAV trashbin; remove them so later retention does not emit CANCEL iTIP.
+    for cal in principal.calendars():
+        if "trashbin" in _calendar_url(cal).lower():
+            _delete_events_in_collection(cal, uid)
+    _pass()
 
 
 def _attendee_partstat(event_data: str, attendee_email: str) -> Optional[str]:
@@ -172,8 +200,8 @@ def invite_roundtrip(
 
         return {"uid": uid, "status": "accept_and_decline", "calendar_id": calendar_id}
     finally:
-        _delete_events_with_uid(owner_client, uid)
-        _delete_events_with_uid(attendee_client, uid)
+        _purge_uid_residue(owner_client, uid)
+        _purge_uid_residue(attendee_client, uid)
 
 
 def verify_login(caldav_root: str, username: str, password: str, *, cafile: str | None, insecure: bool) -> None:

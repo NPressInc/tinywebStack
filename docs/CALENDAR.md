@@ -87,14 +87,25 @@ Use `LAB_PASSWORD=dummydummy` in `config/local.env` so test secrets stay predict
 Re-sync scripts, then on each VM (`IP` from `virsh domifaddr`, node name `family-a` / `family-b`):
 
 ```bash
-./scripts/vm/remote-run.sh "$IP" install-nextcloud-calendar.sh family-a.family.test family-a
-./scripts/vm/remote-run.sh "$IP" install-family-dashboard.sh family-a.family.test family-a
-./scripts/vm/remote-run.sh "$IP" setup-family-calendars.sh family-a.family.test family-a
-./scripts/vm/remote-run.sh "$IP" family-groups.sh
-./scripts/vm/remote-run.sh "$IP" family-init.sh family-a.family.test family-a
+IP_A=$(virsh domifaddr tws-family-a | awk '/ipv4/ {print $4}' | cut -d/ -f1)
+IP_B=$(virsh domifaddr tws-family-b | awk '/ipv4/ {print $4}' | cut -d/ -f1)
+
+while read -r ip node domain; do
+  [[ -z "$ip" ]] && continue
+  ./scripts/vm/remote-run.sh "$ip" install-nextcloud-calendar.sh "$domain" "$node"
+  ./scripts/vm/remote-run.sh "$ip" install-family-dashboard.sh "$domain" "$node"
+  ./scripts/vm/remote-run.sh "$ip" setup-family-calendars.sh "$domain" "$node"
+  ./scripts/vm/remote-run.sh "$ip" family-groups.sh
+  ./scripts/vm/remote-run.sh "$ip" family-init.sh "$domain" "$node"
+done <<EOF
+$IP_A family-a family-a.family.test
+$IP_B family-b family-b.family.test
+EOF
 ```
 
 Always pass **MAIN_DOMAIN** and **NODE_NAME** (spark node id, not FQDN alone) to `remote-run.sh` when secrets are needed.
+
+Copy-paste **Manual steps on spark** for PRs from [docs/templates/spark-calendar-manual-steps.md](templates/spark-calendar-manual-steps.md).
 
 ## What we cannot enforce (v1)
 
