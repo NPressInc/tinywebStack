@@ -7,13 +7,29 @@ import os
 import sys
 import time
 import uuid
+import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 import caldav
 from caldav.lib.error import AuthorizationError, NotFoundError
 import vobject
+
+from tinywebstack_calendar.sharing import _open_caldav
+
+CALDAV_NS = "urn:ietf:params:xml:ns:caldav"
+TRASHBIN_CALENDAR_QUERY = f"""<?xml version="1.0" encoding="utf-8"?>
+<c:calendar-query xmlns:d="DAV:" xmlns:c="{CALDAV_NS}">
+  <d:prop>
+    <d:getetag />
+    <c:calendar-data />
+  </d:prop>
+  <c:filter>
+    <c:comp-filter name="VCALENDAR" />
+  </c:filter>
+</c:calendar-query>"""
 
 
 def _ssl_verify(cafile: str | None, insecure: bool) -> bool | str:
@@ -73,13 +89,6 @@ def _find_event_by_uid(client: caldav.DAVClient, uid: str, *, wait_seconds: floa
     return None
 
 
-def _calendar_url(cal: object) -> str:
-    url = getattr(cal, "url", "")
-    if hasattr(url, "path"):
-        return url.path
-    return str(url)
-
-
 def _delete_events_in_collection(collection: object, uid: str) -> None:
     try:
         events = list(collection.events())  # type: ignore[attr-defined]
@@ -105,7 +114,107 @@ def _scheduling_collections(principal: object) -> List[object]:
     return cols
 
 
-def _purge_uid_residue(client: caldav.DAVClient, uid: str) -> None:
+def _caldav_absolute_url(caldav_root: str, href: str) -> str:
+    href = href.strip()
+    if href.startswith("http://") or href.startswith("https://"):
+        return href
+    parsed = urlparse(caldav_root)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    if href.startswith("/"):
+        return origin + href
+    return urljoin(caldav_root.rstrip("/") + "/", href)
+
+
+def _trashbin_objects_url(caldav_root: str, username: str) -> str:
+    return f"{caldav_root.rstrip('/')}/calendars/{username}/trashbin/objects/"
+
+
+def _local_tag(tag: str) -> str:
+    return tag.split("}")[-1] if "}" in tag else tag
+
+
+def _response_prop_calendar_data(response: ET.Element) -> str:
+    chunks: List[str] = []
+    for elem in response.iter():
+        if _local_tag(elem.tag) == "calendar-data" and elem.text:
+            chunks.append(elem.text)
+    return "\n".join(chunks)
+
+
+def _trashbin_object_hrefs_matching_uid(report_xml: str, uid: str) -> List[str]:
+    """Parse a depth-1 calendar-query REPORT on trashbin/objects (Nextcloud CalDAV trash)."""
+    hrefs: List[str] = []
+    try:
+        root = ET.fromstring(report_xml)
+    except ET.ParseError:
+        return hrefs
+    for response in root.iter():
+        if _local_tag(response.tag) != "response":
+            continue
+        href_elem = None
+        for child in response:
+            if _local_tag(child.tag) == "href":
+                href_elem = child
+                break
+        if href_elem is None or not href_elem.text:
+            continue
+        href = href_elem.text.strip()
+        if uid in href or uid in _response_prop_calendar_data(response):
+            hrefs.append(href)
+    return hrefs
+
+
+def _purge_trashbin_objects(
+    caldav_root: str,
+    username: str,
+    password: str,
+    uid: str,
+    *,
+    cafile: str | None,
+    insecure: bool,
+) -> None:
+    """Permanently delete matching objects from Nextcloud's CalDAV trashbin collection."""
+    url = _trashbin_objects_url(caldav_root, username)
+    verify_ssl = not insecure
+    try:
+        _status, report_xml, _hdrs = _open_caldav(
+            url,
+            method="REPORT",
+            username=username,
+            password=password,
+            body=TRASHBIN_CALENDAR_QUERY.encode("utf-8"),
+            headers={"Depth": "1", "Content-Type": "application/xml; charset=utf-8"},
+            verify_ssl=verify_ssl,
+            cafile=cafile,
+        )
+    except RuntimeError as exc:
+        if "404" in str(exc):
+            return
+        raise
+    for href in _trashbin_object_hrefs_matching_uid(report_xml, uid):
+        delete_url = _caldav_absolute_url(caldav_root, href)
+        try:
+            _open_caldav(
+                delete_url,
+                method="DELETE",
+                username=username,
+                password=password,
+                verify_ssl=verify_ssl,
+                cafile=cafile,
+            )
+        except RuntimeError:
+            pass
+
+
+def _purge_uid_residue(
+    client: caldav.DAVClient,
+    uid: str,
+    *,
+    caldav_root: str,
+    password: str,
+    cafile: str | None,
+    insecure: bool,
+) -> None:
     """Delete verify events from calendars, Nextcloud trashbin, and scheduling mailboxes."""
     principal = client.principal()
 
@@ -116,10 +225,14 @@ def _purge_uid_residue(client: caldav.DAVClient, uid: str) -> None:
             _delete_events_in_collection(col, uid)
 
     _pass()
-    # Deleted events land in Nextcloud's CalDAV trashbin; remove them so later retention does not emit CANCEL iTIP.
-    for cal in principal.calendars():
-        if "trashbin" in _calendar_url(cal).lower():
-            _delete_events_in_collection(cal, uid)
+    _purge_trashbin_objects(
+        caldav_root,
+        client.username,
+        password,
+        uid,
+        cafile=cafile,
+        insecure=insecure,
+    )
     _pass()
 
 
@@ -200,8 +313,22 @@ def invite_roundtrip(
 
         return {"uid": uid, "status": "accept_and_decline", "calendar_id": calendar_id}
     finally:
-        _purge_uid_residue(owner_client, uid)
-        _purge_uid_residue(attendee_client, uid)
+        _purge_uid_residue(
+            owner_client,
+            uid,
+            caldav_root=caldav_root,
+            password=owner_password,
+            cafile=cafile,
+            insecure=insecure,
+        )
+        _purge_uid_residue(
+            attendee_client,
+            uid,
+            caldav_root=caldav_root,
+            password=attendee_password,
+            cafile=cafile,
+            insecure=insecure,
+        )
 
 
 def verify_login(caldav_root: str, username: str, password: str, *, cafile: str | None, insecure: bool) -> None:

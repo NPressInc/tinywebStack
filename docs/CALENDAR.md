@@ -84,24 +84,28 @@ Use `LAB_PASSWORD=dummydummy` in `config/local.env` so test secrets stay predict
 
 ### Upgrading nodes after calendar fixes
 
-Re-sync scripts, then on each VM (`IP` from `virsh domifaddr`, node name `family-a` / `family-b`):
+Re-sync scripts, then on each VM (`IP` from `virsh domifaddr`, node name `family-a` / `family-b`). On spark, libvirt uses the **system** URI (see [test-nodes.md](test-nodes.md)):
 
 ```bash
+export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
+# or: sg libvirt -c 'bash -s' <<'SH' … SH
+
 IP_A=$(virsh domifaddr tws-family-a | awk '/ipv4/ {print $4}' | cut -d/ -f1)
 IP_B=$(virsh domifaddr tws-family-b | awk '/ipv4/ {print $4}' | cut -d/ -f1)
 
-while read -r ip node domain; do
-  [[ -z "$ip" ]] && continue
+while read -r node domain ip; do
+  [[ -z "$node" || -z "$domain" || -z "$ip" ]] && continue
   ./scripts/vm/remote-run.sh "$ip" install-nextcloud-calendar.sh "$domain" "$node"
-  ./scripts/vm/remote-run.sh "$ip" install-family-dashboard.sh "$domain" "$node"
   ./scripts/vm/remote-run.sh "$ip" setup-family-calendars.sh "$domain" "$node"
   ./scripts/vm/remote-run.sh "$ip" family-groups.sh
   ./scripts/vm/remote-run.sh "$ip" family-init.sh "$domain" "$node"
 done <<EOF
-$IP_A family-a family-a.family.test
-$IP_B family-b family-b.family.test
+family-a family-a.family.test $IP_A
+family-b family-b.family.test $IP_B
 EOF
 ```
+
+(`family-init.sh` reinstalls the dashboard; do not pass a node name to `install-family-dashboard.sh` — it only accepts `MAIN_DOMAIN`.)
 
 Always pass **MAIN_DOMAIN** and **NODE_NAME** (spark node id, not FQDN alone) to `remote-run.sh` when secrets are needed.
 
