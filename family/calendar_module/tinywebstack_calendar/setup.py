@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -20,7 +21,6 @@ from tinywebstack_calendar.sharing import group_principal, share_calendar_with_p
 
 STATE_PATH = Path("/etc/tinywebstack/calendar-state.json")
 
-# Disable noisy Nextcloud apps for v1 (calendar-only UX). Keep core DAV + sharing apps enabled.
 DISABLED_NC_APPS = (
     "files",
     "photos",
@@ -58,18 +58,35 @@ def run_occ(occ_cmd: List[str], *, occ_path: str, run_as: str) -> str:
     return proc.stdout
 
 
-def list_calendars(occ_path: str, run_as: str, username: str) -> List[str]:
-    out = run_occ(["dav:list-calendars", username], occ_path=occ_path, run_as=run_as)
+def parse_calendar_ids_from_occ_output(out: str) -> List[str]:
+    """Parse ``occ dav:list-calendars`` (bullet list or ASCII table)."""
     ids: List[str] = []
     for line in out.splitlines():
-        line = line.strip()
-        if not line or line.startswith("User "):
+        raw = line.strip()
+        if not raw or raw.lower().startswith("user "):
             continue
-        # " - tws-family (Family)"
-        if line.startswith("- "):
-            slug = line[2:].split(" ", 1)[0]
-            ids.append(slug)
+        if raw.startswith("- "):
+            ids.append(raw[2:].split(" ", 1)[0].strip())
+            continue
+        if "|" in raw and not raw.startswith("+") and "---" not in raw:
+            cells = [c.strip() for c in raw.strip("|").split("|")]
+            if not cells:
+                continue
+            name = cells[0]
+            if name.lower() in ("name", "calendar", "display name", ""):
+                continue
+            ids.append(name.split()[0])
     return ids
+
+
+def list_calendars(occ_path: str, run_as: str, username: str) -> List[str]:
+    out = run_occ(["dav:list-calendars", username], occ_path=occ_path, run_as=run_as)
+    return parse_calendar_ids_from_occ_output(out)
+
+
+def _is_duplicate_calendar_error(err: RuntimeError) -> bool:
+    msg = str(err)
+    return "1062" in msg or "Duplicate entry" in msg or "already exists" in msg.lower()
 
 
 def ensure_calendar(
@@ -81,7 +98,12 @@ def ensure_calendar(
 ) -> None:
     if calendar_id in existing:
         return
-    run_occ(["dav:create-calendar", owner, calendar_id], occ_path=occ_path, run_as=run_as)
+    try:
+        run_occ(["dav:create-calendar", owner, calendar_id], occ_path=occ_path, run_as=run_as)
+    except RuntimeError as exc:
+        if _is_duplicate_calendar_error(exc):
+            return
+        raise
 
 
 def ensure_personal_calendar(occ_path: str, run_as: str, username: str) -> None:
@@ -89,7 +111,19 @@ def ensure_personal_calendar(occ_path: str, run_as: str, username: str) -> None:
     personal_id = f"personal-{username}"
     if personal_id in existing or "personal" in existing:
         return
-    run_occ(["dav:create-calendar", username, personal_id], occ_path=occ_path, run_as=run_as)
+    try:
+        run_occ(["dav:create-calendar", username, personal_id], occ_path=occ_path, run_as=run_as)
+    except RuntimeError as exc:
+        if _is_duplicate_calendar_error(exc):
+            return
+        raise
+
+
+def sync_ldap_group(occ_path: str, run_as: str, group: str) -> None:
+    try:
+        run_occ(["ldap:check-group", group, "--update"], occ_path=occ_path, run_as=run_as)
+    except RuntimeError:
+        pass
 
 
 def _enabled_apps(list_output: str) -> set[str]:
@@ -135,11 +169,13 @@ def share_household_calendars(
     parents_group: str,
     kids_group: str,
     family_group: str,
+    federation_test_group: str,
     nextcloud_path: str,
     cafile: str | None,
 ) -> None:
     shares = [
         (CALENDAR_IDS["family"], family_group, "read-write"),
+        (CALENDAR_IDS["family"], federation_test_group, "read-write"),
         (CALENDAR_IDS["parents"], parents_group, "read-write"),
         (CALENDAR_IDS["kids"], kids_group, "read-write"),
     ]
@@ -152,8 +188,8 @@ def share_household_calendars(
             group_principal(group),
             access=access,  # type: ignore[arg-type]
             cafile=cafile,
+            skip_if_shared=True,
         )
-    # Parents can always manage the kids calendar.
     parents_on_kids = principal_calendar_url(main_domain, owner, CALENDAR_IDS["kids"], nextcloud_path)
     share_calendar_with_principal(
         parents_on_kids,
@@ -162,6 +198,7 @@ def share_household_calendars(
         group_principal(parents_group),
         access="read-write",
         cafile=cafile,
+        skip_if_shared=True,
     )
 
 
@@ -191,6 +228,15 @@ def build_state(
     }
 
 
+def _owner_password_from_env_or_arg(arg_password: str | None) -> str:
+    if arg_password:
+        return arg_password
+    env = os.environ.get("TWS_CALENDAR_SETUP_OWNER_PASSWORD", "")
+    if env:
+        return env
+    raise SystemExit("owner password required (--owner-password or TWS_CALENDAR_SETUP_OWNER_PASSWORD)")
+
+
 def main(argv: List[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Provision tinywebStack shared calendars on Nextcloud")
     parser.add_argument("main_domain")
@@ -198,19 +244,25 @@ def main(argv: List[str] | None = None) -> int:
     parser.add_argument("--occ-path", required=True)
     parser.add_argument("--occ-user", required=True)
     parser.add_argument("--owner", default="parent")
-    parser.add_argument("--owner-password", required=True)
+    parser.add_argument("--owner-password", default="")
     parser.add_argument("--parents-group", default="parents")
     parser.add_argument("--kids-group", default="kids")
+    parser.add_argument("--federation-test-group", default="federation-test")
     parser.add_argument("--nextcloud-path", default="/nextcloud")
     parser.add_argument("--users", default="parent,kid", help="Comma-separated LDAP users to ensure personal calendars")
     parser.add_argument("--cafile", default="")
     parser.add_argument("--state-path", default=str(STATE_PATH))
     args = parser.parse_args(argv)
 
+    owner_password = _owner_password_from_env_or_arg(args.owner_password or None)
     family_group = family_group_name(args.main_domain, args.node_name)
     cafile = args.cafile or None
 
     apply_nextcloud_hardening(args.occ_path, args.occ_user)
+    sync_ldap_group(args.occ_path, args.occ_user, family_group)
+    sync_ldap_group(args.occ_path, args.occ_user, args.parents_group)
+    sync_ldap_group(args.occ_path, args.occ_user, args.kids_group)
+    sync_ldap_group(args.occ_path, args.occ_user, args.federation_test_group)
 
     existing = list_calendars(args.occ_path, args.occ_user, args.owner)
     for key in CALENDAR_IDS:
@@ -223,10 +275,11 @@ def main(argv: List[str] | None = None) -> int:
     share_household_calendars(
         main_domain=args.main_domain,
         owner=args.owner,
-        owner_password=args.owner_password,
+        owner_password=owner_password,
         parents_group=args.parents_group,
         kids_group=args.kids_group,
         family_group=family_group,
+        federation_test_group=args.federation_test_group,
         nextcloud_path=args.nextcloud_path,
         cafile=cafile,
     )
