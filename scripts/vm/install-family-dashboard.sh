@@ -144,6 +144,9 @@ else
   grep -q '^TWS_EVENTS_PERMS_CMD=' "$CSRF_FILE" \
     && sed -i 's|^TWS_EVENTS_PERMS_CMD=.*|TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"|' "$CSRF_FILE" \
     || printf '%s\n' 'TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"' >>"$CSRF_FILE"
+  grep -q '^TWS_CALDAV_ROOT=' "$CSRF_FILE" \
+    && sed -i "s|^TWS_CALDAV_ROOT=.*|TWS_CALDAV_ROOT=${CALDAV_ROOT}|" "$CSRF_FILE" \
+    || printf 'TWS_CALDAV_ROOT=%s\n' "$CALDAV_ROOT" >>"$CSRF_FILE"
 fi
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack
