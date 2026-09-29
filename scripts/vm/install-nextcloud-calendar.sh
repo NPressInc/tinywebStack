@@ -48,11 +48,16 @@ install_app() {
     log "[tinywebstack] App nextcloud already installed"
     return 0
   fi
-  local args="domain=${NC_DOMAIN}&path=${NC_PATH}&admin=${YUNOHOST_ADMIN_USER}&init_main_permission=all_users&user_home=0"
+  # visitors: nginx allows CalDAV without portal SSO cookie; Nextcloud handles Basic auth.
+  local args="domain=${NC_DOMAIN}&path=${NC_PATH}&admin=${YUNOHOST_ADMIN_USER}&init_main_permission=visitors&user_home=0"
   yunohost app install nextcloud --args "$args"
 }
 
 install_app
+
+if yunohost app list 2>/dev/null | grep -qw nextcloud; then
+  yunohost user permission add nextcloud.main visitors 2>/dev/null || true
+fi
 
 if ! run_nextcloud_occ app:enable calendar; then
   die "Failed to enable Nextcloud Calendar app"
