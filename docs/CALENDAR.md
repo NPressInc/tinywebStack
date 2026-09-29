@@ -6,7 +6,13 @@ Install flow (lab or production node):
 
 1. `install-nextcloud-calendar.sh` — YunoHost catalog app, Calendar enabled, LDAP/SSO.
 2. `family-init.sh` — after parent/kid users exist, `setup-family-calendars.sh` creates shared calendars and writes `/etc/tinywebstack/calendar-state.json`.
-3. `family-groups.sh` — grants `nextcloud.main` to `parents`, `kids`, and `federation-test`, and **hides** the Nextcloud portal tile (CalDAV-only v1).
+3. `family-groups.sh` — grants `nextcloud.main` to `parents`, `kids`, and `federation-test`, keeps **`visitors`** so CalDAV clients reach Nextcloud without a portal SSO cookie, and **hides** the Nextcloud portal tile (CalDAV-only v1).
+
+### CalDAV vs Nextcloud web login (visitors permission)
+
+YunoHost **`visitors`** on `nextcloud.main` lets nginx pass traffic to Nextcloud for **Basic-auth CalDAV** (`/nextcloud/remote.php/dav`, `/.well-known/caldav`) without an SSOwat session cookie. That also means anyone who knows the URL can open **Nextcloud’s own login page** at `/nextcloud/login` (LDAP passwords still required; YunoHost/Nextcloud brute-force protection applies).
+
+We accept this trade-off for v1 phone clients. The **TinyWeb dashboard** remains the family-facing UI; the Nextcloud portal tile stays hidden. A tighter follow-up is to restrict `visitors` to DAV/well-known paths only if YunoHost’s per-URL permission model allows it, while keeping the full web UI behind SSO for browsers.
 
 CalDAV base URL (default path):
 
@@ -75,6 +81,20 @@ After `family-init.sh` on both VMs:
 Checks CalDAV login for `parent` and `kid`, then a parent → kid invite accept round trip on the shared family calendar.
 
 Use `LAB_PASSWORD=dummydummy` in `config/local.env` so test secrets stay predictable (never in production).
+
+### Upgrading nodes after calendar fixes
+
+Re-sync scripts, then on each VM (`IP` from `virsh domifaddr`, node name `family-a` / `family-b`):
+
+```bash
+./scripts/vm/remote-run.sh "$IP" install-nextcloud-calendar.sh family-a.family.test family-a
+./scripts/vm/remote-run.sh "$IP" install-family-dashboard.sh family-a.family.test family-a
+./scripts/vm/remote-run.sh "$IP" setup-family-calendars.sh family-a.family.test family-a
+./scripts/vm/remote-run.sh "$IP" family-groups.sh
+./scripts/vm/remote-run.sh "$IP" family-init.sh family-a.family.test family-a
+```
+
+Always pass **MAIN_DOMAIN** and **NODE_NAME** (spark node id, not FQDN alone) to `remote-run.sh` when secrets are needed.
 
 ## What we cannot enforce (v1)
 

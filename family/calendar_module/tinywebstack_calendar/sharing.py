@@ -87,30 +87,7 @@ def _open_caldav(
         raise RuntimeError(f"CalDAV request failed ({exc.code}): {detail[:500]}") from exc
 
 
-def list_calendar_sharees(
-    calendar_url: str,
-    owner_username: str,
-    owner_password: str,
-    *,
-    verify_ssl: bool = True,
-    cafile: str | None = None,
-) -> Set[str]:
-    """Return principal hrefs already shared on this calendar."""
-    calendar_url = calendar_url.rstrip("/") + "/"
-    body = f"""<?xml version="1.0" encoding="utf-8"?>
-<d:propfind xmlns:d="{DAV_NS}" xmlns:oc="{OC_NS}">
-  <d:prop><oc:sharees/></d:prop>
-</d:propfind>"""
-    _status, text, _hdrs = _open_caldav(
-        calendar_url,
-        method="PROPFIND",
-        username=owner_username,
-        password=owner_password,
-        body=body.encode("utf-8"),
-        headers={"Depth": "0", "Content-Type": "application/xml; charset=utf-8"},
-        verify_ssl=verify_ssl,
-        cafile=cafile,
-    )
+def _parse_principal_hrefs_from_propfind(text: str) -> Set[str]:
     sharees: Set[str] = set()
     try:
         root = ET.fromstring(text)
@@ -121,6 +98,69 @@ def list_calendar_sharees(
         if tag == "href" and elem.text and "principal:" in elem.text:
             sharees.add(elem.text.strip())
     return sharees
+
+
+def list_calendar_sharees(
+    calendar_url: str,
+    owner_username: str,
+    owner_password: str,
+    *,
+    verify_ssl: bool = True,
+    cafile: str | None = None,
+) -> Set[str]:
+    """Return principal hrefs already shared on this calendar (Nextcloud oc:invite)."""
+    calendar_url = calendar_url.rstrip("/") + "/"
+    body = f"""<?xml version="1.0" encoding="utf-8"?>
+<d:propfind xmlns:d="{DAV_NS}" xmlns:oc="{OC_NS}">
+  <d:prop><oc:invite/></d:prop>
+</d:propfind>"""
+    try:
+        _status, text, _hdrs = _open_caldav(
+            calendar_url,
+            method="PROPFIND",
+            username=owner_username,
+            password=owner_password,
+            body=body.encode("utf-8"),
+            headers={"Depth": "0", "Content-Type": "application/xml; charset=utf-8"},
+            verify_ssl=verify_ssl,
+            cafile=cafile,
+        )
+    except RuntimeError as exc:
+        if "404" in str(exc):
+            return set()
+        raise
+    return _parse_principal_hrefs_from_propfind(text)
+
+
+def set_calendar_display_name(
+    calendar_url: str,
+    owner_username: str,
+    owner_password: str,
+    display_name: str,
+    *,
+    verify_ssl: bool = True,
+    cafile: str | None = None,
+) -> None:
+    """Set DAV displayname on a calendar collection (idempotent)."""
+    calendar_url = calendar_url.rstrip("/") + "/"
+    body = f"""<?xml version="1.0" encoding="utf-8"?>
+<d:propertyupdate xmlns:d="{DAV_NS}">
+  <d:set>
+    <d:prop>
+      <d:displayname>{escape(display_name)}</d:displayname>
+    </d:prop>
+  </d:set>
+</d:propertyupdate>"""
+    _open_caldav(
+        calendar_url,
+        method="PROPPATCH",
+        username=owner_username,
+        password=owner_password,
+        body=body.encode("utf-8"),
+        headers={"Content-Type": "application/xml; charset=utf-8"},
+        verify_ssl=verify_ssl,
+        cafile=cafile,
+    )
 
 
 def share_calendar_with_principal(

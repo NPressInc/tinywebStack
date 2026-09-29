@@ -32,9 +32,21 @@ load_secrets() {
   fi
 }
 
+validate_spark_node_name() {
+  local node=$1
+  local ctx=${2:-secrets lookup}
+  if [[ "$node" == *.* ]]; then
+    die "Invalid node name '${node}' for ${ctx} (looks like a domain). Use the spark node id (e.g. family-a), not family-a.family.test. Example: remote-run.sh \"\$IP\" install-family-dashboard.sh family-a.family.test family-a"
+  fi
+  if [[ ! "$node" =~ ^[a-zA-Z][a-zA-Z0-9_-]*$ ]]; then
+    die "Invalid node name '${node}' for ${ctx} (use letters, digits, hyphen, underscore; e.g. family-a)"
+  fi
+}
+
 secret_key_for_node() {
   local node=$1
   local kind=${2:-yunohost_admin_password}
+  validate_spark_node_name "$node"
   printf '%s_%s' "$(echo "$kind" | tr '[:lower:]' '[:upper:]')" "$(echo "$node" | tr '[:lower:]-' '[:upper:]_')"
 }
 

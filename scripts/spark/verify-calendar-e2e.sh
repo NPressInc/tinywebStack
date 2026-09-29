@@ -3,22 +3,26 @@
 set -euo pipefail
 
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -f "${_script_dir}/../lib/common.sh" ]]; then
-  TW_STACK_ROOT="$(cd "${_script_dir}/.." && pwd)"
-  # shellcheck source=scripts/lib/common.sh
-  source "${TW_STACK_ROOT}/lib/common.sh"
-  # shellcheck source=scripts/lib/domains.sh
-  source "${TW_STACK_ROOT}/lib/domains.sh"
-  # shellcheck source=scripts/lib/secrets.sh
-  source "${TW_STACK_ROOT}/lib/secrets.sh"
-else
-  TW_STACK_ROOT="$(cd "${_script_dir}/../.." && pwd)"
+# shellcheck source=scripts/lib/tw_stack_root.sh
+source "${_script_dir}/../lib/tw_stack_root.sh"
+TW_STACK_ROOT="$(tw_stack_root_from_script_dir "$_script_dir")" || {
+  echo "[tinywebstack] ERROR: Cannot locate tinywebStack root from ${_script_dir}" >&2
+  exit 1
+}
+if [[ -f "${TW_STACK_ROOT}/scripts/lib/common.sh" ]]; then
   # shellcheck source=scripts/lib/common.sh
   source "${TW_STACK_ROOT}/scripts/lib/common.sh"
   # shellcheck source=scripts/lib/domains.sh
   source "${TW_STACK_ROOT}/scripts/lib/domains.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+else
+  # shellcheck source=scripts/lib/common.sh
+  source "${TW_STACK_ROOT}/lib/common.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/lib/domains.sh"
+  # shellcheck source=scripts/lib/secrets.sh
+  source "${TW_STACK_ROOT}/lib/secrets.sh"
 fi
 load_config
 load_secrets

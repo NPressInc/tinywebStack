@@ -18,6 +18,15 @@ fi
 log() { printf '[tinywebstack] %s\n' "$*" >&2; }
 die() { log "ERROR: $*"; exit 1; }
 
+# Run scripts/vm/*.sh via bash (do not rely on +x in rsync deploy trees).
+run_vm_script() {
+  local script_name=$1
+  shift
+  local path="${TW_STACK_ROOT}/vm/${script_name}"
+  [[ -f "$path" ]] || die "Missing VM script: ${path}"
+  bash "$path" "$@"
+}
+
 require_cmd() {
   local c
   for c in "$@"; do

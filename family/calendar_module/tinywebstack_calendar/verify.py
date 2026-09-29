@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import ssl
 import sys
 import time
 import uuid
@@ -70,8 +69,30 @@ def _find_event_by_uid(client: caldav.DAVClient, uid: str, *, wait_seconds: floa
             for event in cal.events():
                 if uid in (event.data or ""):
                     return event
-        time.sleep(1.0)
+        time.sleep(1.0 if wait_seconds > 0 else 0)
     return None
+
+
+def _delete_events_with_uid(client: caldav.DAVClient, uid: str) -> None:
+    principal = client.principal()
+    for cal in principal.calendars():
+        for event in list(cal.events()):
+            if uid in (event.data or ""):
+                try:
+                    event.delete()
+                except Exception:
+                    pass
+    try:
+        inbox = principal.schedule_inbox()
+    except Exception:
+        inbox = None
+    if inbox is not None:
+        for event in list(inbox.events()):
+            if uid in (event.data or ""):
+                try:
+                    event.delete()
+                except Exception:
+                    pass
 
 
 def _attendee_partstat(event_data: str, attendee_email: str) -> Optional[str]:
@@ -100,55 +121,59 @@ def invite_roundtrip(
     owner_client = dav_client(caldav_root, owner_user, owner_password, cafile=cafile, insecure=insecure)
     attendee_client = dav_client(caldav_root, attendee_user, attendee_password, cafile=cafile, insecure=insecure)
 
-    cal = find_calendar(owner_client, calendar_id)
-    utc = ZoneInfo("UTC")
-    start = datetime.now(tz=utc).replace(microsecond=0) + timedelta(days=2)
-    end = start + timedelta(hours=1)
     uid = f"tws-verify-{uuid.uuid4()}@tinywebstack"
+    try:
+        cal = find_calendar(owner_client, calendar_id)
+        utc = ZoneInfo("UTC")
+        start = datetime.now(tz=utc).replace(microsecond=0) + timedelta(days=2)
+        end = start + timedelta(hours=1)
 
-    vevent = vobject.iCalendar()
-    vevent.add("vevent")
-    vevent.vevent.add("uid").value = uid
-    _add_utc_vevent_times(vevent.vevent, start, end)
-    vevent.vevent.add("summary").value = "tinywebStack calendar verify"
-    org = vevent.vevent.add("organizer")
-    org.value = f"mailto:{organizer_email}"
-    org.params["CN"] = [owner_user]
-    attendee = vevent.vevent.add("attendee")
-    attendee.value = f"mailto:{attendee_email}"
-    attendee.params["PARTSTAT"] = ["NEEDS-ACTION"]
-    attendee.params["RSVP"] = ["TRUE"]
-    cal.save_event(vevent.serialize())
+        vevent = vobject.iCalendar()
+        vevent.add("vevent")
+        vevent.vevent.add("uid").value = uid
+        _add_utc_vevent_times(vevent.vevent, start, end)
+        vevent.vevent.add("summary").value = "tinywebStack calendar verify"
+        org = vevent.vevent.add("organizer")
+        org.value = f"mailto:{organizer_email}"
+        org.params["CN"] = [owner_user]
+        attendee = vevent.vevent.add("attendee")
+        attendee.value = f"mailto:{attendee_email}"
+        attendee.params["PARTSTAT"] = ["NEEDS-ACTION"]
+        attendee.params["RSVP"] = ["TRUE"]
+        cal.save_event(vevent.serialize())
 
-    found = _find_event_by_uid(attendee_client, uid)
-    if found is None:
-        raise RuntimeError("invite not visible on attendee calendars")
+        found = _find_event_by_uid(attendee_client, uid)
+        if found is None:
+            raise RuntimeError("invite not visible on attendee calendars")
 
-    def _set_partstat(partstat: str) -> None:
-        nonlocal found
-        assert found is not None
-        cal_data = vobject.readOne(found.data)
-        for att in cal_data.vevent.contents.get("attendee", []):
-            att.params["PARTSTAT"] = [partstat]
-        found.data = cal_data.serialize()
-        found.save()
+        def _set_partstat(partstat: str) -> None:
+            nonlocal found
+            assert found is not None
+            cal_data = vobject.readOne(found.data)
+            for att in cal_data.vevent.contents.get("attendee", []):
+                att.params["PARTSTAT"] = [partstat]
+            found.data = cal_data.serialize()
+            found.save()
 
-    _set_partstat("ACCEPTED")
-    owner_event = _find_event_by_uid(owner_client, uid, wait_seconds=25.0)
-    if owner_event is None:
-        raise RuntimeError("organizer copy missing after accept")
-    if _attendee_partstat(owner_event.data, attendee_email) != "ACCEPTED":
-        raise RuntimeError("organizer did not see ACCEPTED after attendee accept")
+        _set_partstat("ACCEPTED")
+        owner_event = _find_event_by_uid(owner_client, uid, wait_seconds=25.0)
+        if owner_event is None:
+            raise RuntimeError("organizer copy missing after accept")
+        if _attendee_partstat(owner_event.data, attendee_email) != "ACCEPTED":
+            raise RuntimeError("organizer did not see ACCEPTED after attendee accept")
 
-    found = _find_event_by_uid(attendee_client, uid, wait_seconds=10.0) or found
-    _set_partstat("DECLINED")
-    owner_event = _find_event_by_uid(owner_client, uid, wait_seconds=25.0)
-    if owner_event is None:
-        raise RuntimeError("organizer copy missing after decline")
-    if _attendee_partstat(owner_event.data, attendee_email) != "DECLINED":
-        raise RuntimeError("organizer did not see DECLINED after attendee decline")
+        found = _find_event_by_uid(attendee_client, uid, wait_seconds=10.0) or found
+        _set_partstat("DECLINED")
+        owner_event = _find_event_by_uid(owner_client, uid, wait_seconds=25.0)
+        if owner_event is None:
+            raise RuntimeError("organizer copy missing after decline")
+        if _attendee_partstat(owner_event.data, attendee_email) != "DECLINED":
+            raise RuntimeError("organizer did not see DECLINED after attendee decline")
 
-    return {"uid": uid, "status": "accept_and_decline", "calendar_id": calendar_id}
+        return {"uid": uid, "status": "accept_and_decline", "calendar_id": calendar_id}
+    finally:
+        _delete_events_with_uid(owner_client, uid)
+        _delete_events_with_uid(attendee_client, uid)
 
 
 def verify_login(caldav_root: str, username: str, password: str, *, cafile: str | None, insecure: bool) -> None:

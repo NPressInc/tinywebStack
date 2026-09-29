@@ -7,7 +7,7 @@
 {% endblock %}
 {% block content %}
 <h1>Phone calendars</h1>
-<p class="hint">v1 uses CalDAV apps on your phone (DAVx5 on Android, Apple Calendar on iOS). You do not need the Nextcloud website.</p>
+<p class="hint">Use a calendar app on your phone — not the Nextcloud website. Parents can reset family passwords from <a href="{{ url('/members') }}">Family members</a>.</p>
 <div class="card">
   <h2>Your CalDAV settings</h2>
   <ul>
@@ -19,5 +19,22 @@
   <p>Scan this QR code to copy the server URL and username (paste into DAVx5 “Login with URL and user name”):</p>
   <p><img src="{{ qr_url }}" alt="CalDAV setup QR" style="max-width:100%;height:auto;"></p>
 </div>
-<p class="hint">Shared calendars: <strong>Family</strong>, <strong>Parents</strong> (parents only), <strong>Kids</strong>, plus your personal calendar. See <code>docs/CALENDAR.md</code> on the server for the full permission table.</p>
+<div class="card">
+  <h2>Android (DAVx5)</h2>
+  <ol>
+    <li>Install <a href="https://www.davx5.com/" rel="noopener">DAVx5</a> from the Play Store.</li>
+    <li>Add account → <strong>Login with URL and user name</strong>.</li>
+    <li>Base URL: the server URL above; username and password as listed.</li>
+    <li>When sync finishes, enable <strong>Family</strong>, <strong>Personal</strong>, and any other shared calendars you need.</li>
+  </ol>
+</div>
+<div class="card">
+  <h2>iPhone / iPad (Apple Calendar)</h2>
+  <ol>
+    <li>Settings → Calendar → Accounts → Add Account → <strong>Other</strong> → <strong>Add CalDAV Account</strong>.</li>
+    <li>Server: your Nextcloud hostname (the part after <code>https://</code> in the server URL).</li>
+    <li>Username and password: as listed above. If needed, open <strong>Advanced</strong> and set Account URL to the principal URL.</li>
+  </ol>
+</div>
+<p class="hint">Shared calendars on this home: <strong>Family</strong> (everyone), <strong>Parents</strong> (adults only), <strong>Kids</strong> (children + parents), plus your personal calendar.</p>
 {% endblock %}

@@ -17,7 +17,11 @@ from tinywebstack_calendar.naming import (
     family_group_name,
     principal_calendar_url,
 )
-from tinywebstack_calendar.sharing import group_principal, share_calendar_with_principal
+from tinywebstack_calendar.sharing import (
+    group_principal,
+    set_calendar_display_name,
+    share_calendar_with_principal,
+)
 
 STATE_PATH = Path("/etc/tinywebstack/calendar-state.json")
 
@@ -271,6 +275,20 @@ def main(argv: List[str] | None = None) -> int:
 
     for user in [u.strip() for u in args.users.split(",") if u.strip()]:
         ensure_personal_calendar(args.occ_path, args.occ_user, user)
+
+    for key in CALENDAR_IDS:
+        cal_id = CALENDAR_IDS[key]
+        cal_url = principal_calendar_url(args.main_domain, args.owner, cal_id, args.nextcloud_path)
+        try:
+            set_calendar_display_name(
+                cal_url,
+                args.owner,
+                owner_password,
+                CALENDAR_DISPLAY[key],
+                cafile=cafile,
+            )
+        except RuntimeError:
+            pass
 
     share_household_calendars(
         main_domain=args.main_domain,

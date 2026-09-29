@@ -21,23 +21,20 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-"${TW_STACK_ROOT}/vm/family-groups.sh"
-if [[ -x "${TW_STACK_ROOT}/vm/install-mobilizon.sh" ]]; then
-  "${TW_STACK_ROOT}/vm/install-mobilizon.sh" "$MAIN_DOMAIN" "${NODE_NAME:-}"
+run_vm_script family-groups.sh
+if [[ -f "${TW_STACK_ROOT}/vm/install-mobilizon.sh" ]]; then
+  run_vm_script install-mobilizon.sh "$MAIN_DOMAIN" "${NODE_NAME:-}"
 fi
-"${TW_STACK_ROOT}/vm/install-family-module.sh" "$MAIN_DOMAIN"
-"${TW_STACK_ROOT}/vm/install-family-dashboard.sh" "$MAIN_DOMAIN"
-if [[ -x "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" ]]; then
-  "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" "$MAIN_DOMAIN"
-fi
-
-if [[ -n "$NODE_NAME" && -x "${TW_STACK_ROOT}/vm/create-family-test-users.sh" ]]; then
-  "${TW_STACK_ROOT}/vm/create-family-test-users.sh" "$MAIN_DOMAIN" "$NODE_NAME"
+run_vm_script install-family-module.sh "$MAIN_DOMAIN"
+run_vm_script install-family-dashboard.sh "$MAIN_DOMAIN"
+if [[ -f "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" ]]; then
+  run_vm_script install-tinyweb-portal-branding.sh "$MAIN_DOMAIN"
 fi
 
-if [[ -n "$NODE_NAME" && -x "${TW_STACK_ROOT}/vm/setup-family-calendars.sh" ]]; then
-  "${TW_STACK_ROOT}/vm/setup-family-calendars.sh" "$MAIN_DOMAIN" "$NODE_NAME"
-  "${TW_STACK_ROOT}/vm/family-groups.sh"
+if [[ -n "$NODE_NAME" ]]; then
+  run_vm_script create-family-test-users.sh "$MAIN_DOMAIN" "$NODE_NAME"
+  run_vm_script setup-family-calendars.sh "$MAIN_DOMAIN" "$NODE_NAME"
+  run_vm_script family-groups.sh
 fi
 
 log "Family layer init complete for ${MAIN_DOMAIN}"
