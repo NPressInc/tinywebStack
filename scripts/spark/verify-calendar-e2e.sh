@@ -3,13 +3,23 @@
 set -euo pipefail
 
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TW_STACK_ROOT="$(cd "${_script_dir}/../.." && pwd)"
-# shellcheck source=scripts/lib/common.sh
-source "${TW_STACK_ROOT}/scripts/lib/common.sh"
-# shellcheck source=scripts/lib/domains.sh
-source "${TW_STACK_ROOT}/scripts/lib/domains.sh"
-# shellcheck source=scripts/lib/secrets.sh
-source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+if [[ -f "${_script_dir}/../lib/common.sh" ]]; then
+  TW_STACK_ROOT="$(cd "${_script_dir}/.." && pwd)"
+  # shellcheck source=scripts/lib/common.sh
+  source "${TW_STACK_ROOT}/lib/common.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/lib/domains.sh"
+  # shellcheck source=scripts/lib/secrets.sh
+  source "${TW_STACK_ROOT}/lib/secrets.sh"
+else
+  TW_STACK_ROOT="$(cd "${_script_dir}/../.." && pwd)"
+  # shellcheck source=scripts/lib/common.sh
+  source "${TW_STACK_ROOT}/scripts/lib/common.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/scripts/lib/domains.sh"
+  # shellcheck source=scripts/lib/secrets.sh
+  source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+fi
 load_config
 load_secrets
 
@@ -53,6 +63,7 @@ LAB_CA="$(resolve_lab_ca || true)"
 NC_PATH="${TWS_NEXTCLOUD_PATH:-/nextcloud}"
 CALDAV_ROOT="https://$(nextcloud_domain "$MAIN_DOMAIN")${NC_PATH}/remote.php/dav"
 ATTENDEE_EMAIL="kid@${MAIN_DOMAIN}"
+ORGANIZER_EMAIL="parent@${MAIN_DOMAIN}"
 
 MODULE="${TW_STACK_ROOT}/family/calendar_module"
 VENV="${TW_STACK_ROOT}/.tools/calendar-verify-venv"
@@ -65,23 +76,25 @@ fi
 CA_ARGS=()
 [[ -n "$LAB_CA" ]] && CA_ARGS=(--cafile "$LAB_CA")
 
+export TWS_CALENDAR_VERIFY_PASSWORD="$PARENT_PASSWORD"
 "${VENV}/bin/python" -m tinywebstack_calendar.verify login \
   --caldav-root "$CALDAV_ROOT" \
   --user parent \
-  --password "$PARENT_PASSWORD" \
   "${CA_ARGS[@]}"
 
+export TWS_CALENDAR_VERIFY_PASSWORD="$KID_PASSWORD"
 "${VENV}/bin/python" -m tinywebstack_calendar.verify login \
   --caldav-root "$CALDAV_ROOT" \
   --user kid \
-  --password "$KID_PASSWORD" \
   "${CA_ARGS[@]}"
 
+export TWS_CALENDAR_VERIFY_PARENT_PASSWORD="$PARENT_PASSWORD"
+export TWS_CALENDAR_VERIFY_KID_PASSWORD="$KID_PASSWORD"
+export TWS_CALENDAR_VERIFY_ORGANIZER_EMAIL="$ORGANIZER_EMAIL"
 "${VENV}/bin/python" -m tinywebstack_calendar.verify invite-roundtrip \
   --caldav-root "$CALDAV_ROOT" \
-  --owner-password "$PARENT_PASSWORD" \
-  --attendee-password "$KID_PASSWORD" \
   --attendee-email "$ATTENDEE_EMAIL" \
+  --organizer-email "$ORGANIZER_EMAIL" \
   "${CA_ARGS[@]}"
 
 log "Calendar e2e OK for ${NODE_NAME} (${MAIN_DOMAIN})"
