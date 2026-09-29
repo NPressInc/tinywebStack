@@ -21,9 +21,9 @@
   <label>Timezone</label>
   <input name="qh_timezone" value="{{ qh_timezone }}" placeholder="America/Los_Angeles">
   <h2>Events</h2>
-  <label>
+  <label class="tw-check-label">
     <input type="checkbox" name="events_enabled" value="1" {% if events_enabled %}checked{% endif %}>
-    Allow this child to open the family events app (RSVPs)
+    <span>Allow this child to open the family events app (RSVPs)</span>
   </label>
   <button type="submit">Save</button>
 </form>

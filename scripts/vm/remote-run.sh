@@ -59,6 +59,7 @@ REMOTE_ENV="$(mktemp)"
   if [[ -n "${NODE_NAME:-}" && "$NODE_NAME" != "unknown" ]]; then
     pw="$(read_node_secret "$NODE_NAME" yunohost_admin_password || true)"
     [[ -n "$pw" ]] && printf 'YUNOHOST_ADMIN_PASSWORD=%q\n' "$pw"
+    [[ -n "$pw" ]] && printf 'MOBILIZON_ADMIN_PASSWORD=%q\n' "$pw"
     apw="$(read_node_secret "$NODE_NAME" alice_password || true)"
     [[ -n "$apw" ]] && printf 'ALICE_PASSWORD=%q\n' "$apw"
     bpw="$(read_node_secret "$NODE_NAME" bob_password || true)"

@@ -114,14 +114,28 @@ fi
 
 EVENTS_APP="${EVENTS_APP:-mobilizon}"
 if [[ "$EVENTS_APP" == "mobilizon" ]] && ynh_perm_exists "mobilizon.main"; then
+  MOB_ADMIN="${MOBILIZON_ADMIN_USER:-${YUNOHOST_ADMIN_USER:-twsowner}}"
+  SETUP_PY="${TW_STACK_ROOT}/lib/setup_mobilizon_permissions.py"
+  if [[ -f "$SETUP_PY" ]]; then
+    python3 "$SETUP_PY" \
+      --parents-group "$PARENTS_GROUP" \
+      --federation-test-group "$FED_TEST_GROUP" \
+      --admin-user "$MOB_ADMIN" || log "WARN: mobilizon SSO/federation permissions"
+  fi
   perm_remove mobilizon.main all_users || true
   perm_remove mobilizon.main visitors || true
+  perm_remove mobilizon.main "$KIDS_GROUP" || true
   perm_add mobilizon.main "$PARENTS_GROUP"
-  perm_add mobilizon.main "$KIDS_GROUP"
   perm_add mobilizon.main "$FED_TEST_GROUP"
-  show_portal_tile mobilizon.main --label "Events"
+  perm_add mobilizon.main "$MOB_ADMIN" || true
+  if ! configure_events_tile_logo mobilizon.main; then
+    show_portal_tile mobilizon.main --label "Events"
+  fi
   APPLY_PY="${TW_STACK_ROOT}/lib/apply_mobilizon_permissions.py"
   if [[ -f "$APPLY_PY" && -f /etc/tinywebstack/family-policy.json ]]; then
+    # shellcheck source=scripts/lib/mobilizon_python_path.sh
+    source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
+    export_mobilizon_pythonpath
     python3 "$APPLY_PY" --kids-group "$KIDS_GROUP" || log "WARN: mobilizon kid permissions"
   fi
 fi

@@ -146,16 +146,19 @@ Matrix verification uses the **lab CA** for TLS, has **bob join** the room, poll
 
 Calendar verification checks CalDAV login and a parent → kid invite accept round trip on each node (see [CALENDAR.md](CALENDAR.md)).
 
-Mobilizon verification logs in as **`parent`** (SSO) on each node, syncs trusted instances, creates an event on family-a and RSVPs from family-b, and checks a **non-trusted** probe host (`mobilizon.fr` by default) is not approved.
+Mobilizon verification checks **public** `/.well-known/nodeinfo` (no SSO redirect), syncs trusted instances as **`twsowner`** (YunoHost admin password from secrets), creates an event as **`parent`** with a default actor, waits for the federated **UUID** on family-b before RSVP, and **passively** checks `mobilizon.fr` is not followed (no outbound probe during sync).
+
+Before federation tests, ensure VMs resolve each other’s `mobilizon.*` hostnames (`sync-all-vm-peer-hosts.sh` above).
 
 ### Manual steps on spark
 
 With `LAB_PASSWORD=dummydummy` in `config/local.env` (≥8 characters), after both nodes reach `family-init.sh`:
 
-1. Confirm apps: `yunohost app list` on each VM should include **nextcloud** and **mobilizon** (re-run `yunohost-family-apps.sh` / `install-mobilizon.sh` if needed).
-2. Run `configure-federation-pair.sh` (Matrix + Mobilizon sync) if not already linked via dashboard invite.
-3. Run the three verify scripts above; fix DNS (`apply-private-dns.sh`) if HTTPS to `nextcloud.*` or `mobilizon.*` fails.
-4. Optional UI: `https://family-a.family.test/family/` → **CalDAV setup** and **open events**; child chat rules → toggle **Events** for a kid.
+1. Run **`./scripts/spark/sync-all-vm-peer-hosts.sh`** so each VM can reach the peer’s `mobilizon.*` hostname.
+2. Confirm apps: `yunohost app list` on each VM should include **nextcloud** and **mobilizon** (re-run `yunohost-family-apps.sh` / `install-mobilizon.sh` if needed).
+3. Run `configure-federation-pair.sh` (Matrix + Mobilizon sync) if not already linked via dashboard invite. Failures here are fatal (Mobilizon TLS/sync must succeed).
+4. Run the three verify scripts above; fix DNS (`apply-private-dns.sh`) on spark if HTTPS to `nextcloud.*` or `mobilizon.*` fails. Events verify requires the **lab CA** (no insecure TLS fallback).
+5. Optional UI: `https://family-a.family.test/family/` → **CalDAV setup** and **open events**; child chat rules → toggle **Events** for a kid (Mobilizon LDAP login after SSO if prompted).
 
 ---
 

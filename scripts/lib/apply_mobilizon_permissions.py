@@ -9,7 +9,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "family" / "synapse_module"))
+
+def _repo_root() -> Path:
+    here = Path(__file__).resolve()
+    for parent in here.parents:
+        if (parent / "family" / "synapse_module" / "tinywebstack_family").is_dir():
+            return parent
+    raise RuntimeError(f"Cannot locate family/synapse_module from {here}")
+
+
+sys.path.insert(0, str(_repo_root() / "family" / "synapse_module"))
 
 from tinywebstack_family.mobilizon import kid_usernames_with_events  # noqa: E402
 
@@ -32,7 +41,6 @@ def main() -> int:
     policy = json.loads(path.read_text(encoding="utf-8"))
     enabled = kid_usernames_with_events(policy)
 
-    # Group grant is handled by family-groups.sh; refine per-kid toggles here.
     listed = subprocess.run(
         ["yunohost", "user", "list", "--output-as-json"],
         capture_output=True,
