@@ -20,7 +20,7 @@ Parents open **Family home → Phone calendars** for setup text and a QR code (s
 
 | Calendar | Owner (CalDAV) | Shared with | Purpose |
 |----------|----------------|-------------|---------|
-| **Family** (`tws-family`) | `parent` | YunoHost group `family-<node>` (whole household) | Shared events everyone should see |
+| **Family** (`tws-family`) | `parent` | `family-<node>` + `federation-test` (lab) | Shared events everyone should see |
 | **Parents** (`tws-parents`) | `parent` | `parents` | Adults-only scheduling |
 | **Kids** (`tws-kids`) | `parent` | `kids` (+ `parents` read/write) | Children’s activities; parents manage |
 | **Personal** | each user | that user only | Per-person calendar (`personal-<user>` or default) |
