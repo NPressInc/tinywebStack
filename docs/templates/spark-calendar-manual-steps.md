@@ -5,18 +5,19 @@ Paste this section into calendar-related PR bodies after editing if needed.
 On each VM after pulling the branch:
 
 ```bash
+export LIBVIRT_DEFAULT_URI="${LIBVIRT_DEFAULT_URI:-qemu:///system}"
+
 IP_A=$(virsh domifaddr tws-family-a | awk '/ipv4/ {print $4}' | cut -d/ -f1)
 IP_B=$(virsh domifaddr tws-family-b | awk '/ipv4/ {print $4}' | cut -d/ -f1)
 
-while read -r ip node domain; do
-  [[ -z "$ip" ]] && continue
+while read -r node domain ip; do
+  [[ -z "$node" || -z "$domain" || -z "$ip" ]] && continue
   ./scripts/vm/remote-run.sh "$ip" install-nextcloud-calendar.sh "$domain" "$node"
-  ./scripts/vm/remote-run.sh "$ip" install-family-dashboard.sh "$domain" "$node"
   ./scripts/vm/remote-run.sh "$ip" setup-family-calendars.sh "$domain" "$node"
   ./scripts/vm/remote-run.sh "$ip" family-groups.sh
 done <<EOF
-$IP_A family-a family-a.family.test
-$IP_B family-b family-b.family.test
+family-a family-a.family.test $IP_A
+family-b family-b.family.test $IP_B
 EOF
 ```
 
