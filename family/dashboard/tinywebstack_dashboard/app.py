@@ -25,6 +25,11 @@ from tinywebstack_dashboard.auth import (
     username_from_headers,
 )
 from tinywebstack_dashboard.invite_store import add_pending, load_pending
+from tinywebstack_dashboard.federation import (
+    append_domain,
+    create_router as create_federation_router,
+    state_path_from_env,
+)
 from tinywebstack_dashboard.peer_verify import _ssl_context, verify_peer_domain
 from tinywebstack_dashboard.members import list_members, matrix_status_label
 from tinywebstack_dashboard.calendar_setup import caldav_account_url, davx5_login_hint
@@ -83,6 +88,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     matrix_server = os.environ.get("TWS_MATRIX_SERVER", cfg.server_name)
     federation_sync_cmd = os.environ.get("TWS_FEDERATION_SYNC_CMD", "")
     events_perms_cmd = os.environ.get("TWS_EVENTS_PERMS_CMD", "")
+    federation_state_path = state_path_from_env()
 
     def current_user(request: Request) -> str:
         user = username_from_headers(dict(request.headers))
@@ -133,8 +139,13 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             trusted.add(domain)
             policy["trusted_domains"] = sorted(trusted)
             save_policy(policy_path, policy)
+            append_domain(federation_state_path, domain)
         if sync:
             schedule_federation_sync()
+
+    app.include_router(
+        create_federation_router(cfg, state_path=federation_state_path, on_change=schedule_federation_sync)
+    )
 
     def post_json(url: str, body: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
         data = json.dumps(body).encode("utf-8")

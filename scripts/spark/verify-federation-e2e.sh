@@ -1,5 +1,12 @@
 #!/usr/bin/env bash
 # End-to-end Matrix federation check via Client-Server API.
+#
+# Phase 1 (always): alice↔bob federated message + non-allowlisted invite denied.
+# Phase 2 (L2.2 trusted-domain round trip, skipped with
+# TWS_SKIP_FEDERATION_ROUNDTRIP=1 or when no SSH target for node A can be
+# resolved): push a dashboard-style federation state file to node A via
+# remote-run.sh (synapse-federation-allowlist.sh --from-state) and verify
+# add → allowed → remove → blocked for TWS_FEDERATION_ROUNDTRIP_DOMAIN.
 set -euo pipefail
 
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,12 +16,16 @@ if [[ -f "${_script_dir}/../lib/common.sh" ]]; then
   source "${TW_STACK_ROOT}/lib/common.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "${TW_STACK_ROOT}/lib/secrets.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/lib/domains.sh"
 else
   TW_STACK_ROOT="$(cd "${_script_dir}/../.." && pwd)"
   # shellcheck source=scripts/lib/common.sh
   source "${TW_STACK_ROOT}/scripts/lib/common.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+  # shellcheck source=scripts/lib/domains.sh
+  source "${TW_STACK_ROOT}/scripts/lib/domains.sh"
 fi
 load_config
 load_secrets
@@ -22,12 +33,16 @@ load_secrets
 usage() {
   cat <<'EOF'
 Usage: verify-federation-e2e.sh \
-  NODE_A NODE_B DOMAIN_A DOMAIN_B [ALICE_USER] [BOB_USER] [REJECT_SERVER_DOMAIN]
+  NODE_A NODE_B DOMAIN_A DOMAIN_B [ALICE_USER] [BOB_USER] [REJECT_SERVER_DOMAIN] [NODE_A_SSH]
 
 Participant usernames default to $TWS_ALICE_USER / $TWS_BOB_USER (alice/bob).
 Their passwords resolve in order: $<USERNAME>_PASSWORD env, then spark secrets
 (<USERNAME>_PASSWORD_<NODE>). Without a lab CA (or TWS_CA_BUNDLE), TLS verification
 uses the system trust store; set TWS_REQUIRE_LAB_CA=1 to keep the old hard-fail.
+
+NODE_A_SSH (or $TWS_NODE_A_SSH) enables the L2.2 trusted-domain round trip
+(add → allowed → remove → blocked); on spark it is auto-resolved via virsh.
+Set TWS_SKIP_FEDERATION_ROUNDTRIP=1 to skip phase 2.
 EOF
   exit 1
 }
@@ -41,6 +56,7 @@ DOMAIN_B=$4
 ALICE_USER=${5:-${TWS_ALICE_USER:-alice}}
 BOB_USER=${6:-${TWS_BOB_USER:-bob}}
 REJECT_DOMAIN=${7:-matrix.org}
+NODE_A_SSH=${8:-${TWS_NODE_A_SSH:-}}
 
 require_cmd python3
 
@@ -176,4 +192,121 @@ if bad.get("errcode") == "M_FORBIDDEN" and "Federation denied" not in err and "d
 print(f"OK: invite to {reject} refused ({bad.get('errcode')}: {err[:120]})")
 PY
 
+# --- Phase 2: L2.2 trusted-domain round trip (dashboard state file) ---------
+if [[ "${TWS_SKIP_FEDERATION_ROUNDTRIP:-0}" == "1" ]]; then
+  log "Round trip skipped (TWS_SKIP_FEDERATION_ROUNDTRIP=1)"
+  log "Federation verification passed."
+  exit 0
+fi
+
+RT_DOMAIN="${TWS_FEDERATION_ROUNDTRIP_DOMAIN:-roundtrip.${TEST_DOMAIN_SUFFIX:-family.test}}"
+
+if [[ -z "$NODE_A_SSH" ]] && command -v virsh >/dev/null 2>&1; then
+  _dom="$(vm_domain_name "$NODE_A" 2>/dev/null || true)"
+  [[ -n "${_dom:-}" ]] || _dom="tws-${NODE_A}"
+  _ip="$(virsh domifaddr "$_dom" 2>/dev/null | awk '/ipv4/ {print $4; exit}' | cut -d/ -f1)"
+  [[ -n "${_ip:-}" ]] && NODE_A_SSH="$_ip"
+fi
+
+if [[ -z "$NODE_A_SSH" ]]; then
+  log "WARN: no SSH target for ${NODE_A} (pass NODE_A_SSH or run on spark) — skipping round trip"
+  log "Federation verification passed (phase 1 only)."
+  exit 0
+fi
+
+require_cmd base64
+
+apply_state() {
+  # apply_state DOMAIN [DOMAIN...] — render dashboard-style state JSON, push to node A
+  local domains_json b64
+  domains_json="$(printf '%s\n' "$@" | python3 -c 'import json,sys; print(json.dumps(sorted({l.strip() for l in sys.stdin if l.strip()})))')"
+  b64="$(printf '{"version":1,"trusted_domains":%s}' "$domains_json" | base64 | tr -d '\n')"
+  "${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$NODE_A_SSH" \
+    synapse-federation-allowlist.sh --from-state "$DOMAIN_A" "base64:${b64}"
+}
+
+roundtrip_check() {
+  # roundtrip_check allowed|blocked — invite to RT_DOMAIN from node A must match
+  local expect=$1
+  export RT_DOMAIN RT_EXPECT="$expect"
+  python3 <<'PY'
+import json
+import os
+import ssl
+import sys
+import time
+import urllib.error
+import urllib.request
+
+ctx = ssl.create_default_context()
+lab_ca = os.environ.get("LAB_CA", "")
+if lab_ca:
+    ctx.load_verify_locations(lab_ca)
+
+
+def req(method, url, token=None, body=None):
+    headers = {"Content-Type": "application/json"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    data = None if body is None else json.dumps(body).encode()
+    r = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(r, context=ctx, timeout=90) as resp:
+            return json.loads(resp.read().decode())
+    except urllib.error.HTTPError as e:
+        raw = e.read().decode()
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {"errcode": f"HTTP_{e.code}", "error": raw[:500]}
+
+
+da = os.environ["DOMAIN_A"]
+rt = os.environ["RT_DOMAIN"]
+expect = os.environ["RT_EXPECT"]
+
+token = None
+out = {}
+for _ in range(30):  # tolerate the synapse restart triggered by the state apply
+    out = req(
+        "POST",
+        f"https://{da}/_matrix/client/v3/login",
+        body={
+            "type": "m.login.password",
+            "identifier": {"type": "m.id.user", "user": os.environ["ALICE_USER"]},
+            "password": os.environ["ALICE_PASSWORD"],
+            "initial_device_display_name": "tinywebstack-verify-rt",
+        },
+    )
+    if "access_token" in out:
+        token = out["access_token"]
+        break
+    time.sleep(2)
+if not token:
+    sys.exit(f"login failed for {os.environ['ALICE_USER']} on {da}: {out}")
+
+res = req(
+    "POST",
+    f"https://{da}/_matrix/client/v3/createRoom",
+    token=token,
+    body={"invite": [f"@roundtrip-user:{rt}"], "preset": "private_chat"},
+)
+denied = "errcode" in res
+if expect == "allowed" and denied:
+    sys.exit(f"Expected invite to newly trusted {rt} to be allowed, got: {res}")
+if expect == "blocked" and not denied:
+    sys.exit(f"Expected invite to removed domain {rt} to be blocked, got: {res}")
+print(f"OK: invite to {rt} {'allowed' if expect == 'allowed' else 'blocked'} as expected")
+PY
+}
+
+log "Round trip: adding ${RT_DOMAIN} to ${NODE_A} trusted domains (state file mode)"
+apply_state "$DOMAIN_B" "$RT_DOMAIN"
+roundtrip_check allowed
+
+log "Round trip: removing ${RT_DOMAIN} from ${NODE_A} trusted domains"
+apply_state "$DOMAIN_B"
+roundtrip_check blocked
+
+log "Round trip complete: add → allowed → remove → blocked verified"
 log "Federation verification passed."
