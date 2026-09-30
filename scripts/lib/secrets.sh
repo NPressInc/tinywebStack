@@ -47,7 +47,9 @@ secret_key_for_node() {
   local node=$1
   local kind=${2:-yunohost_admin_password}
   validate_spark_node_name "$node"
-  printf '%s_%s' "$(echo "$kind" | tr '[:lower:]' '[:upper:]')" "$(echo "$node" | tr '[:lower:]-' '[:upper:]_')"
+  # Dots/hyphens in kind (e.g. user names like "mom.dad" -> "mom_dad_password")
+  # map to underscores so the key stays a valid bash identifier.
+  printf '%s_%s' "$(echo "$kind" | tr '.-' '__' | tr '[:lower:]' '[:upper:]')" "$(echo "$node" | tr '[:lower:]-' '[:upper:]_')"
 }
 
 read_node_secret() {
@@ -58,6 +60,80 @@ read_node_secret() {
   load_secrets
   # shellcheck disable=SC2154
   printf '%s\n' "${!key:-}"
+}
+
+# Validate a participant/test username (YunoHost-safe: lowercase, digits, dot, dash, underscore).
+validate_test_user_name() {
+  local user=$1 ctx=${2:-test user}
+  if [[ ! "$user" =~ ^[a-z0-9][a-z0-9._-]*$ ]]; then
+    die "Invalid ${ctx} name '${user}' (lowercase letters, digits, dot, hyphen, underscore; must start with a letter or digit)"
+  fi
+}
+
+# Env var name holding a test user's password: "mom.dad" -> MOM_DAD_PASSWORD.
+# Dots and hyphens map to underscores so realistic household names work.
+test_password_env_key() {
+  printf '%s_PASSWORD' "$(printf '%s' "$1" | tr '.-' '__' | tr '[:lower:]' '[:upper:]')"
+}
+
+# Resolve the password for an arbitrary test user on a node (verifiers, test-user scripts).
+# Args: NODE USER [EXTRA_ENV_KEY ...]
+# Order (first hit wins):
+#   1. Env var derived from the username, e.g. user "alice" -> $ALICE_PASSWORD
+#      ("mom.dad" -> $MOM_DAD_PASSWORD), then each EXTRA_ENV_KEY given.
+#      Covers the spark lab: load_secrets() has already sourced passwords.env,
+#      so legacy keys like PARENT_PASSWORD resolve here (same source the old
+#      hard-coded lookups used).
+#   2. The spark secrets store via read_node_secret with kind "<user>_password"
+#      (user "alice" on node "family-a" -> key ALICE_PASSWORD_FAMILY_A).
+# With the today-default users (alice/bob/parent/kid) this is byte-for-byte the old
+# hard-coded behaviour; custom household names just work with no secrets-store edit.
+user_test_password() {
+  local node=$1 user=$2
+  shift 2
+  local envkey
+  validate_test_user_name "$user" "test user"
+  for envkey in "$(test_password_env_key "$user")" "$@"; do
+    if [[ -n "${!envkey:-}" ]]; then
+      printf '%s\n' "${!envkey}"
+      return 0
+    fi
+  done
+  read_node_secret "$node" "${user}_password" || true
+}
+
+# Locate a lab CA bundle. Prints the path and returns 0 if an explicit
+# TWS_CA_BUNDLE file or a lab CA exists; returns 1 (no output) otherwise —
+# callers fall back to the system trust store instead of dying. Callers check
+# TWS_REQUIRE_LAB_CA themselves (die inside a command substitution would be
+# swallowed by the subshell).
+resolve_ca_bundle() {
+  local c
+  if [[ -n "${TWS_CA_BUNDLE:-}" ]]; then
+    if [[ -f "${TWS_CA_BUNDLE}" ]]; then
+      printf '%s\n' "${TWS_CA_BUNDLE}"
+      return 0
+    fi
+    log "WARN: TWS_CA_BUNDLE set but file not found (${TWS_CA_BUNDLE}); falling back to lab CA paths"
+  fi
+  for c in \
+    "${TW_STACK_LAB_CA_DIR:-}/lab-ca.crt.pem" \
+    "${TW_STACK_ROOT}/lab-certs/lab-ca.crt.pem" \
+    "${TW_STACK_SECRETS_DIR:-}/lab-ca/lab-ca.crt.pem"
+  do
+    if [[ -f "$c" ]]; then
+      printf '%s\n' "$c"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Call after resolving a CA: exits if the caller was told a lab CA is mandatory.
+require_ca_bundle_or_die() {
+  local ca=$1
+  [[ -n "$ca" || "${TWS_REQUIRE_LAB_CA:-0}" != "1" ]] || \
+    die "Lab CA not found (set TW_STACK_LAB_CA_DIR, export TWS_CA_BUNDLE, run stage-lab-certs.sh, or unset TWS_REQUIRE_LAB_CA)"
 }
 
 # Password for spark-generated test node secrets (see ensure-node-secrets.sh).

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Create parent + kid test users for family layer (idempotent).
+# Create family member users (idempotent).
+#
+# Default list is the lab pair (parent + kid) so the existing spark flow is unchanged.
+# Override with --users "william,sophie,emma" or TWS_FAMILY_USERS="william,sophie,emma".
 set -euo pipefail
 
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -7,16 +10,30 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${TW_STACK_ROOT}/lib/common.sh"
 # shellcheck source=scripts/lib/secrets.sh
 source "${TW_STACK_ROOT}/lib/secrets.sh"
+# shellcheck source=scripts/lib/family_users.sh
+source "${TW_STACK_ROOT}/lib/family_users.sh"
 load_config
 
 usage() {
-  echo "Usage: create-family-test-users.sh MAIN_DOMAIN NODE_NAME"
+  cat <<'EOF'
+Usage: create-family-test-users.sh MAIN_DOMAIN NODE_NAME [--users "u1,u2,..."]
+
+Creates each family member (idempotent) and adds them to the parents/kids LDAP
+groups. User list priority: --users flag > TWS_FAMILY_USERS env > lab default
+(parent,kid). By default the first user joins the parents group and the rest
+join the kids group (override with TWS_FAMILY_PARENTS / TWS_FAMILY_KIDS).
+Password for each user comes from <USER>_PASSWORD (uppercased) or the
+<user>_password node secret; the lab parent/kid defaults keep the spark flow
+working unchanged.
+EOF
   exit 1
 }
 
-[[ $# -eq 2 ]] || usage
+[[ $# -ge 2 ]] || usage
 MAIN_DOMAIN=$1
 NODE_NAME=$2
+shift 2
+EXTRA_ARGS=("$@")
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root" >&2
@@ -26,15 +43,18 @@ fi
 PARENTS_GROUP="${TWS_PARENTS_GROUP:-parents}"
 KIDS_GROUP="${TWS_KIDS_GROUP:-kids}"
 
-PARENT_PASSWORD="${PARENT_PASSWORD:-$(read_node_secret "$NODE_NAME" parent_password || true)}"
-KID_PASSWORD="${KID_PASSWORD:-$(read_node_secret "$NODE_NAME" kid_password || true)}"
-[[ -n "$PARENT_PASSWORD" && -n "$KID_PASSWORD" ]] || die "PARENT_PASSWORD and KID_PASSWORD required (spark secrets)"
+# Single source of truth for the member list: scripts/lib/family_users.sh
+# (--users flag > TWS_FAMILY_USERS env > lab default parent,kid).
+FAMILY_USERS_CSV="$(resolve_family_users "${EXTRA_ARGS[@]}")"
+PARENT_USERS_CSV="$(resolve_family_parents "$FAMILY_USERS_CSV")"
+KID_USERS_CSV="$(resolve_family_kids "$FAMILY_USERS_CSV")"
 
 create_user() {
   local user=$1 pass=$2 full=$3
   if yunohost user list --output-as json | python3 -c "import json,sys; u=sys.argv[1]; d=json.load(sys.stdin); users=d.get('users',d); sys.exit(0 if u in users else 1)" "$user"; then
     log "User ${user} already exists"
   else
+    [[ -n "$pass" ]] || die "No password for user '${user}': set ${user^^}_PASSWORD or a '${user}_password' node secret for ${NODE_NAME} (spark secrets)"
     yunohost user create "$user" -F "$full" -p "$pass" -d "$MAIN_DOMAIN"
   fi
 }
@@ -43,9 +63,36 @@ add_to_group() {
   yunohost user group add "$1" "$2"
 }
 
-create_user parent "$PARENT_PASSWORD" "Parent Test"
-create_user kid "$KID_PASSWORD" "Kid Test"
-add_to_group "$PARENTS_GROUP" parent
-add_to_group "$KIDS_GROUP" kid
+# Display name: lab labels for parent/kid, capitalized name otherwise.
+user_fullname() {
+  local user=$1
+  case "$user" in
+    parent) printf 'Parent Test\n' ;;
+    kid)    printf 'Kid Test\n' ;;
+    *)      printf '%s\n' "$(printf '%s' "${user:0:1}" | tr '[:lower:]' '[:upper:]')${user:1}" ;;
+  esac
+}
 
-log "Family test users parent/kid ready on ${MAIN_DOMAIN}"
+IFS=',' read -r -a _family_users <<< "$FAMILY_USERS_CSV"
+declare -A _is_kid=()
+if [[ -n "$KID_USERS_CSV" ]]; then
+  IFS=',' read -r -a _kid_list <<< "$KID_USERS_CSV"
+  for k in "${_kid_list[@]}"; do
+    [[ -n "$k" ]] && _is_kid["$k"]=1
+  done
+fi
+
+for user in "${_family_users[@]}"; do
+  # Password resolution chain lives in scripts/lib/secrets.sh:
+  # <USER>_PASSWORD env (dot/hyphen → underscore), extra legacy keys, then the
+  # <user>_password node secret (legacy lab parent/kid secrets unchanged).
+  pw="$(user_test_password "$NODE_NAME" "$user")"
+  create_user "$user" "$pw" "$(user_fullname "$user")"
+  if [[ -n "${_is_kid[$user]:-}" ]]; then
+    add_to_group "$KIDS_GROUP" "$user"
+  else
+    add_to_group "$PARENTS_GROUP" "$user"
+  fi
+done
+
+log "Family users ready on ${MAIN_DOMAIN}: ${FAMILY_USERS_CSV} (parents: ${PARENT_USERS_CSV}; kids: ${KID_USERS_CSV:-none})"

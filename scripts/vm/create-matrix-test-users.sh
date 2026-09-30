@@ -23,9 +23,14 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-ALICE_PASSWORD="${ALICE_PASSWORD:-$(read_node_secret "$NODE_NAME" alice_password || true)}"
-BOB_PASSWORD="${BOB_PASSWORD:-$(read_node_secret "$NODE_NAME" bob_password || true)}"
-[[ -n "$ALICE_PASSWORD" && -n "$BOB_PASSWORD" ]] || die "ALICE_PASSWORD and BOB_PASSWORD required (from spark secrets)"
+ALICE_USER="${TWS_ALICE_USER:-alice}"
+BOB_USER="${TWS_BOB_USER:-bob}"
+validate_test_user_name "$ALICE_USER" alice-user
+validate_test_user_name "$BOB_USER" bob-user
+ALICE_PASSWORD="$(user_test_password "$NODE_NAME" "$ALICE_USER" ALICE_PASSWORD)"
+BOB_PASSWORD="$(user_test_password "$NODE_NAME" "$BOB_USER" BOB_PASSWORD)"
+[[ -n "$ALICE_PASSWORD" && -n "$BOB_PASSWORD" ]] || \
+  die "Passwords for ${ALICE_USER}/${BOB_USER} required (env ${ALICE_USER^^}_PASSWORD / ${BOB_USER^^}_PASSWORD or spark secrets)"
 
 FED_TEST_GROUP="${TWS_FEDERATION_TEST_GROUP:-federation-test}"
 
