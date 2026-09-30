@@ -72,6 +72,9 @@ def module(policy_file):
 @pytest.mark.asyncio
 async def test_invite_allow(module):
     mod, _ = module
+    # Pin outside quiet hours (window is 03:00-04:00 UTC; wall-clock would make
+    # this flaky once a day). The allowlist behaviour under test is unaffected.
+    mod.store.policy.kid_in_quiet_hours = lambda kid_mxid, when=None: False  # type: ignore[method-assign]
     result = await mod._callbacks["user_may_invite"](
         "@kid:family-a.test", "@friend:family-b.test", "!r:family-a.test"
     )

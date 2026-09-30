@@ -18,6 +18,8 @@ if [[ -f "${TW_STACK_ROOT}/scripts/lib/common.sh" ]]; then
   source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
   # shellcheck source=scripts/lib/mobilizon_python_path.sh
   source "${TW_STACK_ROOT}/scripts/lib/mobilizon_python_path.sh"
+  # shellcheck source=scripts/lib/family_users.sh
+  source "${TW_STACK_ROOT}/scripts/lib/family_users.sh"
 else
   # shellcheck source=scripts/lib/common.sh
   source "${TW_STACK_ROOT}/lib/common.sh"
@@ -27,6 +29,8 @@ else
   source "${TW_STACK_ROOT}/lib/secrets.sh"
   # shellcheck source=scripts/lib/mobilizon_python_path.sh
   source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
+  # shellcheck source=scripts/lib/family_users.sh
+  source "${TW_STACK_ROOT}/lib/family_users.sh"
 fi
 load_config
 load_secrets
@@ -34,7 +38,14 @@ export_mobilizon_pythonpath
 
 usage() {
   cat <<'EOF'
-Usage: verify-events-e2e.sh NODE_A NODE_B DOMAIN_A DOMAIN_B [REJECT_INSTANCE_HOST]
+Usage: verify-events-e2e.sh NODE_A NODE_B DOMAIN_A DOMAIN_B [REJECT_INSTANCE_HOST] [PARENT_USER]
+
+Participant username defaults to the family organizer (scripts/lib/family_users.sh:
+TWS_FAMILY_USERS env; first user or TWS_FAMILY_OWNER, lab default parent), with
+$TWS_PARENT_USER as an explicit override; its password resolves via
+$<USERNAME>_PASSWORD env, then spark secrets (<USERNAME>_PASSWORD_<NODE>).
+Without a lab CA (or TWS_CA_BUNDLE), TLS verification uses the system trust store;
+set TWS_REQUIRE_LAB_CA=1 to keep the old hard-fail.
 
 Example:
   verify-events-e2e.sh family-a family-b family-a.family.test family-b.family.test mobilizon.fr
@@ -49,39 +60,33 @@ NODE_B=$2
 DOMAIN_A=$3
 DOMAIN_B=$4
 REJECT_HOST=${5:-${MOBILIZON_REJECT_PROBE:-mobilizon.fr}}
+# Default participant follows the family_users.sh organizer (lab default -> parent).
+# shellcheck disable=SC2119  # no CLI --users here; env/default resolution only
+_FAMILY_CSV="$(resolve_family_users)"
+PARENT_USER=${6:-${TWS_PARENT_USER:-$(resolve_family_owner "$_FAMILY_CSV")}}
 
 require_cmd python3
 
 ADMIN_A_PW="${MOBILIZON_ADMIN_PASSWORD:-${YUNOHOST_ADMIN_PASSWORD:-$(read_node_secret "$NODE_A" yunohost_admin_password || true)}}"
 ADMIN_B_PW="${MOBILIZON_ADMIN_PASSWORD:-${YUNOHOST_ADMIN_PASSWORD:-$(read_node_secret "$NODE_B" yunohost_admin_password || true)}}"
-PARENT_A_PW="${PARENT_PASSWORD:-$(read_node_secret "$NODE_A" parent_password || true)}"
-PARENT_B_PW="${PARENT_PASSWORD:-$(read_node_secret "$NODE_B" parent_password || true)}"
+validate_test_user_name "$PARENT_USER" parent-user
+PARENT_A_PW="$(user_test_password "$NODE_A" "$PARENT_USER" PARENT_PASSWORD)"
+PARENT_B_PW="$(user_test_password "$NODE_B" "$PARENT_USER" PARENT_PASSWORD)"
 [[ -n "$ADMIN_A_PW" && -n "$ADMIN_B_PW" && -n "$PARENT_A_PW" && -n "$PARENT_B_PW" ]] || \
-  die "yunohost_admin and parent passwords required in $(secrets_file)"
+  die "yunohost_admin and ${PARENT_USER} passwords required (env ${PARENT_USER^^}_PASSWORD or $(secrets_file))"
 
-resolve_lab_ca() {
-  local c
-  for c in \
-    "${TW_STACK_LAB_CA_DIR:-}/lab-ca.crt.pem" \
-    "${TW_STACK_ROOT}/lab-certs/lab-ca.crt.pem" \
-    "${TW_STACK_SECRETS_DIR:-}/lab-ca/lab-ca.crt.pem"; do
-    if [[ -f "$c" ]]; then
-      printf '%s\n' "$c"
-      return 0
-    fi
-  done
-  return 1
-}
-
-CA_PEM=""
-if CA_PEM="$(resolve_lab_ca)"; then
+# Lab CA is optional off-spark: fall back to the system trust store when absent.
+CA_PEM="$(resolve_ca_bundle || true)"
+require_ca_bundle_or_die "$CA_PEM"
+if [[ -n "$CA_PEM" ]]; then
   export TWS_CA_BUNDLE="$CA_PEM"
 else
-  die "Lab CA not found (set TW_STACK_LAB_CA_DIR or run stage-lab-certs.sh)"
+  unset TWS_CA_BUNDLE
+  log "No lab CA found — verifying TLS against the system trust store"
 fi
 
 MOB_ADMIN="${MOBILIZON_ADMIN_USER:-${YUNOHOST_ADMIN_USER:-twsowner}}"
-export DOMAIN_A DOMAIN_B NODE_A NODE_B PARENT_A_PW PARENT_B_PW ADMIN_A_PW ADMIN_B_PW REJECT_HOST MOB_ADMIN
+export DOMAIN_A DOMAIN_B NODE_A NODE_B PARENT_A_PW PARENT_B_PW ADMIN_A_PW ADMIN_B_PW REJECT_HOST MOB_ADMIN PARENT_USER
 
 python3 - <<'PY'
 import json
@@ -103,7 +108,9 @@ def ssl_ctx():
     ca = os.environ.get("TWS_CA_BUNDLE")
     if ca and os.path.isfile(ca):
         return ssl.create_default_context(cafile=ca)
-    raise SystemExit("TWS_CA_BUNDLE missing")
+    # No lab CA: system trust store (public/CA-signed deployments, or a CA
+    # installed into the OS trust store). Never disable verification.
+    return ssl.create_default_context()
 
 ctx = ssl_ctx()
 domain_a = os.environ["DOMAIN_A"]
@@ -115,8 +122,9 @@ base_b = f"https://{host_b}"
 admin = os.environ["MOB_ADMIN"]
 admin_a = f"{admin}@{domain_a}"
 admin_b = f"{admin}@{domain_b}"
-email_a = f"parent@{domain_a}"
-email_b = f"parent@{domain_b}"
+parent_user = os.environ.get("PARENT_USER", "parent")
+email_a = f"{parent_user}@{domain_a}"
+email_b = f"{parent_user}@{domain_b}"
 reject = os.environ["REJECT_HOST"]
 
 NODEINFO_PATHS = (

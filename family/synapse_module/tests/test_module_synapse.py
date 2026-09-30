@@ -98,6 +98,8 @@ async def test_kid_private_chat_preset_without_is_direct_denied(kid_policy_modul
 @pytest.mark.asyncio
 async def test_kid_is_direct_one_invitee_allowed(kid_policy_module):
     mod, _ = kid_policy_module
+    # Pin outside quiet hours (03:00-04:00 UTC window; wall-clock would be flaky).
+    mod.store.policy.kid_in_quiet_hours = lambda kid_mxid, when=None: False  # type: ignore[method-assign]
     cb = mod.user_may_create_room
     result = await cb(
         "@kid:family-a.test",

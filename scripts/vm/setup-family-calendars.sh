@@ -44,26 +44,26 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
+# Single source of truth for the member list: scripts/lib/family_users.sh
+# (--users flag > TWS_FAMILY_USERS env > lab default parent,kid).
 FAMILY_USERS_CSV="$(resolve_family_users "${EXTRA_ARGS[@]}")"
 OWNER="$(resolve_family_owner "$FAMILY_USERS_CSV")"
 
-# Owner password: <OWNER>_PASSWORD env (dot/hyphen in name → underscore), then
-# <owner>_password node secret (lab's parent_password secret still resolves when owner=parent).
-OWNER_PASSWORD_ENV_KEY="$(printf '%s' "$OWNER" | tr '[:lower:].-' '[:upper:]__')_PASSWORD"
-OWNER_PASSWORD="${!OWNER_PASSWORD_ENV_KEY:-}"
-if [[ -z "$OWNER_PASSWORD" ]]; then
-  OWNER_PASSWORD="$(read_node_secret "$NODE_NAME" "${OWNER}_password" || true)"
-fi
-if [[ -z "$OWNER_PASSWORD" && "$OWNER" == "parent" ]]; then
-  OWNER_PASSWORD="${PARENT_PASSWORD:-$(read_node_secret "$NODE_NAME" parent_password || true)}"
-fi
+# Owner password via the scripts/lib/secrets.sh chain: <OWNER>_PASSWORD env
+# (dot/hyphen in name → underscore), the legacy PARENT_PASSWORD extra key,
+# then the <owner>_password node secret (lab's parent_password secret still
+# resolves when owner=parent).
+OWNER_PASSWORD_ENV_KEY="$(test_password_env_key "$OWNER")"
+OWNER_PASSWORD="$(user_test_password "$NODE_NAME" "$OWNER" PARENT_PASSWORD)"
 [[ -n "$OWNER_PASSWORD" ]] || die "Password for calendar owner '${OWNER}' required (set ${OWNER_PASSWORD_ENV_KEY} or a '${OWNER}_password' node secret)"
 
-# Personal calendars: lab default keeps alice/bob (matrix lab users) alongside parent/kid.
+# Personal calendars: lab default keeps the matrix lab users (alice/bob, honoring
+# TWS_ALICE_USER/TWS_BOB_USER) alongside parent/kid; custom households provision
+# personal calendars for exactly their own members.
 if [[ "$FAMILY_USERS_CSV" == "$TWS_FAMILY_USERS_DEFAULT" ]]; then
-  PERSONAL_CAL_USERS="${FAMILY_USERS_CSV},alice,bob"
+  CALENDAR_USERS="$(normalize_user_list "${FAMILY_USERS_CSV},${TWS_ALICE_USER:-alice},${TWS_BOB_USER:-bob}")"
 else
-  PERSONAL_CAL_USERS="$FAMILY_USERS_CSV"
+  CALENDAR_USERS="$FAMILY_USERS_CSV"
 fi
 
 OCC="$(nextcloud_occ_path)" || die "Nextcloud occ not found (install nextcloud first)"
@@ -88,6 +88,7 @@ print(family_group_name('${MAIN_DOMAIN}', '${NODE_NAME}'))
 if ! yunohost user group list --output-as json | python3 -c "import json,sys; g=sys.argv[1]; d=json.load(sys.stdin); groups=d.get('groups',d); sys.exit(0 if g in groups else 1)" "$FAMILY_GROUP"; then
   yunohost user group create "$FAMILY_GROUP"
 fi
+# Family group members come from the same resolved list (family_users.sh).
 IFS=',' read -r -a _family_members <<< "$FAMILY_USERS_CSV"
 for member in "${_family_members[@]}"; do
   yunohost user group add "$FAMILY_GROUP" "$member" 2>/dev/null || true
@@ -114,7 +115,7 @@ export TWS_CALENDAR_SETUP_OWNER_PASSWORD="$OWNER_PASSWORD"
   --owner "$OWNER" \
   --nextcloud-path "$NC_PATH" \
   --federation-test-group "${TWS_FEDERATION_TEST_GROUP:-federation-test}" \
-  --users "$PERSONAL_CAL_USERS" \
+  --users "$CALENDAR_USERS" \
   "${CA_ARG[@]}"
 
 log "Family calendars configured (${FAMILY_GROUP}, owner ${OWNER}, users ${FAMILY_USERS_CSV})"

@@ -7,6 +7,8 @@ TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "${TW_STACK_ROOT}/scripts/lib/common.sh"
 # shellcheck source=scripts/lib/secrets.sh
 source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+# shellcheck source=scripts/lib/family_users.sh
+source "${TW_STACK_ROOT}/scripts/lib/family_users.sh"
 # shellcheck source=scripts/lib/ssh-spark.sh
 source "${TW_STACK_ROOT}/scripts/lib/ssh-spark.sh"
 # shellcheck source=scripts/lib/remote-node.sh
@@ -72,6 +74,22 @@ REMOTE_ENV="$(mktemp)"
     [[ -n "$kpw" ]] && printf 'KID_PASSWORD=%q\n' "$kpw"
     tlogin="$(read_node_secret "$NODE_NAME" traccar_admin_login || true)"
     [[ -n "$tlogin" ]] && printf 'TRACCAR_ADMIN_LOGIN=%q\n' "$tlogin"
+    # Custom-named participants (TWS_ALICE_USER etc. and the TWS_FAMILY_USERS
+    # list from local.env): forward <USER>_PASSWORD so user_test_password
+    # resolves them on the VM too. Classic names are already exported above
+    # and are skipped here.
+    for _tu in "${TWS_ALICE_USER:-alice}" "${TWS_BOB_USER:-bob}" \
+               "${TWS_PARENT_USER:-parent}" "${TWS_KID_USER:-kid}"; do
+      case "$_tu" in alice|bob|parent|kid) continue ;; esac
+      _tpw="$(user_test_password "$NODE_NAME" "$_tu")"
+      [[ -n "$_tpw" ]] && printf '%s=%q\n' "$(test_password_env_key "$_tu")" "$_tpw"
+    done
+    # shellcheck disable=SC2119  # no CLI --users here; env/default resolution only
+    for _tu in $(resolve_family_users | tr ',' ' '); do
+      case "$_tu" in alice|bob|parent|kid) continue ;; esac
+      _tpw="$(user_test_password "$NODE_NAME" "$_tu")"
+      [[ -n "$_tpw" ]] && printf '%s=%q\n' "$(test_password_env_key "$_tu")" "$_tpw"
+    done
   fi
   printf 'TW_STACK_SECRETS_SOURCE=spark\nTW_STACK_IS_REMOTE=1\n'
 } > "$REMOTE_ENV"

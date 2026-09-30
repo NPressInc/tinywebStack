@@ -16,6 +16,8 @@ if [[ -f "${TW_STACK_ROOT}/scripts/lib/common.sh" ]]; then
   source "${TW_STACK_ROOT}/scripts/lib/domains.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "${TW_STACK_ROOT}/scripts/lib/secrets.sh"
+  # shellcheck source=scripts/lib/family_users.sh
+  source "${TW_STACK_ROOT}/scripts/lib/family_users.sh"
 else
   # shellcheck source=scripts/lib/common.sh
   source "${TW_STACK_ROOT}/lib/common.sh"
@@ -23,51 +25,59 @@ else
   source "${TW_STACK_ROOT}/lib/domains.sh"
   # shellcheck source=scripts/lib/secrets.sh
   source "${TW_STACK_ROOT}/lib/secrets.sh"
+  # shellcheck source=scripts/lib/family_users.sh
+  source "${TW_STACK_ROOT}/lib/family_users.sh"
 fi
 load_config
 load_secrets
 
 usage() {
   cat <<'EOF'
-Usage: verify-calendar-e2e.sh NODE_NAME MAIN_DOMAIN
+Usage: verify-calendar-e2e.sh NODE_NAME MAIN_DOMAIN [PARENT_USER] [KID_USER]
 
-Reads PARENT_PASSWORD / KID_PASSWORD from spark secrets (LAB_PASSWORD in lab).
+Participant usernames default to the family list (scripts/lib/family_users.sh:
+--users is not accepted here; TWS_FAMILY_USERS env, lab default parent,kid):
+organizer = first user (or TWS_FAMILY_OWNER), attendee = first kid. Explicit
+$TWS_PARENT_USER / $TWS_KID_USER (or the positional args) override that.
+Their passwords resolve in order: $<USERNAME>_PASSWORD env, then spark secrets
+(<USERNAME>_PASSWORD_<NODE>). Without a lab CA (or TWS_CA_BUNDLE), TLS
+verification uses the system trust store; set TWS_REQUIRE_LAB_CA=1 to keep the
+old hard-fail.
 Requires calendar-state.json on the node (run setup-family-calendars.sh via family-init).
 EOF
   exit 1
 }
 
-[[ $# -eq 2 ]] || usage
+[[ $# -ge 2 && $# -le 4 ]] || usage
 NODE_NAME=$1
 MAIN_DOMAIN=$2
 
+# Participant defaults follow the family_users.sh resolution (lab default -> parent/kid).
+# shellcheck disable=SC2119  # no CLI --users here; env/default resolution only
+_FAMILY_CSV="$(resolve_family_users)"
+FAMILY_OWNER="$(resolve_family_owner "$_FAMILY_CSV")"
+FAMILY_KID_FIRST="$(resolve_family_kids "$_FAMILY_CSV")"
+FAMILY_KID_FIRST="${FAMILY_KID_FIRST%%,*}"
+[[ -n "$FAMILY_KID_FIRST" ]] || FAMILY_KID_FIRST="$FAMILY_OWNER"
+PARENT_USER=${3:-${TWS_PARENT_USER:-$FAMILY_OWNER}}
+KID_USER=${4:-${TWS_KID_USER:-$FAMILY_KID_FIRST}}
+
 require_cmd python3
 
-PARENT_PASSWORD="${PARENT_PASSWORD:-$(read_node_secret "$NODE_NAME" parent_password || true)}"
-KID_PASSWORD="${KID_PASSWORD:-$(read_node_secret "$NODE_NAME" kid_password || true)}"
+validate_test_user_name "$PARENT_USER" parent-user
+validate_test_user_name "$KID_USER" kid-user
+PARENT_PASSWORD="$(user_test_password "$NODE_NAME" "$PARENT_USER" PARENT_PASSWORD)"
+KID_PASSWORD="$(user_test_password "$NODE_NAME" "$KID_USER" KID_PASSWORD)"
 [[ -n "$PARENT_PASSWORD" && -n "$KID_PASSWORD" ]] || \
-  die "Set parent/kid passwords in $(secrets_file)"
+  die "Set passwords for ${PARENT_USER}/${KID_USER} (env ${PARENT_USER^^}_PASSWORD / ${KID_USER^^}_PASSWORD or $(secrets_file))"
 
-resolve_lab_ca() {
-  local c
-  for c in \
-    "${TW_STACK_LAB_CA_DIR:-}/lab-ca.crt.pem" \
-    "${TW_STACK_ROOT}/lab-certs/lab-ca.crt.pem" \
-    "${TW_STACK_SECRETS_DIR:-}/lab-ca/lab-ca.crt.pem"
-  do
-    if [[ -f "$c" ]]; then
-      printf '%s\n' "$c"
-      return 0
-    fi
-  done
-  return 1
-}
-
-LAB_CA="$(resolve_lab_ca || true)"
+LAB_CA="$(resolve_ca_bundle || true)"
+require_ca_bundle_or_die "$LAB_CA"
+[[ -n "$LAB_CA" ]] || log "No lab CA found — verifying TLS against the system trust store"
 NC_PATH="${TWS_NEXTCLOUD_PATH:-/nextcloud}"
 CALDAV_ROOT="https://$(nextcloud_domain "$MAIN_DOMAIN")${NC_PATH}/remote.php/dav"
-ATTENDEE_EMAIL="kid@${MAIN_DOMAIN}"
-ORGANIZER_EMAIL="parent@${MAIN_DOMAIN}"
+ATTENDEE_EMAIL="${KID_USER}@${MAIN_DOMAIN}"
+ORGANIZER_EMAIL="${PARENT_USER}@${MAIN_DOMAIN}"
 
 MODULE="${TW_STACK_ROOT}/family/calendar_module"
 VENV="${TW_STACK_ROOT}/.tools/calendar-verify-venv"
@@ -83,13 +93,13 @@ CA_ARGS=()
 export TWS_CALENDAR_VERIFY_PASSWORD="$PARENT_PASSWORD"
 "${VENV}/bin/python" -m tinywebstack_calendar.verify login \
   --caldav-root "$CALDAV_ROOT" \
-  --user parent \
+  --user "$PARENT_USER" \
   "${CA_ARGS[@]}"
 
 export TWS_CALENDAR_VERIFY_PASSWORD="$KID_PASSWORD"
 "${VENV}/bin/python" -m tinywebstack_calendar.verify login \
   --caldav-root "$CALDAV_ROOT" \
-  --user kid \
+  --user "$KID_USER" \
   "${CA_ARGS[@]}"
 
 export TWS_CALENDAR_VERIFY_PARENT_PASSWORD="$PARENT_PASSWORD"
@@ -97,6 +107,8 @@ export TWS_CALENDAR_VERIFY_KID_PASSWORD="$KID_PASSWORD"
 export TWS_CALENDAR_VERIFY_ORGANIZER_EMAIL="$ORGANIZER_EMAIL"
 "${VENV}/bin/python" -m tinywebstack_calendar.verify invite-roundtrip \
   --caldav-root "$CALDAV_ROOT" \
+  --owner-user "$PARENT_USER" \
+  --attendee-user "$KID_USER" \
   --attendee-email "$ATTENDEE_EMAIL" \
   --organizer-email "$ORGANIZER_EMAIL" \
   "${CA_ARGS[@]}"

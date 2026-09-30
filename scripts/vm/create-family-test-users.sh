@@ -43,6 +43,8 @@ fi
 PARENTS_GROUP="${TWS_PARENTS_GROUP:-parents}"
 KIDS_GROUP="${TWS_KIDS_GROUP:-kids}"
 
+# Single source of truth for the member list: scripts/lib/family_users.sh
+# (--users flag > TWS_FAMILY_USERS env > lab default parent,kid).
 FAMILY_USERS_CSV="$(resolve_family_users "${EXTRA_ARGS[@]}")"
 PARENT_USERS_CSV="$(resolve_family_parents "$FAMILY_USERS_CSV")"
 KID_USERS_CSV="$(resolve_family_kids "$FAMILY_USERS_CSV")"
@@ -59,19 +61,6 @@ create_user() {
 
 add_to_group() {
   yunohost user group add "$1" "$2"
-}
-
-# Password for a user: <USER>_PASSWORD env (name uppercased; dot/hyphen → underscore),
-# then <user>_password node secret (covers the legacy lab parent/kid secrets unchanged).
-user_password() {
-  local user=$1
-  local env_key pw
-  env_key="$(printf '%s' "$user" | tr '[:lower:].-' '[:upper:]__')_PASSWORD"
-  pw="${!env_key:-}"
-  if [[ -z "$pw" ]]; then
-    pw="$(read_node_secret "$NODE_NAME" "${user}_password" || true)"
-  fi
-  printf '%s' "$pw"
 }
 
 # Display name: lab labels for parent/kid, capitalized name otherwise.
@@ -94,7 +83,10 @@ if [[ -n "$KID_USERS_CSV" ]]; then
 fi
 
 for user in "${_family_users[@]}"; do
-  pw="$(user_password "$user")"
+  # Password resolution chain lives in scripts/lib/secrets.sh:
+  # <USER>_PASSWORD env (dot/hyphen → underscore), extra legacy keys, then the
+  # <user>_password node secret (legacy lab parent/kid secrets unchanged).
+  pw="$(user_test_password "$NODE_NAME" "$user")"
   create_user "$user" "$pw" "$(user_fullname "$user")"
   if [[ -n "${_is_kid[$user]:-}" ]]; then
     add_to_group "$KIDS_GROUP" "$user"
