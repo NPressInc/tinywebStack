@@ -8,13 +8,22 @@ source "${TW_STACK_ROOT}/lib/common.sh"
 load_config
 
 usage() {
-  echo "Usage: family-init.sh MAIN_DOMAIN [NODE_NAME]"
+  cat <<'EOF'
+Usage: family-init.sh MAIN_DOMAIN [NODE_NAME] [extra args...]
+
+Extra args (e.g. --users "william,sophie,emma") are forwarded to
+create-family-test-users.sh and setup-family-calendars.sh when NODE_NAME is
+set. TWS_FAMILY_USERS env works too; default stays the lab pair (parent,kid).
+EOF
   exit 1
 }
 
 [[ $# -ge 1 ]] || usage
 MAIN_DOMAIN=$1
-NODE_NAME=${2:-}
+shift
+NODE_NAME=${1:-}
+if [[ $# -gt 0 ]]; then shift; fi
+EXTRA_ARGS=("$@")
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root on the YunoHost VM" >&2
@@ -32,8 +41,8 @@ if [[ -f "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" ]]; then
 fi
 
 if [[ -n "$NODE_NAME" ]]; then
-  run_vm_script create-family-test-users.sh "$MAIN_DOMAIN" "$NODE_NAME"
-  run_vm_script setup-family-calendars.sh "$MAIN_DOMAIN" "$NODE_NAME"
+  run_vm_script create-family-test-users.sh "$MAIN_DOMAIN" "$NODE_NAME" "${EXTRA_ARGS[@]}"
+  run_vm_script setup-family-calendars.sh "$MAIN_DOMAIN" "$NODE_NAME" "${EXTRA_ARGS[@]}"
   run_vm_script family-groups.sh
 fi
 

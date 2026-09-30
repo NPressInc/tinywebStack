@@ -5,7 +5,7 @@ v1 uses **Nextcloud Calendar** on each home server with **CalDAV** clients on ph
 Install flow (lab or production node):
 
 1. `install-nextcloud-calendar.sh` — YunoHost catalog app, Calendar enabled, LDAP/SSO.
-2. `family-init.sh` — after parent/kid users exist, `setup-family-calendars.sh` creates shared calendars and writes `/etc/tinywebstack/calendar-state.json`.
+2. `family-init.sh` — after family member users exist, `setup-family-calendars.sh` creates shared calendars and writes `/etc/tinywebstack/calendar-state.json`. The member list defaults to the lab pair (`parent,kid`); pass `--users "william,sophie,emma"` (or `TWS_FAMILY_USERS` in `config/local.env`) to provision a real-named household. The first user owns the shared calendars (override with `TWS_FAMILY_OWNER`).
 3. `family-groups.sh` — grants `nextcloud.main` to `parents`, `kids`, and `federation-test`, keeps **`visitors`** so CalDAV clients reach Nextcloud without a portal SSO cookie, and **hides** the Nextcloud portal tile (CalDAV-only v1).
 
 ### CalDAV vs Nextcloud web login (visitors permission)
@@ -31,7 +31,7 @@ Parents open **Family home → Phone calendars** for setup text and a QR code (s
 | **Kids** (`tws-kids`) | `parent` | `kids` (+ `parents` read/write) | Children’s activities; parents manage |
 | **Personal** | each user | that user only | Per-person calendar (`personal-<user>` or default) |
 
-Group `family-<node>` is created automatically (e.g. `family-family-a` on the `family-a` test node) and includes lab users `parent` and `kid`.
+Group `family-<node>` is created automatically (e.g. `family-family-a` on the `family-a` test node) and includes the provisioned family members (lab defaults: `parent` and `kid`).
 
 ## Permission model
 
