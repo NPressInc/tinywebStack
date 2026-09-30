@@ -142,7 +142,16 @@ Federation and verification:
   mobilizon.fr
 ```
 
-Matrix verification uses the **lab CA** for TLS, has **bob join** the room, polls `/messages`, and expects **`M_FORBIDDEN`** / federation denied for `matrix.org`.
+Participant usernames default to alice/bob (federation) and parent/kid (calendar, events).
+Override per name via CLI args (verify-federation-e2e.sh args 5–6, verify-calendar-e2e.sh
+args 3–4, verify-events-e2e.sh arg 6) or in `config/local.env`: `TWS_ALICE_USER`,
+`TWS_BOB_USER`, `TWS_PARENT_USER`, `TWS_KID_USER`, `TWS_CALENDAR_USERS`. Passwords for
+custom names come from `$<USERNAME>_PASSWORD` (e.g. `MOM_DAD_PASSWORD` for user `mom.dad`)
+or `<USERNAME>_PASSWORD_<NODE>` keys in `passwords.env`; `ensure-node-secrets.sh` generates
+the latter from the same overrides, so a lab can run with realistically-named household
+members without touching the classic alice/bob/parent/kid flow.
+
+Matrix verification uses the **lab CA** for TLS when present (otherwise the system trust store), has **bob join** the room, polls `/messages`, and expects **`M_FORBIDDEN`** / federation denied for `matrix.org`.
 
 Calendar verification checks CalDAV login and a parent → kid invite accept round trip on each node (see [CALENDAR.md](CALENDAR.md)).
 
@@ -157,7 +166,7 @@ With `LAB_PASSWORD=dummydummy` in `config/local.env` (≥8 characters), after bo
 1. Run **`./scripts/spark/sync-all-vm-peer-hosts.sh`** so each VM can reach the peer’s `mobilizon.*` hostname.
 2. Confirm apps: `yunohost app list` on each VM should include **nextcloud** and **mobilizon** (re-run `yunohost-family-apps.sh` / `install-mobilizon.sh` if needed).
 3. Run `configure-federation-pair.sh` (Matrix + Mobilizon sync) if not already linked via dashboard invite. Failures here are fatal (Mobilizon TLS/sync must succeed).
-4. Run the three verify scripts above; fix DNS (`apply-private-dns.sh`) on spark if HTTPS to `nextcloud.*` or `mobilizon.*` fails. Events verify requires the **lab CA** (no insecure TLS fallback).
+4. Run the three verify scripts above; fix DNS (`apply-private-dns.sh`) on spark if HTTPS to `nextcloud.*` or `mobilizon.*` fails. The verifiers use the lab CA when found (`TW_STACK_LAB_CA_DIR`, `lab-certs/`, or `TWS_CA_BUNDLE`) and otherwise fall back to the **system trust store** — verification is never disabled. Set `TWS_REQUIRE_LAB_CA=1` to make a missing lab CA a hard error again.
 5. Optional UI: `https://family-a.family.test/family/` → **CalDAV setup** and **open events**; child chat rules → toggle **Events** for a kid (Mobilizon LDAP login after SSO if prompted).
 
 ---

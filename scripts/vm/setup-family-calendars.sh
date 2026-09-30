@@ -27,8 +27,11 @@ if [[ "$(id -u)" -ne 0 ]]; then
   exit 1
 fi
 
-PARENT_PASSWORD="${PARENT_PASSWORD:-$(read_node_secret "$NODE_NAME" parent_password || true)}"
-[[ -n "$PARENT_PASSWORD" ]] || die "PARENT_PASSWORD required (spark secrets / remote.env)"
+PARENT_USER="${TWS_PARENT_USER:-parent}"
+KID_USER="${TWS_KID_USER:-kid}"
+CALENDAR_USERS="${TWS_CALENDAR_USERS:-${PARENT_USER},${KID_USER},alice,bob}"
+PARENT_PASSWORD="$(user_test_password "$NODE_NAME" "$PARENT_USER" PARENT_PASSWORD)"
+[[ -n "$PARENT_PASSWORD" ]] || die "${PARENT_USER^^}_PASSWORD required (spark secrets / remote.env)"
 
 OCC="$(nextcloud_occ_path)" || die "Nextcloud occ not found (install nextcloud first)"
 OCC_USER="$(nextcloud_occ_user "$OCC")"
@@ -52,7 +55,7 @@ print(family_group_name('${MAIN_DOMAIN}', '${NODE_NAME}'))
 if ! yunohost user group list --output-as json | python3 -c "import json,sys; g=sys.argv[1]; d=json.load(sys.stdin); groups=d.get('groups',d); sys.exit(0 if g in groups else 1)" "$FAMILY_GROUP"; then
   yunohost user group create "$FAMILY_GROUP"
 fi
-for member in parent kid; do
+for member in "$PARENT_USER" "$KID_USER"; do
   yunohost user group add "$FAMILY_GROUP" "$member" 2>/dev/null || true
 done
 
@@ -74,10 +77,10 @@ export TWS_CALENDAR_SETUP_OWNER_PASSWORD="$PARENT_PASSWORD"
   "$MAIN_DOMAIN" "$NODE_NAME" \
   --occ-path "$OCC" \
   --occ-user "$OCC_USER" \
-  --owner parent \
+  --owner "$PARENT_USER" \
   --nextcloud-path "$NC_PATH" \
   --federation-test-group "${TWS_FEDERATION_TEST_GROUP:-federation-test}" \
-  --users "parent,kid,alice,bob" \
+  --users "$CALENDAR_USERS" \
   "${CA_ARG[@]}"
 
-log "Family calendars configured (${FAMILY_GROUP})"
+log "Family calendars configured (${FAMILY_GROUP}, owner ${PARENT_USER})"

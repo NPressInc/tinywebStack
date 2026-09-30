@@ -21,11 +21,11 @@ gen_if_missing() {
 while read -r name domain _rest; do
   [[ -n "$name" ]] || continue
   gen_if_missing "$name" yunohost_admin_password
-  gen_if_missing "$name" alice_password
-  gen_if_missing "$name" bob_password
+  gen_if_missing "$name" "${TWS_ALICE_USER:-alice}_password"
+  gen_if_missing "$name" "${TWS_BOB_USER:-bob}_password"
   gen_if_missing "$name" traccar_admin_password
-  gen_if_missing "$name" parent_password
-  gen_if_missing "$name" kid_password
+  gen_if_missing "$name" "${TWS_PARENT_USER:-parent}_password"
+  gen_if_missing "$name" "${TWS_KID_USER:-kid}_password"
   if [[ -n "$domain" && -z "$(read_node_secret "$name" traccar_admin_login || true)" ]]; then
     write_node_secret "$name" traccar_admin_login "admin@${domain}"
   fi

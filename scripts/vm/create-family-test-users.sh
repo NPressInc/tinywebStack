@@ -25,10 +25,15 @@ fi
 
 PARENTS_GROUP="${TWS_PARENTS_GROUP:-parents}"
 KIDS_GROUP="${TWS_KIDS_GROUP:-kids}"
+PARENT_USER="${TWS_PARENT_USER:-parent}"
+KID_USER="${TWS_KID_USER:-kid}"
 
-PARENT_PASSWORD="${PARENT_PASSWORD:-$(read_node_secret "$NODE_NAME" parent_password || true)}"
-KID_PASSWORD="${KID_PASSWORD:-$(read_node_secret "$NODE_NAME" kid_password || true)}"
-[[ -n "$PARENT_PASSWORD" && -n "$KID_PASSWORD" ]] || die "PARENT_PASSWORD and KID_PASSWORD required (spark secrets)"
+validate_test_user_name "$PARENT_USER" parent-user
+validate_test_user_name "$KID_USER" kid-user
+PARENT_PASSWORD="$(user_test_password "$NODE_NAME" "$PARENT_USER" PARENT_PASSWORD)"
+KID_PASSWORD="$(user_test_password "$NODE_NAME" "$KID_USER" KID_PASSWORD)"
+[[ -n "$PARENT_PASSWORD" && -n "$KID_PASSWORD" ]] || \
+  die "Passwords for ${PARENT_USER}/${KID_USER} required (env ${PARENT_USER^^}_PASSWORD / ${KID_USER^^}_PASSWORD or spark secrets)"
 
 create_user() {
   local user=$1 pass=$2 full=$3
@@ -43,9 +48,9 @@ add_to_group() {
   yunohost user group add "$1" "$2"
 }
 
-create_user parent "$PARENT_PASSWORD" "Parent Test"
-create_user kid "$KID_PASSWORD" "Kid Test"
-add_to_group "$PARENTS_GROUP" parent
-add_to_group "$KIDS_GROUP" kid
+create_user "$PARENT_USER" "$PARENT_PASSWORD" "Parent Test"
+create_user "$KID_USER" "$KID_PASSWORD" "Kid Test"
+add_to_group "$PARENTS_GROUP" "$PARENT_USER"
+add_to_group "$KIDS_GROUP" "$KID_USER"
 
-log "Family test users parent/kid ready on ${MAIN_DOMAIN}"
+log "Family test users ${PARENT_USER}/${KID_USER} ready on ${MAIN_DOMAIN}"
