@@ -1,0 +1,16 @@
+role: kid
+is_admin: false
+description: >
+  Child account. Direct chats only (max one invitee), no email/phone invites,
+  no room publishing, optional quiet hours, per-kid contact allowlists.
+  Mobilizon access gated per kid via events_enabled.
+permissions:
+  can_create_rooms: true
+  can_create_group_rooms: false
+  can_send_3pid_invites: false
+  can_publish_rooms: false
+  events_enabled: true
+  mobilizon_role: member
+  allowlist_mxids: []
+  allowlist_domains: []
+  quiet_hours: null

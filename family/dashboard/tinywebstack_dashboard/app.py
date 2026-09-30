@@ -26,6 +26,7 @@ from tinywebstack_dashboard.auth import (
 )
 from tinywebstack_dashboard.invite_store import add_pending, load_pending
 from tinywebstack_dashboard.peer_verify import _ssl_context, verify_peer_domain
+from tinywebstack_dashboard.permissions import create_permissions_router
 from tinywebstack_dashboard.members import list_members, matrix_status_label
 from tinywebstack_dashboard.calendar_setup import caldav_account_url, davx5_login_hint
 from tinywebstack_dashboard.owntracks_setup import (
@@ -569,6 +570,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             subprocess.run(events_perms_cmd.split(), check=False, timeout=120)
         return RedirectResponse(url=dash_url("/", root_path), status_code=303)
 
+    app.include_router(create_permissions_router(cfg))
     return app
 
 
