@@ -18,7 +18,7 @@ node_name_from_remote_script() {
         printf '%s\n' "$2"
       fi
       ;;
-    install-family-module.sh | install-family-dashboard.sh)
+    install-family-module.sh | install-family-dashboard.sh | family-module-post-upgrade.sh)
       if [[ $# -ge 2 ]]; then
         printf '%s\n' "$2"
       fi

@@ -578,12 +578,16 @@ Test restore quarterly; an untested backup is not a backup.
   each via admin panel or CLI, one app at a time, checking `yunohost app
   list --full` status after each.
 - **After every `yunohost app upgrade synapse`:** the app upgrade recreates
-  the Synapse venv and drops the editable `tinywebstack_family` install. Re-run
-  `scripts/vm/remote-run.sh "$IP" install-family-module.sh home.example.com`
-  (it re-installs the pip package, rewrites the conf.d snippet, restarts
-  Synapse). **Expected:** Synapse starts and `[tinywebstack] Synapse family
-  module installed`. If you skip this, kid spam-checker rules silently stop
-  applying while everything else looks fine.
+  the Synapse venv and drops the pip-installed `tinywebstack_family`. Run
+  `scripts/vm/remote-run.sh "$IP" family-module-post-upgrade.sh
+  home.example.com` — it checks the venv, and if the module was wiped it
+  re-applies `install-family-module.sh` (pip package, conf.d snippet,
+  Synapse restart); if the module is healthy it is a no-op, so it is safe to
+  run anytime. **Expected:** Synapse starts and `[tinywebstack] Synapse
+  family module re-applied` (or `nothing to do`). If you skip this, kid
+  spam-checker rules silently stop applying while everything else looks
+  fine. See [module-packaging.md](module-packaging.md) (S5.4) for the
+  optional weekly-cron variant.
 - Similarly after `yunohost app upgrade owntracks`: the `/recorder/pub` nginx
   snippet is drop-in under `conf.d/owntracks.home.example.com.d/` and
   survives, but verify with the location row in §8's table.
@@ -651,10 +655,14 @@ Test restore quarterly; an untested backup is not a backup.
 7. **`remote-run.sh` requires root-over-SSH** (BatchMode, no sudo-password
    path); production Debian needs manual root key install (§2.2). Also its
    "spark"/`TW_STACK_SECRETS_SOURCE=spark` naming leaks lab vocabulary.
-8. **Synapse module is an editable pip install into the app venv** —
-   `yunohost app upgrade synapse` wipes it and the spam-checker rules stop
-   enforcing **silently** until `install-family-module.sh` is re-run (§9).
-   This is S5.4 (packaging / post-upgrade hook) still open.
+8. **Synapse module is a pip wheel install into the app venv** (S5.4 done —
+   see [module-packaging.md](module-packaging.md)) —
+   `yunohost app upgrade synapse` still wipes the venv, but the wipe is now
+   detected and repaired by one command:
+   `scripts/vm/remote-run.sh "$IP" family-module-post-upgrade.sh
+   <MAIN_DOMAIN>` (§9). No YunoHost post-upgrade hook exists; the manual
+   command (or the documented weekly-cron variant) closes the silent-stop
+   gap.
 9. **No backup tooling in the repo:** `/etc/tinywebstack`, `/opt/tinywebstack*`
    and the control machine's `passwords.env` fall outside `yunohost backup
    --apps`; only a manual tar covers them (§9). Needs a
@@ -668,6 +676,7 @@ Test restore quarterly; an untested backup is not a backup.
 - [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) — feature plan (this doc = S5.2)
 - [test-nodes.md](test-nodes.md) — lab path (spark VMs, private CA)
 - [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), [FAMILY_MODULE.md](FAMILY_MODULE.md),
+  [module-packaging.md](module-packaging.md),
   [CALENDAR.md](CALENDAR.md), [EVENTS.md](EVENTS.md),
   [FAMILY_INVITE.md](FAMILY_INVITE.md), [TINYWEB_BRANDING.md](TINYWEB_BRANDING.md),
   [PHILOSOPHY.md](PHILOSOPHY.md)
