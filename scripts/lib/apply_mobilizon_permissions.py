@@ -20,12 +20,37 @@ def _repo_root() -> Path:
 
 
 sys.path.insert(0, str(_repo_root() / "family" / "synapse_module"))
+sys.path.insert(0, str(_repo_root() / "family" / "permissions"))
 
 from tinywebstack_family.mobilizon import (  # noqa: E402
     events_domain,
     kid_usernames_with_events,
     revoke_mobilizon_sessions_for_email,
 )
+
+
+def _enabled_kid_usernames(policy: dict, permissions_db: str) -> set[str]:
+    """F1.3: prefer the SQLite permission store; fall back to the JSON policy."""
+    try:
+        from pathlib import Path
+
+        from tinywebstack_permissions.store import PermissionsDB
+
+        db_path = Path(permissions_db) if permissions_db else None
+        if db_path is None or not db_path.is_file():
+            if permissions_db:
+                print(f"INFO: no permissions DB at {db_path}; using JSON policy", file=sys.stderr)
+            return kid_usernames_with_events(policy)
+        with PermissionsDB(db_path) as db:
+            users = db.enabled_event_usernames()
+            has_kids = bool(db.users_with_role("kid"))
+        if not users and not has_kids:
+            # DB seeded with roles only (no household rows yet) — JSON wins.
+            return kid_usernames_with_events(policy)
+        return users
+    except ImportError as exc:  # pragma: no cover - package optional on nodes
+        print(f"INFO: tinywebstack_permissions unavailable ({exc}); using JSON policy", file=sys.stderr)
+        return kid_usernames_with_events(policy)
 
 
 def _run_json(cmd: list[str]) -> dict:
@@ -79,6 +104,11 @@ def _sync_group_membership(group: str, want: set[str]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--policy", default="/etc/tinywebstack/family-policy.json")
+    parser.add_argument(
+        "--permissions-db",
+        default=os.environ.get("TWS_PERMISSIONS_DB", ""),
+        help="SQLite permissions DB (F1.3); falls back to --policy when absent",
+    )
     parser.add_argument("--permission", default="mobilizon.main")
     parser.add_argument("--kids-group", default="kids")
     parser.add_argument("--parents-group", default="parents")
@@ -93,7 +123,7 @@ def main() -> int:
         print(f"WARN: missing policy {path}", file=sys.stderr)
         return 0
     policy = json.loads(path.read_text(encoding="utf-8"))
-    enabled_kids = kid_usernames_with_events(policy)
+    enabled_kids = _enabled_kid_usernames(policy, args.permissions_db)
     kid_members = _group_members(args.kids_group)
 
     for username in kid_members:

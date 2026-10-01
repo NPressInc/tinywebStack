@@ -49,6 +49,18 @@ class QuietHours:
         return now_t >= start_t or now_t < end_t
 
 
+# F1.3 declarative role rules. Defaults here are byte-for-byte the pre-F1.3
+# hardcoded spam-checker behaviour for kids; when the SQLite permission store
+# (tinywebstack_permissions) is seeded it supplies these values instead.
+KID_DEFAULT_RULES: Dict[str, Any] = {
+    "can_create_rooms": True,
+    "can_create_group_rooms": False,
+    "can_send_3pid_invites": False,
+    "can_publish_rooms": False,
+    "mobilizon_role": "member",
+}
+
+
 @dataclass
 class KidPolicy:
     mxid: str
@@ -56,6 +68,11 @@ class KidPolicy:
     allowlist_domains: Set[str] = field(default_factory=set)
     quiet_hours: Optional[QuietHours] = None
     events_enabled: bool = True
+    can_create_rooms: bool = True
+    can_create_group_rooms: bool = False
+    can_send_3pid_invites: bool = False
+    can_publish_rooms: bool = False
+    mobilizon_role: str = "member"
 
 
 @dataclass
@@ -94,12 +111,22 @@ class FamilyPolicy:
             events_on = cfg.get("events_enabled", True)
             if not isinstance(events_on, bool):
                 events_on = bool(events_on)
+
+            def _rule_bool(name: str) -> bool:
+                val = cfg.get(name, KID_DEFAULT_RULES[name])
+                return bool(val) if not isinstance(val, bool) else val
+
             kids[mxid] = KidPolicy(
                 mxid=mxid,
                 allowlist_mxids=allow_mx,
                 allowlist_domains=allow_dom,
                 quiet_hours=qh,
                 events_enabled=events_on,
+                can_create_rooms=_rule_bool("can_create_rooms"),
+                can_create_group_rooms=_rule_bool("can_create_group_rooms"),
+                can_send_3pid_invites=_rule_bool("can_send_3pid_invites"),
+                can_publish_rooms=_rule_bool("can_publish_rooms"),
+                mobilizon_role=str(cfg.get("mobilizon_role", KID_DEFAULT_RULES["mobilizon_role"])),
             )
         return cls(
             server_name=server,
@@ -227,6 +254,11 @@ def policy_to_dict(policy: FamilyPolicy) -> Dict[str, Any]:
             "allowlist_mxids": sorted(kp.allowlist_mxids),
             "allowlist_domains": sorted(kp.allowlist_domains),
             "events_enabled": kp.events_enabled,
+            "can_create_rooms": kp.can_create_rooms,
+            "can_create_group_rooms": kp.can_create_group_rooms,
+            "can_send_3pid_invites": kp.can_send_3pid_invites,
+            "can_publish_rooms": kp.can_publish_rooms,
+            "mobilizon_role": kp.mobilizon_role,
         }
         if kp.quiet_hours:
             entry["quiet_hours"] = {

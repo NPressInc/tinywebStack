@@ -8,6 +8,21 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from tinywebstack_family.policy import FamilyPolicy, PolicyStore
 
+
+def _make_policy_store(policy_path: str, config: dict) -> Any:
+    """F1.3: prefer the SQLite permission store when seeded; else JSON file.
+
+    tinywebstack_permissions is an optional sibling package — the Synapse venv
+    may only contain this module (pip --no-deps), so a missing package or a
+    missing DB file both degrade to the legacy family-policy.json reader.
+    """
+    try:
+        from tinywebstack_permissions.store import SqliteFamilyPolicyStore
+
+        return SqliteFamilyPolicyStore(policy_path, config=config)
+    except ImportError:
+        return PolicyStore(policy_path)
+
 log = logging.getLogger(__name__)
 
 try:
@@ -31,7 +46,7 @@ class FamilySpamCheckerModule:
         self.api = api
 
         policy_path = config.get("policy_path", "/etc/tinywebstack/family-policy.json")
-        self.store = PolicyStore(policy_path)
+        self.store = _make_policy_store(policy_path, config)
         self.reject_encryption = bool(config.get("reject_encryption", True))
 
         api.register_spam_checker_callbacks(
@@ -149,9 +164,14 @@ class FamilySpamCheckerModule:
             return NOT_SPAM
         if policy.kid_in_quiet_hours(user):
             return self._deny("Quiet hours: kid may not create rooms")
+        kp = policy.kid_policy(user)
+        if kp is not None and not kp.can_create_rooms:
+            return self._deny("Kids may not create rooms")
         if not self._room_is_direct(room_config):
-            return self._deny("Kids may not create group rooms")
-        if self._kid_invite_count(room_config) > 1:
+            if kp is not None and not kp.can_create_group_rooms:
+                return self._deny("Kids may not create group rooms")
+        elif kp is not None and self._kid_invite_count(room_config) > 1:
+            # Direct-chat exception to the group-room ban: exactly one invitee.
             return self._deny("Kids may only create direct chats with one person")
         return NOT_SPAM
 
@@ -164,13 +184,17 @@ class FamilySpamCheckerModule:
     ) -> DenyResult:
         policy = self._policy()
         if policy.is_kid(user):
-            return self._deny("Kids may not send email/phone invites")
+            kp = policy.kid_policy(user)
+            if kp is None or not kp.can_send_3pid_invites:
+                return self._deny("Kids may not send email/phone invites")
         return NOT_SPAM
 
     async def user_may_publish_room(self, user: str, room_id: str) -> DenyResult:
         policy = self._policy()
         if policy.is_kid(user):
-            return self._deny("Kids may not publish rooms to the directory")
+            kp = policy.kid_policy(user)
+            if kp is None or not kp.can_publish_rooms:
+                return self._deny("Kids may not publish rooms to the directory")
         return NOT_SPAM
 
     async def check_event_for_spam(self, event: Any) -> DenyResult:

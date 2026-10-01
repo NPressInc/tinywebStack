@@ -14,6 +14,14 @@ dependencies = []
 verify = ["caldav>=1.3.9", "vobject>=0.9.6"]
 test = ["pytest>=7.0", "caldav>=1.3.9", "vobject>=0.9.6"]
 
+# Console entry points (S5.4). The shell scripts keep calling
+# `python -m tinywebstack_calendar.setup|verify` (byte-for-byte lab flow);
+# these wrappers exist so the CLI is usable straight from the installed
+# wheel, e.g. `tinywebstack-calendar-setup --help`.
+[project.scripts]
+tinywebstack-calendar-setup = "tinywebstack_calendar.setup:main"
+tinywebstack-calendar-verify = "tinywebstack_calendar.verify:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["tinywebstack_calendar*"]

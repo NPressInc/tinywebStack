@@ -1,0 +1,15 @@
+role: parent
+is_admin: true
+description: >
+  Household administrator. Full Matrix room powers, no quiet hours, Mobilizon
+  admin role. Enforced by the Synapse spam checker and Mobilizon helpers.
+permissions:
+  can_create_rooms: true
+  can_create_group_rooms: true
+  can_send_3pid_invites: true
+  can_publish_rooms: true
+  events_enabled: true
+  mobilizon_role: admin
+  allowlist_mxids: []
+  allowlist_domains: []
+  quiet_hours: null
