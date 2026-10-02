@@ -483,10 +483,14 @@ def test_seed_cli(tmp_path, capsys):
     policy.write_text(json.dumps(_legacy_policy_dict()), encoding="utf-8")
     db = tmp_path / "permissions.db"
     assert main(["seed", "--db", str(db), "--policy", str(policy)]) == 0
-    assert main(["seed", "--db", str(db), "--policy", str(policy)]) == 0  # idempotent
+    store = PermissionsDB(db)
+    store.set_permission(KID, "events_enabled", False)
+    store.close()
+    assert main(["seed", "--db", str(db), "--policy", str(policy)]) == 0  # must not re-import JSON
     assert main(["show", "kid", "--db", str(db)]) == 0
     store = PermissionsDB(db)
     ps = store.get_permissions("kid")
+    assert ps is not None and ps.events_enabled is False
     dump = store.export_dict()
     store.close()
     assert ps is not None and FRIEND in ps.allowlist_mxids

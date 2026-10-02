@@ -35,7 +35,13 @@ if [[ -f "${TW_STACK_ROOT}/vm/install-mobilizon.sh" ]]; then
   run_vm_script install-mobilizon.sh "$MAIN_DOMAIN" "${NODE_NAME:-}"
 fi
 run_vm_script install-family-module.sh "$MAIN_DOMAIN"
+if [[ -f "${TW_STACK_ROOT}/vm/family-permissions-seed.sh" ]]; then
+  run_vm_script family-permissions-seed.sh "$MAIN_DOMAIN"
+fi
 run_vm_script install-family-dashboard.sh "$MAIN_DOMAIN"
+if [[ -f "${TW_STACK_ROOT}/vm/family-federation-state-seed.sh" ]]; then
+  run_vm_script family-federation-state-seed.sh "$MAIN_DOMAIN"
+fi
 if [[ -f "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" ]]; then
   run_vm_script install-tinyweb-portal-branding.sh "$MAIN_DOMAIN"
 fi

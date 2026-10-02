@@ -23,6 +23,8 @@ from pydantic import BaseModel
 from tinywebstack_dashboard.auth import DashboardConfig, require_parent, username_from_headers
 from tinywebstack_dashboard.policy_store import load_policy, save_policy
 
+log = __import__("logging").getLogger(__name__)
+
 # Hostname labels plus optional :port (Synapse federation whitelists are servers, not URLs).
 DOMAIN_RE: Pattern[str] = re.compile(
     r"^(?=.{1,253}$)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])"
@@ -65,6 +67,83 @@ def load_state(path: Path) -> Dict[str, Any]:
     if not isinstance(domains, list):
         data["trusted_domains"] = []
     return data
+
+
+def _domain_list(raw: Any) -> List[str]:
+    if not isinstance(raw, list):
+        return []
+    return [str(d).strip() for d in raw if str(d).strip()]
+
+
+def merged_trusted_domains(
+    state_domains: List[str],
+    policy_domains: List[str],
+    *,
+    server_name: str = "",
+) -> List[str]:
+    """Union of dashboard state and legacy policy (L2.2 migration)."""
+    merged: set[str] = set()
+    for raw in state_domains + policy_domains:
+        if not str(raw).strip():
+            continue
+        try:
+            merged.add(normalize_domain(raw))
+        except InvalidDomain:
+            log.warning("Skipping invalid trusted domain in federation state/policy: %r", raw)
+    if server_name:
+        try:
+            merged.discard(normalize_domain(server_name))
+        except InvalidDomain:
+            pass
+    return sorted(merged)
+
+
+def domains_from_synapse_whitelist(path: Path = Path("/etc/matrix-synapse/conf.d/tinywebstack-federation.yaml")) -> List[str]:
+    """Best-effort read of existing Synapse federation_domain_whitelist."""
+    if not path.is_file():
+        return []
+    try:
+        import yaml  # type: ignore
+
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception as exc:  # pragma: no cover - optional PyYAML on nodes
+        log.warning("Could not parse Synapse federation snippet %s: %s", path, exc)
+        return []
+    raw = doc.get("federation_domain_whitelist")
+    if not isinstance(raw, list):
+        return []
+    return [str(d) for d in raw if str(d).strip()]
+
+
+def reconcile_state_with_policy(
+    state_path: Path,
+    policy_path: Path,
+    *,
+    server_name: str,
+    synapse_snippet_path: Optional[Path] = None,
+) -> List[str]:
+    """Ensure federation-state.json and family-policy trusted_domains stay in sync."""
+    state = load_state(state_path)
+    state_domains = _domain_list(state.get("trusted_domains"))
+    policy_domains: List[str] = []
+    if policy_path.is_file():
+        policy = load_policy(policy_path)
+        policy_domains = _domain_list(policy.get("trusted_domains"))
+    snippet_path = synapse_snippet_path or Path("/etc/matrix-synapse/conf.d/tinywebstack-federation.yaml")
+    synapse_domains = domains_from_synapse_whitelist(snippet_path)
+    merged = merged_trusted_domains(
+        state_domains + synapse_domains,
+        policy_domains,
+        server_name=server_name,
+    )
+    if merged != sorted(set(state_domains)):
+        save_state(state_path, merged)
+    if policy_path.is_file():
+        policy = load_policy(policy_path)
+        if sorted(set(_domain_list(policy.get("trusted_domains")))) != merged:
+            policy["trusted_domains"] = merged
+            save_policy(policy_path, policy)
+    return merged
 
 
 def save_state(path: Path, domains: List[str]) -> Dict[str, Any]:
@@ -155,10 +234,17 @@ def create_router(
             policy["trusted_domains"] = sorted(set(domains))
             save_policy(policy_file, policy)
 
+    def _effective_domains() -> List[str]:
+        return reconcile_state_with_policy(
+            state_file,
+            policy_file,
+            server_name=cfg.server_name,
+        )
+
     @router.get("/federation/domains", dependencies=[Depends(auth)])
     async def list_domains() -> Dict[str, Any]:
         state = load_state(state_file)
-        domains = [str(d) for d in state.get("trusted_domains") or []]
+        domains = _effective_domains()
         peer_nodes = [n for n in read_nodes_conf(nodes_file) if n["domain"] != cfg.server_name]
         return {
             "trusted_domains": sorted(set(domains)),
@@ -175,12 +261,12 @@ def create_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if domain == cfg.server_name:
             raise HTTPException(status_code=400, detail="Your own domain is always trusted")
-        state = load_state(state_file)
-        domains = [str(d) for d in state.get("trusted_domains") or []]
+        domains = _effective_domains()
         created = domain not in domains
         if created:
-            save_state(state_file, [*domains, domain])
-            sync_policy([*domains, domain])
+            merged = sorted(set([*domains, domain]))
+            save_state(state_file, merged)
+            sync_policy(merged)
         if on_change:
             on_change()
         return {"ok": True, "domain": domain, "created": created}
@@ -193,8 +279,7 @@ def create_router(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if domain == cfg.server_name:
             raise HTTPException(status_code=409, detail="Cannot remove your own domain")
-        state = load_state(state_file)
-        domains = [str(d) for d in state.get("trusted_domains") or []]
+        domains = _effective_domains()
         if domain not in domains:
             raise HTTPException(status_code=404, detail=f"Domain not trusted: {domain}")
         remaining = [d for d in domains if d != domain]

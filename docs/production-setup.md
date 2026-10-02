@@ -314,20 +314,25 @@ scripts/vm/remote-run.sh "$IP" family-init.sh home.example.com
 ```
 
 **Do not pass the node name here in production.** With `NODE_NAME` the script
-additionally runs `create-family-test-users.sh` (hardcoded `parent`/`kid`
-users) and `setup-family-calendars.sh` (hardcoded `--users
-parent,kid,alice,bob`) — lab scaffolding you don't want. Without it,
+additionally runs `create-family-test-users.sh` and `setup-family-calendars.sh`
+— lab scaffolding you don't want. Without it,
 `family-init.sh` runs: `family-groups.sh` → `install-mobilizon.sh` →
-`install-family-module.sh` → `install-family-dashboard.sh` →
+`install-family-module.sh` → `family-permissions-seed.sh` →
+`install-family-dashboard.sh` → `family-federation-state-seed.sh` →
 `install-tinyweb-portal-branding.sh`.
 
 - `family-groups.sh` creates `parents`, `kids`, `federation-test` groups and
   the permission model (Element/Synapse to family groups only; location web
   to `parents` only; dashboard permission `synapse.family_dashboard` → parents).
-- `install-family-module.sh` pip-installs `tinywebstack_family` into the
-  Synapse venv and writes `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`
-  (spam-checker module, `reject_encryption: true`, E2EE off) +
-  `/etc/tinywebstack/family-policy.json`, then restarts Synapse.
+- `install-family-module.sh` pip-installs `tinywebstack_family` and
+  `tinywebstack_permissions` into the Synapse venv and writes
+  `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`
+  (spam-checker module, SQLite `permissions_db`, `reject_encryption: true`,
+  E2EE off) + `/etc/tinywebstack/family-policy.json`, then restarts Synapse.
+- `family-permissions-seed.sh` creates `/etc/tinywebstack/permissions.db` once
+  (roles + one-time import from `family-policy.json` when the DB is empty).
+- `family-federation-state-seed.sh` merges existing `trusted_domains` from
+  policy and the Synapse allowlist snippet into `federation-state.json`.
 - `install-family-dashboard.sh` builds the FastAPI dashboard venv at
   `/opt/tinywebstack-family-dashboard`, systemd unit on 127.0.0.1:8765, nginx
   snippet at `https://home.example.com/family/`, sudoers for the privileged
@@ -435,21 +440,19 @@ shows each user only their permitted apps.
   (idempotent) and check `yunohost user permission list | grep -A3 element.main`.
 
 Calendars: run `setup-family-calendars.sh` for the shared family calendar +
-personal calendars. Caveat: it **hardcodes `--users parent,kid,alice,bob`**
-and requires `PARENT_PASSWORD`, so the clean production workaround until v1.1
-is: temporarily create the four lab-named accounts it expects
-(`parent`, `kid`, `alice`, `bob` via §6.2, any ≥8-char passwords), run the
-script, then delete `alice`/`bob` (and `parent`/`kid` once your real members
-have calendars, or keep them as service accounts). `remote-run.sh` does not
-forward arbitrary env vars, and it only injects `PARENT_PASSWORD` from the
-secrets file when the node has `PARENT_PASSWORD_<NODE>` — simplest is to run
-it directly on the node, where the deploy tree already lives:
+personal calendars. Pass your real members with `--users` and set explicit
+roles: `TWS_FAMILY_PARENTS` / `TWS_FAMILY_KIDS` (required whenever the list
+is not the lab default `parent,kid`). The calendar owner is the first user
+unless `TWS_FAMILY_OWNER` overrides. Example on the node:
 
 ```bash
 ssh root@"$IP"
 cd /opt/tinywebstack && TW_STACK_ROOT=/opt/tinywebstack \
-PARENT_PASSWORD='<parent user password>' \
-bash vm/setup-family-calendars.sh home.example.com home-a
+TWS_FAMILY_USERS='william,sophie,emma' \
+TWS_FAMILY_PARENTS='william,sophie' \
+TWS_FAMILY_KIDS='emma' \
+WILLIAM_PASSWORD='<william password>' \
+bash vm/setup-family-calendars.sh home.example.com home-a --users 'william,sophie,emma'
 ```
 
 Phones then point CalDAV at `https://nextcloud.home.example.com/nextcloud/remote.php/dav`
@@ -494,19 +497,22 @@ https://matrix.home.b.example/_matrix/key/v2/server` must return JSON with a
 `YUNOHOST_ADMIN_PASSWORD_HOME_A` from the secrets file (or set
 `MOBILIZON_ADMIN_PASSWORD`).
 
-`ip_range_whitelist` in the snippet is lab-scoped (`192.168.122.0/24` default)
-— **remove it on production nodes** (`FEDERATION_IP_RANGE_WHITELIST=0.0.0.0/0`
-in `config/local.env` before running the pair script, or delete the two lines
-and restart Synapse), or federation between real public IPs will be dropped.
+`ip_range_whitelist` in the snippet is lab-scoped (`192.168.122.0/24` default).
+On production nodes with public IPs, **delete the `ip_range_whitelist` block**
+from `/etc/matrix-synapse/conf.d/tinywebstack-federation.yaml` and restart
+Synapse — do **not** set `FEDERATION_IP_RANGE_WHITELIST=0.0.0.0/0` (that
+disables Synapse SSRF protection). Public federation does not require an open
+IP range when homes federate over HTTPS on the public Internet.
 
 ---
 
 ## 8. Verification
 
-The three e2e verifiers live in `scripts/spark/` and assume the lab CA:
-`verify-federation-e2e.sh` and `verify-events-e2e.sh` **die** if no
-`lab-ca.crt.pem` is found, and `verify-calendar-e2e.sh` needs `parent`/`kid`
-users + `PARENT_PASSWORD_*`/`KID_PASSWORD_*` secrets. Two options:
+The three e2e verifiers live in `scripts/spark/`. They prefer the lab CA when
+present (`TW_STACK_LAB_CA_DIR` / `TWS_CA_BUNDLE`) but fall back to the system
+trust store when it is absent (`TWS_REQUIRE_LAB_CA=1` restores the old
+hard-fail). Participant usernames and passwords come from env or the secrets
+file (`TWS_FAMILY_USERS`, `TWS_ALICE_USER`, etc.). Two options:
 
 **Option A — reuse the verifiers (they are not spark-coupled; they hit
 public HTTPS APIs and read the local secrets file).** On the control machine:
@@ -638,12 +644,10 @@ Test restore quarterly; an untested backup is not a backup.
    (`ssl.create_default_context()`), not to no verification. Same class of
    issue: `install-family-dashboard.sh` writes `TWS_LAB_TLS_INSECURE=1` by
    default into `dashboard.env`, and `peer_verify.py` honours it (§5.4.1).
-4. **No production member-provisioning CLI.** `create-family-test-users.sh`
-   hardcodes `parent`/`kid`; `setup-family-calendars.sh` hardcodes
-   `--users parent,kid,alice,bob` and dies if those users are missing — real
-   households need either dashboard-only calendar setup or a manual edit of
-   that invocation (§6.2). `family-init.sh`'s NODE_NAME-gated block is lab
-   scaffolding glued onto the production orchestrator.
+4. **Member provisioning is script-driven but explicit.** Custom households
+   must set `TWS_FAMILY_PARENTS` and `TWS_FAMILY_KIDS` alongside
+   `TWS_FAMILY_USERS` (§6.2). `family-init.sh`'s NODE_NAME-gated block is still
+   lab scaffolding glued onto the production orchestrator.
 5. **`yunohost-bootstrap.sh` passes `--ignore-dyndns` unconditionally** — no
    DynDNS support for residential ISPs (§1.3).
 6. **Verifiers are lab-CA-coupled:** `verify-federation-e2e.sh` and

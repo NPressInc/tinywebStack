@@ -51,12 +51,18 @@ with PermissionsDB(db_path) as db:
 PY
 fi
 
-install -d -m 775 -o root -g www-data /etc/tinywebstack
+if ! getent group tws-perms >/dev/null 2>&1; then
+  groupadd --system tws-perms
+fi
+install -d -m 750 -o root -g tws-perms /etc/tinywebstack
 if [[ -f "$DB_PATH" ]]; then
-  chown root:www-data "$DB_PATH"
-  chmod 664 "$DB_PATH"
+  chown root:tws-perms "$DB_PATH"
+  chmod 640 "$DB_PATH"
   if getent group synapse >/dev/null 2>&1; then
-    usermod -aG www-data synapse || true
+    usermod -aG tws-perms synapse || true
+  fi
+  if getent group www-data >/dev/null 2>&1; then
+    usermod -aG tws-perms www-data || true
   fi
 fi
 

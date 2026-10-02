@@ -99,10 +99,15 @@ print("  all scripts/*.sh mode 100755")
 PY
 
 echo "== pytest (family module + dashboard) =="
-if ! python3 -m pip install -q -e 'family/synapse_module[test]' -e 'family/dashboard[test]' -e 'family/calendar_module[test]' -e 'family/permissions[test]' 2>/dev/null; then
+VALIDATE_VENV="${TW_STACK_ROOT}/.tools/validate-venv"
+if [[ ! -x "${VALIDATE_VENV}/bin/python" ]]; then
+  python3 -m venv "$VALIDATE_VENV"
+  "${VALIDATE_VENV}/bin/pip" install -q --upgrade pip
+fi
+if ! "${VALIDATE_VENV}/bin/pip" install -q -r "${TW_STACK_ROOT}/scripts/requirements-validate.txt"; then
   echo "  pip install failed — skipped pytest" >&2
 else
-  PATH="${HOME}/.local/bin:${PATH}" python3 -m pytest family/synapse_module/tests family/dashboard/tests family/calendar_module/tests family/permissions/tests -q
+  "${VALIDATE_VENV}/bin/python" -m pytest family/synapse_module/tests family/dashboard/tests family/calendar_module/tests family/permissions/tests -q
   echo "  pytest passed"
 fi
 

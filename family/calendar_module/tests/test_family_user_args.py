@@ -112,6 +112,8 @@ def test_create_users_cli_flag_creates_arbitrary_household(sandbox) -> None:
         root,
         "create-family-test-users.sh",
         ["home.example", "home", "--users", " william , sophie ,emma "],
+        TWS_FAMILY_PARENTS="william,sophie",
+        TWS_FAMILY_KIDS="emma",
         WILLIAM_PASSWORD="dummydummy",
         SOPHIE_PASSWORD="dummydummy",
         EMMA_PASSWORD="dummydummy",
@@ -123,9 +125,8 @@ def test_create_users_cli_flag_creates_arbitrary_household(sandbox) -> None:
     assert any(ln.startswith("user create emma ") for ln in lines)
     assert not any(ln.startswith("user create parent ") for ln in lines)
     assert not any(ln.startswith("user create kid ") for ln in lines)
-    # first user -> parents group, the rest -> kids group
     assert "user group add parents william" in lines
-    assert "user group add kids sophie" in lines
+    assert "user group add parents sophie" in lines
     assert "user group add kids emma" in lines
 
 
@@ -137,6 +138,8 @@ def test_create_users_env_var_list(sandbox) -> None:
         "create-family-test-users.sh",
         ["home.example", "home"],
         TWS_FAMILY_USERS="william,sophie",
+        TWS_FAMILY_PARENTS="william",
+        TWS_FAMILY_KIDS="sophie",
         WILLIAM_PASSWORD="dummydummy",
         SOPHIE_PASSWORD="dummydummy",
     )
@@ -154,6 +157,8 @@ def test_create_users_cli_flag_beats_env(sandbox) -> None:
         "create-family-test-users.sh",
         ["home.example", "home", "--users=william"],
         TWS_FAMILY_USERS="sophie,emma",
+        TWS_FAMILY_PARENTS="william",
+        TWS_FAMILY_KIDS="",
         WILLIAM_PASSWORD="dummydummy",
     )
     assert proc.returncode == 0, proc.stderr
@@ -169,6 +174,8 @@ def test_create_users_missing_password_dies_with_user_name(sandbox) -> None:
         root,
         "create-family-test-users.sh",
         ["home.example", "home", "--users", "william,nope"],
+        TWS_FAMILY_PARENTS="william",
+        TWS_FAMILY_KIDS="nope",
         WILLIAM_PASSWORD="dummydummy",
     )
     assert proc.returncode != 0
@@ -207,6 +214,8 @@ def test_create_users_dedupes_list(sandbox) -> None:
         root,
         "create-family-test-users.sh",
         ["home.example", "home", "--users", "william,william,sophie"],
+        TWS_FAMILY_PARENTS="william",
+        TWS_FAMILY_KIDS="sophie",
         WILLIAM_PASSWORD="dummydummy",
         SOPHIE_PASSWORD="dummydummy",
     )
@@ -248,6 +257,8 @@ def test_setup_calendars_custom_users_parse(sandbox) -> None:
         root,
         "setup-family-calendars.sh",
         ["home.example", "home", "--users", "william,sophie"],
+        TWS_FAMILY_PARENTS="william",
+        TWS_FAMILY_KIDS="sophie",
         WILLIAM_PASSWORD="dummydummy",
     )
     assert proc.returncode != 0
@@ -263,6 +274,8 @@ def test_setup_calendars_owner_password_required_when_missing(sandbox) -> None:
         root,
         "setup-family-calendars.sh",
         ["home.example", "home", "--users", "william"],
+        TWS_FAMILY_PARENTS="william",
+        TWS_FAMILY_KIDS="",
     )
     assert proc.returncode != 0
     assert "WILLIAM_PASSWORD" in proc.stderr
@@ -300,6 +313,9 @@ def _bash(tmp_path: Path, snippet: str, **env: str) -> subprocess.CompletedProce
         for k, v in os.environ.items()
         if not (k.startswith(_LEAKY_PREFIXES) or k.endswith(_LEAKY_SUFFIXES))
     }
+    for key in list(e):
+        if key.startswith("TWS_FAMILY_"):
+            del e[key]
     e.update(env)
     return subprocess.run(
         ["bash", "-c", f'source "{common}"; source "{lib}"; {snippet}'],
@@ -330,6 +346,16 @@ def test_lib_resolve_users_default(tmp_path: Path) -> None:
     assert out.stdout.strip() == "parent,kid"
 
 
+def test_lib_custom_users_require_explicit_roles(tmp_path: Path) -> None:
+    out = _bash(
+        tmp_path,
+        'assert_family_roles_configured "william,sophie" || exit 1',
+        TWS_FAMILY_USERS="william,sophie",
+    )
+    assert out.returncode != 0
+    assert "TWS_FAMILY_PARENTS" in out.stderr
+
+
 def test_lib_owner_and_splits(tmp_path: Path) -> None:
     out = _bash(tmp_path, 'resolve_family_owner "william,sophie,emma"')
     assert out.stdout.strip() == "william"
@@ -339,7 +365,12 @@ def test_lib_owner_and_splits(tmp_path: Path) -> None:
     assert out.stdout.strip() == "parent"
     out = _bash(tmp_path, 'resolve_family_kids "parent,kid"')
     assert out.stdout.strip() == "kid"
-    out = _bash(tmp_path, 'resolve_family_kids "william,sophie,emma"')
-    assert out.stdout.strip() == "sophie,emma"
+    out = _bash(
+        tmp_path,
+        'resolve_family_kids "william,sophie,emma"',
+        TWS_FAMILY_PARENTS="william,sophie",
+        TWS_FAMILY_KIDS="emma",
+    )
+    assert out.stdout.strip() == "emma"
     out = _bash(tmp_path, 'resolve_family_kids "william"', TWS_FAMILY_KIDS="")
     assert out.stdout.strip() == ""

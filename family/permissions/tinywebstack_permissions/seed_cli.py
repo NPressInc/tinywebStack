@@ -46,8 +46,9 @@ def cmd_seed(args: argparse.Namespace) -> int:
         imported_from = ""
         if args.policy:
             policy = Path(args.policy)
-            if policy.is_file():
+            if policy.is_file() and db.should_import_legacy_policy():
                 db.import_legacy_policy_file(policy)
+                db.mark_legacy_policy_imported()
                 imported_from = str(policy)
         dump = db.export_dict()
     print(

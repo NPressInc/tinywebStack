@@ -607,6 +607,24 @@ class PermissionsDB:
             raise ValueError("policy JSON root must be an object")
         self.import_legacy_policy(data)
 
+    LEGACY_POLICY_IMPORTED_KEY = "legacy_policy_imported"
+
+    def household_is_seeded(self) -> bool:
+        row = self._conn.execute("SELECT COUNT(*) AS n FROM users").fetchone()
+        return bool(row and int(row["n"]) > 0)
+
+    def legacy_policy_was_imported(self) -> bool:
+        return bool(self.get_meta(self.LEGACY_POLICY_IMPORTED_KEY, False))
+
+    def should_import_legacy_policy(self) -> bool:
+        """One-time migration from family-policy.json when the DB has no household yet."""
+        if self.legacy_policy_was_imported() or self.household_is_seeded():
+            return False
+        return True
+
+    def mark_legacy_policy_imported(self) -> None:
+        self.set_meta(self.LEGACY_POLICY_IMPORTED_KEY, True)
+
     # -------------------------------------------------------------- backup
 
     def export_dict(self) -> Dict[str, Any]:

@@ -231,7 +231,7 @@ class MobilizonClient:
         begins_on: datetime,
         ends_on: datetime,
         organizer_actor_id: str,
-        visibility: str = "UNLISTED",
+        visibility: str = "PUBLIC",
         **kwargs: Any,
     ) -> Dict[str, Any]:
         data = self.gql(

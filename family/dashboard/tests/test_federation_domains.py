@@ -14,6 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tinywebstack_dashboard.app import DashboardConfig, create_app
+from tinywebstack_dashboard.federation import reconcile_state_with_policy
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ALLOWLIST_SCRIPT = REPO_ROOT / "scripts" / "vm" / "synapse-federation-allowlist.sh"
@@ -86,6 +87,53 @@ def test_federation_non_parent_forbidden(fed_env):
     assert r.status_code == 403
     r = c.delete("/federation/domains/evil.test", headers={"YNH_USER": "mallory"})
     assert r.status_code == 403
+
+
+def test_reconcile_seeds_state_from_legacy_policy(fed_env, tmp_path):
+    _, _, state, policy, _ = fed_env
+    policy.write_text(
+        json.dumps(
+            {
+                "server_name": "family-a.test",
+                "kids": {},
+                "parent_mxids": [],
+                "trusted_domains": ["family-b.test", "family-c.test"],
+                "reject_encryption": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    merged = reconcile_state_with_policy(state, policy, server_name="family-a.test")
+    assert merged == ["family-b.test", "family-c.test"]
+    on_disk = json.loads(state.read_text(encoding="utf-8"))
+    assert on_disk["trusted_domains"] == ["family-b.test", "family-c.test"]
+
+
+def test_add_domain_unions_with_policy_peers(fed_env):
+    make_client, _, state, policy, _ = fed_env
+    policy.write_text(
+        json.dumps(
+            {
+                "server_name": "family-a.test",
+                "kids": {},
+                "parent_mxids": [],
+                "trusted_domains": ["family-b.test"],
+                "reject_encryption": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    c = make_client()
+    r = c.post("/federation/domains", headers=HEADERS, json={"domain": "family-c.test"})
+    assert r.status_code == 200
+    body = c.get("/federation/domains", headers=HEADERS).json()
+    assert body["trusted_domains"] == ["family-b.test", "family-c.test"]
+    saved = json.loads(state.read_text(encoding="utf-8"))
+    assert saved["trusted_domains"] == ["family-b.test", "family-c.test"]
+    assert json.loads(policy.read_text(encoding="utf-8"))["trusted_domains"] == [
+        "family-b.test",
+        "family-c.test",
+    ]
 
 
 def test_add_list_remove_roundtrip(fed_env):
