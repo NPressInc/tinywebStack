@@ -52,13 +52,17 @@ def _make_node_tree(tmp_path: Path) -> Path:
 # package directory out of the source dir given as the last argument.
 echo "$*" >> "${FAKE_PIP_LOG:?FAKE_PIP_LOG not set}"
 src="${*: -1}"
-if [[ ! -d "$src/tinywebstack_family" ]]; then
-  echo "fake pip: $src is not tinywebstack-family source" >&2
+site="$(cd "$(dirname "$0")/.." && pwd)/lib/site-packages"
+if [[ -d "$src/tinywebstack_family" ]]; then
+  rm -rf "${site}/tinywebstack_family"
+  cp -r "$src/tinywebstack_family" "${site}/"
+elif [[ -d "$src/tinywebstack_permissions" ]]; then
+  rm -rf "${site}/tinywebstack_permissions"
+  cp -r "$src/tinywebstack_permissions" "${site}/"
+else
+  echo "fake pip: $src is not tinywebstack-family or tinywebstack_permissions source" >&2
   exit 1
 fi
-site="$(cd "$(dirname "$0")/.." && pwd)/lib/site-packages"
-rm -rf "${site}/tinywebstack_family"
-cp -r "$src/tinywebstack_family" "${site}/"
 """
     )
     python_stub = venv / "bin" / "python"
@@ -109,8 +113,9 @@ def _module_importable(venv: Path) -> bool:
         [
             str(probe),
             "-c",
-            "import tinywebstack_family;"
+            "import tinywebstack_family, tinywebstack_permissions;"
             "assert tinywebstack_family.FamilySpamCheckerModule;"
+            "assert tinywebstack_permissions.PermissionsDB;"
             "assert 'site-packages' in tinywebstack_family.__file__",
         ],
         capture_output=True,
@@ -127,8 +132,9 @@ def node(tmp_path: Path) -> Path:
 
 def _wipe(venv: Path) -> None:
     """Simulate `yunohost app upgrade synapse` recreating the venv."""
-    shutil.rmtree(venv / "lib" / "site-packages" / "tinywebstack_family",
-                  ignore_errors=True)
+    site = venv / "lib" / "site-packages"
+    shutil.rmtree(site / "tinywebstack_family", ignore_errors=True)
+    shutil.rmtree(site / "tinywebstack_permissions", ignore_errors=True)
 
 
 def test_post_upgrade_detects_wipe_and_reinstalls(node: Path, tmp_path: Path) -> None:
@@ -221,6 +227,7 @@ def test_installer_writes_expected_snippet(node: Path, tmp_path: Path) -> None:
     assert "tinywebstack_family.module.FamilySpamCheckerModule" in snippet
     assert "encryption_enabled_by_default_for_room_type" in snippet
     assert f"policy_path: {env['TWS_POLICY_PATH']}" in snippet
+    assert "permissions_db:" in snippet
     import yaml
 
     data = yaml.safe_load(snippet)

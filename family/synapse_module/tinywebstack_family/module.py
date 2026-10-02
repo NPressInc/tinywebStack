@@ -10,17 +10,25 @@ from tinywebstack_family.policy import FamilyPolicy, PolicyStore
 
 
 def _make_policy_store(policy_path: str, config: dict) -> Any:
-    """F1.3: prefer the SQLite permission store when seeded; else JSON file.
-
-    tinywebstack_permissions is an optional sibling package — the Synapse venv
-    may only contain this module (pip --no-deps), so a missing package or a
-    missing DB file both degrade to the legacy family-policy.json reader.
-    """
+    """F1.3: prefer the SQLite permission store when seeded; else JSON file."""
+    db_path = config.get("permissions_db") or __import__("os").environ.get("TWS_PERMISSIONS_DB", "")
     try:
         from tinywebstack_permissions.store import SqliteFamilyPolicyStore
 
         return SqliteFamilyPolicyStore(policy_path, config=config)
-    except ImportError:
+    except ImportError as exc:
+        if db_path:
+            log.critical(
+                "tinywebstack_permissions is not installed but permissions_db=%s — "
+                "install family/permissions into the Synapse venv (install-family-module.sh)",
+                db_path,
+            )
+        else:
+            log.warning(
+                "tinywebstack_permissions unavailable (%s); using JSON policy at %s",
+                exc,
+                policy_path,
+            )
         return PolicyStore(policy_path)
 
 log = logging.getLogger(__name__)

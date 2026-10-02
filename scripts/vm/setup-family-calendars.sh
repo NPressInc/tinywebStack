@@ -47,6 +47,7 @@ fi
 # Single source of truth for the member list: scripts/lib/family_users.sh
 # (--users flag > TWS_FAMILY_USERS env > lab default parent,kid).
 FAMILY_USERS_CSV="$(resolve_family_users "${EXTRA_ARGS[@]}")"
+assert_family_roles_configured "$FAMILY_USERS_CSV"
 OWNER="$(resolve_family_owner "$FAMILY_USERS_CSV")"
 
 # Owner password via the scripts/lib/secrets.sh chain: <OWNER>_PASSWORD env

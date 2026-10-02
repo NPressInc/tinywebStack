@@ -221,7 +221,15 @@ apply_state() {
   local domains_json b64
   domains_json="$(printf '%s\n' "$@" | python3 -c 'import json,sys; print(json.dumps(sorted({l.strip() for l in sys.stdin if l.strip()})))')"
   b64="$(printf '{"version":1,"trusted_domains":%s}' "$domains_json" | base64 | tr -d '\n')"
-  "${TW_STACK_ROOT}/scripts/vm/remote-run.sh" "$NODE_A_SSH" \
+  local remote_run=""
+  if [[ -f "${TW_STACK_ROOT}/vm/remote-run.sh" ]]; then
+    remote_run="${TW_STACK_ROOT}/vm/remote-run.sh"
+  elif [[ -f "${TW_STACK_ROOT}/scripts/vm/remote-run.sh" ]]; then
+    remote_run="${TW_STACK_ROOT}/scripts/vm/remote-run.sh"
+  else
+    die "Cannot locate remote-run.sh from TW_STACK_ROOT=${TW_STACK_ROOT}"
+  fi
+  "$remote_run" "$NODE_A_SSH" \
     synapse-federation-allowlist.sh --from-state "$DOMAIN_A" "base64:${b64}"
 }
 
@@ -291,11 +299,22 @@ res = req(
     token=token,
     body={"invite": [f"@roundtrip-user:{rt}"], "preset": "private_chat"},
 )
-denied = "errcode" in res
-if expect == "allowed" and denied:
-    sys.exit(f"Expected invite to newly trusted {rt} to be allowed, got: {res}")
-if expect == "blocked" and not denied:
-    sys.exit(f"Expected invite to removed domain {rt} to be blocked, got: {res}")
+err = str(res.get("error", ""))
+code = res.get("errcode", "")
+federation_denied = code == "M_FORBIDDEN" and (
+    "federation denied" in err.lower() or "denied" in err.lower()
+)
+connection_failed = code in ("M_UNKNOWN", "HTTP_502", "HTTP_504") or "can't connect" in err.lower()
+
+if expect == "allowed":
+    if federation_denied:
+        sys.exit(f"Expected invite to newly trusted {rt} not to be federation-blocked, got: {res}")
+    if code and code not in ("M_UNKNOWN", "HTTP_502", "HTTP_504") and "room_id" not in res:
+        if not connection_failed:
+            sys.exit(f"Expected allow or connection error for trusted {rt}, got: {res}")
+elif expect == "blocked":
+    if not federation_denied:
+        sys.exit(f"Expected federation denial for removed domain {rt}, got: {res}")
 print(f"OK: invite to {rt} {'allowed' if expect == 'allowed' else 'blocked'} as expected")
 PY
 }

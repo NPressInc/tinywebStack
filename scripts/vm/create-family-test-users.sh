@@ -46,6 +46,7 @@ KIDS_GROUP="${TWS_KIDS_GROUP:-kids}"
 # Single source of truth for the member list: scripts/lib/family_users.sh
 # (--users flag > TWS_FAMILY_USERS env > lab default parent,kid).
 FAMILY_USERS_CSV="$(resolve_family_users "${EXTRA_ARGS[@]}")"
+assert_family_roles_configured "$FAMILY_USERS_CSV"
 PARENT_USERS_CSV="$(resolve_family_parents "$FAMILY_USERS_CSV")"
 KID_USERS_CSV="$(resolve_family_kids "$FAMILY_USERS_CSV")"
 

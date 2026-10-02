@@ -11,6 +11,8 @@ source "${TW_STACK_ROOT}/lib/domains.sh"
 source "${TW_STACK_ROOT}/lib/secrets.sh"
 # shellcheck source=scripts/lib/mobilizon_python_path.sh
 source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
+# shellcheck source=scripts/lib/mobilizon_admin_password.sh
+source "${TW_STACK_ROOT}/lib/mobilizon_admin_password.sh"
 load_config
 export_mobilizon_pythonpath
 
@@ -54,11 +56,13 @@ POLICY="${TWS_POLICY_PATH:-/etc/tinywebstack/family-policy.json}"
 EVENTS_D="$(events_domain "$MAIN_DOMAIN")"
 ADMIN_USER="${MOBILIZON_ADMIN_USER:-${YUNOHOST_ADMIN_USER:-twsowner}}"
 ADMIN_EMAIL="${MOBILIZON_ADMIN_EMAIL:-${ADMIN_USER}@${MAIN_DOMAIN}}"
-ADMIN_PASSWORD="${MOBILIZON_ADMIN_PASSWORD:-${YUNOHOST_ADMIN_PASSWORD:-}}"
-if [[ -z "$ADMIN_PASSWORD" && -n "$NODE_NAME" ]]; then
-  ADMIN_PASSWORD="$(read_node_secret "$NODE_NAME" yunohost_admin_password || true)"
+ADMIN_PASSWORD=""
+if ! ADMIN_PASSWORD="$(read_mobilizon_admin_password)"; then
+  if [[ -n "$NODE_NAME" ]]; then
+    ADMIN_PASSWORD="$(read_node_secret "$NODE_NAME" yunohost_admin_password || true)"
+  fi
 fi
-[[ -n "$ADMIN_PASSWORD" ]] || die "MOBILIZON_ADMIN_PASSWORD or yunohost_admin_password secret required"
+[[ -n "$ADMIN_PASSWORD" ]] || die "Mobilizon admin password required (set ${MOBILIZON_ADMIN_PASSWORD_FILE}, MOBILIZON_ADMIN_PASSWORD, or yunohost_admin_password secret)"
 
 EXTRA_PEERS_JSON="$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1:]))' "${EXTRA_PEERS[@]}")"
 export MAIN_DOMAIN EVENTS_D ADMIN_EMAIL ADMIN_PASSWORD POLICY TW_STACK_ROOT EXTRA_PEERS_JSON

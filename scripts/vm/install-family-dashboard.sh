@@ -32,7 +32,9 @@ DASH_ROOT="/opt/tinywebstack-family-dashboard"
 VENV="${DASH_ROOT}/venv"
 MODULE_FAMILY="${TW_STACK_ROOT}/family/synapse_module"
 MODULE_DASH="${TW_STACK_ROOT}/family/dashboard"
+MODULE_PERMS="${TW_STACK_ROOT}/family/permissions"
 [[ -d "$MODULE_DASH" ]] || die "Missing ${MODULE_DASH}"
+[[ -d "$MODULE_PERMS/tinywebstack_permissions" ]] || die "Missing ${MODULE_PERMS}"
 
 LOC_D="$(location_domain "$MAIN_DOMAIN")"
 EVENTS_D="$(events_domain "$MAIN_DOMAIN")"
@@ -65,9 +67,12 @@ if [[ ! -x "${VENV}/bin/pip" ]]; then
   python3 -m venv "$VENV"
 fi
 "${VENV}/bin/pip" install -q --upgrade pip
-"${VENV}/bin/pip" install -q -e "$MODULE_FAMILY" -e "$MODULE_DASH"
+"${VENV}/bin/pip" install -q -e "$MODULE_FAMILY" -e "$MODULE_DASH" -e "$MODULE_PERMS"
 
-install -d -m 775 -o root -g www-data /etc/tinywebstack
+if ! getent group tws-perms >/dev/null 2>&1; then
+  groupadd --system tws-perms
+fi
+install -d -m 750 -o root -g tws-perms /etc/tinywebstack
 if [[ ! -s /etc/tinywebstack/owntracks-kids.json ]]; then
   printf '{}\n' > /etc/tinywebstack/owntracks-kids.json
   chown root:www-data /etc/tinywebstack/owntracks-kids.json
@@ -107,6 +112,7 @@ TWS_OWNTRACKS_PUBLISH_URL=https://${LOC_D}/recorder/pub
 TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
 TWS_OWNTRACKS_HTPASSWD=/etc/tinywebstack/owntracks-recorder.htpasswd
 TWS_SYNAPSE_ADMIN_TOKEN_FILE=/etc/tinywebstack/synapse-admin-token
+TWS_PERMISSIONS_DB=/etc/tinywebstack/permissions.db
 TWS_DASHBOARD_PERM=${DASH_PERM}
 TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}
 TWS_DASHBOARD_ROOT_PATH=/family

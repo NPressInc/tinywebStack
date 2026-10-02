@@ -9,6 +9,8 @@ source "${TW_STACK_ROOT}/lib/common.sh"
 source "${TW_STACK_ROOT}/lib/domains.sh"
 # shellcheck source=scripts/lib/mobilizon_python_path.sh
 source "${TW_STACK_ROOT}/lib/mobilizon_python_path.sh"
+# shellcheck source=scripts/lib/mobilizon_admin_password.sh
+source "${TW_STACK_ROOT}/lib/mobilizon_admin_password.sh"
 load_config
 
 usage() {
@@ -63,6 +65,10 @@ install_mobilizon_lab_ca_trust
 
 if [[ -x "${TW_STACK_ROOT}/vm/family-groups.sh" ]]; then
   "${TW_STACK_ROOT}/vm/family-groups.sh" || log "WARN: family-groups after mobilizon"
+fi
+
+if pw="$(read_mobilizon_admin_password 2>/dev/null || true)"; then
+  [[ -n "$pw" ]] && ensure_mobilizon_admin_password_file "$pw"
 fi
 
 log "Mobilizon (events) ready at https://${EVENTS_D}/"

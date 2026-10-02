@@ -27,6 +27,7 @@ from tinywebstack_family.mobilizon import (  # noqa: E402
     kid_usernames_with_events,
     revoke_mobilizon_sessions_for_email,
 )
+from tinywebstack_family.yunohost_json import groups_map  # noqa: E402
 
 
 def _enabled_kid_usernames(policy: dict, permissions_db: str) -> set[str]:
@@ -49,7 +50,14 @@ def _enabled_kid_usernames(policy: dict, permissions_db: str) -> set[str]:
             return kid_usernames_with_events(policy)
         return users
     except ImportError as exc:  # pragma: no cover - package optional on nodes
-        print(f"INFO: tinywebstack_permissions unavailable ({exc}); using JSON policy", file=sys.stderr)
+        if permissions_db:
+            print(
+                f"ERROR: tinywebstack_permissions unavailable ({exc}) but --permissions-db was set; "
+                "install family/permissions into the Synapse/dashboard venv",
+                file=sys.stderr,
+            )
+        else:
+            print(f"INFO: tinywebstack_permissions unavailable ({exc}); using JSON policy", file=sys.stderr)
         return kid_usernames_with_events(policy)
 
 
@@ -80,12 +88,7 @@ def _ensure_group(name: str) -> None:
         groups = _run_json(["yunohost", "user", "group", "list", "--output-as", "json"])
     except subprocess.CalledProcessError as exc:
         raise RuntimeError(f"yunohost group list failed: {exc.stderr}") from exc
-    if isinstance(groups, dict):
-        known = set(groups.keys())
-    elif isinstance(groups, list):
-        known = set(groups)
-    else:
-        known = set()
+    known = set(groups_map(groups))
     if name in known:
         return
     proc = _ynh("group", "create", name)

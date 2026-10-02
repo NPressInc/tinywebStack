@@ -52,7 +52,11 @@ if [[ "$(id -u)" -ne 0 ]] && ! dry_run_is_active && [[ "${TWS_ALLOW_NONROOT:-0}"
 fi
 
 MODULE_SRC="${TW_STACK_ROOT}/family/synapse_module"
+PERMS_SRC="${TW_STACK_ROOT}/family/permissions"
 [[ -d "$MODULE_SRC" ]] || die "Missing ${MODULE_SRC} (sync family/ to the node)"
+[[ -d "$PERMS_SRC/tinywebstack_permissions" ]] || die "Missing ${PERMS_SRC} (sync family/ to the node)"
+
+PERMS_DB="${TWS_PERMISSIONS_DB:-/etc/tinywebstack/permissions.db}"
 
 # Optional prebuilt wheel (built on the control machine, e.g.
 # `python -m pip wheel --no-deps -w dist family/synapse_module`).
@@ -91,13 +95,17 @@ else
   PIP="$(find_synapse_pip)" || die "Could not find Synapse venv pip"
   log "Installing tinywebstack-family from ${INSTALL_SOURCE} via ${PIP}"
   "$PIP" install -q --upgrade --no-deps --force-reinstall "$INSTALL_SOURCE"
+  log "Installing tinywebstack_permissions from ${PERMS_SRC} via ${PIP}"
+  "$PIP" install -q --upgrade --no-deps --force-reinstall "$PERMS_SRC"
 
   # Fail loudly here rather than letting Synapse boot without the module.
   VENV_PY="${PIP%/*}/python"
   [[ -x "$VENV_PY" ]] || VENV_PY="python3"
   "$VENV_PY" - <<'PY' || die "tinywebstack_family not importable from ${PIP%/*} after install"
 import tinywebstack_family
+import tinywebstack_permissions
 assert tinywebstack_family.FamilySpamCheckerModule
+assert tinywebstack_permissions.PermissionsDB
 PY
 fi
 
@@ -113,10 +121,16 @@ POLICY_PATH="${TWS_POLICY_PATH:-/etc/tinywebstack/family-policy.json}"
 if dry_run_is_active; then
   log "DRY_RUN: would ensure ${POLICY_PATH} exists (mode 664, group www-data)"
 else
-  if [[ "$(id -u)" -eq 0 ]]; then
-    install -d -m 775 -o root -g www-data /etc/tinywebstack
+  if [[ "$(id -u)" -eq 0 ]] && [[ "${TWS_ALLOW_NONROOT:-0}" != "1" ]]; then
+    if ! getent group tws-perms >/dev/null 2>&1; then
+      groupadd --system tws-perms
+    fi
+    install -d -m 750 -o root -g tws-perms /etc/tinywebstack
     if getent group synapse >/dev/null 2>&1; then
-      usermod -aG www-data synapse || true
+      usermod -aG tws-perms synapse || true
+    fi
+    if getent group www-data >/dev/null 2>&1; then
+      usermod -aG tws-perms www-data || true
     fi
   fi
   if [[ ! -f "$POLICY_PATH" ]]; then
@@ -133,10 +147,16 @@ else
 EOF
     log "Created empty policy at ${POLICY_PATH}"
   fi
-  if [[ "$(id -u)" -eq 0 ]]; then
-    chown root:www-data "$POLICY_PATH"
+  if [[ "$(id -u)" -eq 0 ]] && [[ "${TWS_ALLOW_NONROOT:-0}" != "1" ]]; then
+    chmod 640 "$POLICY_PATH"
+    if getent group tws-perms >/dev/null 2>&1; then
+      chown root:tws-perms "$POLICY_PATH" || true
+    elif getent group www-data >/dev/null 2>&1; then
+      chown root:www-data "$POLICY_PATH" || true
+    fi
+  else
+    chmod 640 "$POLICY_PATH" 2>/dev/null || chmod 664 "$POLICY_PATH"
   fi
-  chmod 664 "$POLICY_PATH"
 fi
 
 CONF_D="${TWS_SYNAPSE_CONF_D:-/etc/matrix-synapse/conf.d}"
@@ -146,6 +166,7 @@ modules:
   - module: tinywebstack_family.module.FamilySpamCheckerModule
     config:
       policy_path: ${POLICY_PATH}
+      permissions_db: ${PERMS_DB}
       reject_encryption: true
 
 encryption_enabled_by_default_for_room_type: \"off\"

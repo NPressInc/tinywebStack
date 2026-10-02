@@ -35,6 +35,8 @@ def test_share_skips_when_principal_already_present() -> None:
 def test_open_caldav_raises_on_redirect(monkeypatch: pytest.MonkeyPatch) -> None:
     import urllib.error
 
+    from tinywebstack_calendar.sharing import _open_caldav
+
     def fake_open(*_args, **_kwargs):
         raise urllib.error.HTTPError(
             url="https://nc.example/dav/",
@@ -46,12 +48,13 @@ def test_open_caldav_raises_on_redirect(monkeypatch: pytest.MonkeyPatch) -> None
 
     monkeypatch.setattr("urllib.request.OpenerDirector.open", fake_open)
     with pytest.raises(RuntimeError, match="redirect"):
-        share_calendar_with_principal(
+        _open_caldav(
             "https://nc.example/dav/calendars/parent/tws-family/",
-            "parent",
-            "secret",
-            "principal:principals/groups/kids",
-            skip_if_shared=False,
+            method="PROPFIND",
+            username="parent",
+            password="secret",
+            body=b"",
+            headers={"Depth": "0"},
         )
 
 

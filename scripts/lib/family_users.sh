@@ -114,12 +114,52 @@ resolve_family_parents() {
   fi
 }
 
+# Require explicit parent/kid role lists for custom households (not the lab parent,kid pair).
+assert_family_roles_configured() {
+  local users_csv=$1
+  if [[ "$users_csv" == "$TWS_FAMILY_USERS_DEFAULT" ]]; then
+    return 0
+  fi
+  if [[ -z "${TWS_FAMILY_PARENTS+set}" || -z "${TWS_FAMILY_KIDS+set}" ]]; then
+    die "Custom family user list (${users_csv}) requires TWS_FAMILY_PARENTS and TWS_FAMILY_KIDS (comma-separated; kids may be empty). Example: TWS_FAMILY_USERS=william,sophie,emma TWS_FAMILY_PARENTS=william,sophie TWS_FAMILY_KIDS=emma"
+  fi
+  local parents_csv kids_csv=""
+  parents_csv="$(normalize_user_list "$TWS_FAMILY_PARENTS")"
+  if [[ -n "${TWS_FAMILY_KIDS}" ]]; then
+    kids_csv="$(normalize_user_list "$TWS_FAMILY_KIDS")"
+  fi
+  local u p k found
+  local IFS=','
+  local -a all=() par=() kd=()
+  read -r -a all <<< "$users_csv"
+  read -r -a par <<< "$parents_csv"
+  read -r -a kd <<< "$kids_csv"
+  for u in "${all[@]}"; do
+    found=0
+    for p in "${par[@]}"; do [[ "$p" == "$u" ]] && found=1 && break; done
+    if [[ "$found" -eq 1 ]]; then continue; fi
+    for k in "${kd[@]}"; do [[ "$k" == "$u" ]] && found=1 && break; done
+    if [[ "$found" -eq 0 ]]; then
+      die "User '${u}' is in TWS_FAMILY_USERS but not in TWS_FAMILY_PARENTS or TWS_FAMILY_KIDS"
+    fi
+  done
+}
+
 # Print kid users as CSV (may be empty). Args: normalized list CSV.
 resolve_family_kids() {
   local users_csv=$1
-  if [[ -n "${TWS_FAMILY_KIDS:-}" ]]; then
-    normalize_user_list "$TWS_FAMILY_KIDS"
-    return 0
+  if [[ -n "${TWS_FAMILY_KIDS+set}" ]]; then
+    if [[ -z "${TWS_FAMILY_KIDS}" ]]; then
+      if [[ "$users_csv" == "$TWS_FAMILY_USERS_DEFAULT" ]]; then
+        : # explicit empty kids on a custom list only; lab default falls through
+      else
+        printf '\n'
+        return 0
+      fi
+    else
+      normalize_user_list "$TWS_FAMILY_KIDS"
+      return 0
+    fi
   fi
   if [[ "$users_csv" == "$TWS_FAMILY_USERS_DEFAULT" ]]; then
     printf 'kid\n'

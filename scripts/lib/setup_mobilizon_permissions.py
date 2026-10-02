@@ -93,7 +93,6 @@ def reconcile_permission(
             name,
             add=sorted(want - current) or None,
             remove=sorted(current - want) or None,
-            auth_header=auth_header,
             show_tile=show_tile,
         )
 
@@ -122,7 +121,7 @@ def setup_mobilizon_family_permissions(
         protected=True,
     )
     # SSOwat tile flag is easy to miss via API alone; CLI enforces False/True casing.
-    subprocess.run(
+    proc = subprocess.run(
         [
             "yunohost",
             "user",
@@ -131,13 +130,15 @@ def setup_mobilizon_family_permissions(
             "mobilizon.federation",
             "--show_tile",
             "False",
-            "--auth_header",
-            "False",
         ],
-        check=True,
         capture_output=True,
         text=True,
     )
+    if proc.returncode != 0:
+        print(
+            proc.stderr or proc.stdout or "mobilizon.federation show_tile update failed",
+            file=sys.stderr,
+        )
 
 
 def main() -> int:

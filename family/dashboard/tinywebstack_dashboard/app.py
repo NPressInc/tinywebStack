@@ -26,8 +26,11 @@ from tinywebstack_dashboard.auth import (
 )
 from tinywebstack_dashboard.invite_store import add_pending, load_pending
 from tinywebstack_dashboard.federation import (
-    append_domain,
+    InvalidDomain,
     create_router as create_federation_router,
+    normalize_domain,
+    reconcile_state_with_policy,
+    save_state as save_federation_state,
     state_path_from_env,
 )
 from tinywebstack_dashboard.peer_verify import _ssl_context, verify_peer_domain
@@ -134,13 +137,21 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         threading.Thread(target=_run, daemon=True).start()
 
     def add_trusted_domain(domain: str, *, sync: bool = True) -> None:
-        policy = refreshed_policy()
-        trusted = set(policy.get("trusted_domains") or [])
-        if domain not in trusted:
-            trusted.add(domain)
-            policy["trusted_domains"] = sorted(trusted)
+        merged = reconcile_state_with_policy(
+            federation_state_path,
+            policy_path,
+            server_name=cfg.server_name,
+        )
+        try:
+            domain = normalize_domain(domain)
+        except InvalidDomain:
+            return
+        if domain not in merged:
+            merged = sorted(set([*merged, domain]))
+            save_federation_state(federation_state_path, merged)
+            policy = refreshed_policy()
+            policy["trusted_domains"] = merged
             save_policy(policy_path, policy)
-            append_domain(federation_state_path, domain)
         if sync:
             schedule_federation_sync()
 
