@@ -203,6 +203,22 @@ import yunohost
 user = sys.argv[1]
 password = Path(sys.argv[2]).read_text(encoding="utf-8")
 yunohost.init(interface="cli")
+from moulinette import Moulinette
+
+
+class DummyInterface:
+    type = "cli"
+
+    def prompt(self, *_a, **_k):
+        raise NotImplementedError
+
+    def display(self, message, *_a, **_k):
+        print(message, file=sys.stderr)
+
+
+if Moulinette._interface is None:
+    Moulinette._interface = DummyInterface()
+
 from yunohost.user import user_update
 
 user_update(user, change_password=password)
