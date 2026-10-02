@@ -44,6 +44,8 @@ ensure_ssh_known_host "$HOST"
 require_cmd rsync ssh
 
 REMOTE_ROOT="/opt/tinywebstack"
+# Relative to remote login $HOME (ssh does not expand unquoted ~ in argv locally).
+REMOTE_ON_NODE_SCRIPT='tinywebstack-staging/vm/remote-run-on-node.sh'
 NODE_NAME="$(node_name_from_remote_script "$SCRIPT" "${SCRIPT_ARGS[@]}")"
 
 if dry_run_is_active; then
@@ -57,7 +59,7 @@ if dry_run_is_active; then
   else
     _stdin_note=" (forward stdin to vm/${SCRIPT})"
   fi
-  log "DRY_RUN: ssh ${SSH_TARGET} bash ~/tinywebstack-staging/vm/remote-run-on-node.sh ${REMOTE_ROOT} ${SCRIPT} ${SCRIPT_ARGS[*]:-}${_stdin_note}"
+  log "DRY_RUN: ssh ${SSH_TARGET} bash ${REMOTE_ON_NODE_SCRIPT} ${REMOTE_ROOT} ${SCRIPT} ${SCRIPT_ARGS[*]:-}${_stdin_note}"
   exit 0
 fi
 
@@ -141,8 +143,21 @@ if [[ -t 0 ]]; then
   SSH_STDIN_FLAGS=(-n)
 fi
 
+cleanup_stale_remote_env() {
+  ssh -n "${_ssh_opts[@]}" "$SSH_TARGET" 'rm -f tinywebstack-staging/remote.env' || true
+  ssh -n "${_ssh_opts[@]}" "$SSH_TARGET" 'sudo rm -f /opt/tinywebstack/remote.env' || true
+}
+
+_ssh_rc=0
+set +e
 # shellcheck disable=SC2029
 ssh "${_ssh_opts[@]}" "${SSH_STDIN_FLAGS[@]}" "$SSH_TARGET" \
   env LC_ALL=C.UTF-8 LANG=C.UTF-8 \
-  bash ~/tinywebstack-staging/vm/remote-run-on-node.sh \
+  bash "$REMOTE_ON_NODE_SCRIPT" \
   "$REMOTE_ROOT" "$SCRIPT" "${SCRIPT_ARGS[@]}"
+_ssh_rc=$?
+set -e
+if [[ $_ssh_rc -ne 0 ]]; then
+  cleanup_stale_remote_env
+fi
+exit $_ssh_rc
