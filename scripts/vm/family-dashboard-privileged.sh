@@ -67,7 +67,8 @@ EOF
 CMD=$1
 shift
 
-if [[ "$(id -u)" -ne 0 ]]; then
+# Test-only: unit tests set TWS_PRIVILEGED_ALLOW_NON_ROOT=1 (production invokes this via sudo + env_reset).
+if [[ "${TWS_PRIVILEGED_ALLOW_NON_ROOT:-}" != "1" ]] && [[ "$(id -u)" -ne 0 ]]; then
   echo "Run as root" >&2
   exit 1
 fi
@@ -184,10 +185,17 @@ PY
     USER=$1
     PASS="$(read_secret)"
     valid_username "$USER" || die "Invalid username"
+    _old_umask="$(umask)"
+    umask 0077
     PW_FILE="$(mktemp)"
+    umask "$_old_umask"
     chmod 600 "$PW_FILE"
+    cleanup_pw_file() {
+      rm -f "$PW_FILE"
+    }
+    trap cleanup_pw_file EXIT
     printf '%s' "$PASS" >"$PW_FILE"
-    python3 - "$USER" "$PW_FILE" <<'PY'
+    if ! python3 - "$USER" "$PW_FILE" <<'PY'
 import sys
 from pathlib import Path
 import yunohost
@@ -195,9 +203,15 @@ import yunohost
 user = sys.argv[1]
 password = Path(sys.argv[2]).read_text(encoding="utf-8")
 yunohost.init(interface="cli")
-yunohost.user.update(user, password=password)
+from yunohost.user import user_update
+
+user_update(user, change_password=password)
 PY
-    rm -f "$PW_FILE"
+    then
+      exit 1
+    fi
+    cleanup_pw_file
+    trap - EXIT
     if [[ -f "$HTPASSWD" ]] && grep -q "^${USER}:" "$HTPASSWD" 2>/dev/null; then
       printf '%s\n' "$PASS" | htpasswd -i "$HTPASSWD" "$USER"
     fi

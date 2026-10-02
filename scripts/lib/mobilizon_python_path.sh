@@ -25,5 +25,5 @@ export_mobilizon_pythonpath() {
   local root
   root="$(mobilizon_repo_root)"
   export TW_STACK_ROOT="${TW_STACK_ROOT:-$root}"
-  export PYTHONPATH="${root}/family/synapse_module${PYTHONPATH:+:${PYTHONPATH}}"
+  export PYTHONPATH="${root}/family/synapse_module:${root}/family/permissions${PYTHONPATH:+:${PYTHONPATH}}"
 }

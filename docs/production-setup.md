@@ -6,7 +6,10 @@ CalDAV + Mobilizon + the parent dashboard at `https://<main-domain>/family/`,
 with Let's Encrypt TLS and real family accounts.
 
 The lab path ([test-nodes.md](test-nodes.md)) is disposable KVM VMs on `spark`
-with a private CA and `LAB_PASSWORD`. This runbook is the production path:
+with a private CA and `LAB_PASSWORD`. For upgrading **existing** lab VMs after
+the SQLite permissions / federation-dashboard release, use the
+[Spark upgrade runbook](test-nodes.md#spark-upgrade-runbook-existing-lab-vms)
+section in that doc. This runbook is the production path:
 public DNS, Let's Encrypt, random per-account secrets. The `scripts/vm/`
 scripts are shared between both paths; `scripts/spark/` is lab-only **except**
 `remote-run.sh` (in `scripts/vm/`) and `configure-federation-pair.sh`, which

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -547,3 +548,63 @@ def test_mobilizon_enabled_kids_from_db(tmp_path):
     assert mod._enabled_kid_usernames(policy, str(db_file)) == set()
     # Missing DB → JSON verdict.
     assert mod._enabled_kid_usernames(policy, str(tmp_path / "nope.db")) == {"kid"}
+
+
+def test_mobilizon_enabled_kids_db_import_error_fails_closed(tmp_path, monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "apply_mobilizon_permissions",
+        Path(__file__).resolve().parents[3]
+        / "scripts" / "lib" / "apply_mobilizon_permissions.py",
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    db_file = tmp_path / "permissions.db"
+    db_file.write_bytes(b"sqlite")
+    real_import = __import__("builtins").__import__
+
+    def fake_import(name, *args, **kwargs):
+        if name == "tinywebstack_permissions.store":
+            raise ImportError("no module")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.__import__", fake_import)
+    with pytest.raises(mod.MobilizonPermissionsSourceError):
+        mod._enabled_kid_usernames(_legacy_policy_dict(), str(db_file))
+
+
+def test_mobilizon_main_returns_nonzero_when_db_unreadable(tmp_path, monkeypatch):
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "apply_mobilizon_permissions",
+        Path(__file__).resolve().parents[3]
+        / "scripts" / "lib" / "apply_mobilizon_permissions.py",
+    )
+    assert spec and spec.loader
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    policy = tmp_path / "family-policy.json"
+    policy.write_text(json.dumps(_legacy_policy_dict()), encoding="utf-8")
+    db_file = tmp_path / "permissions.db"
+    db_file.write_bytes(b"not-a-valid-sqlite-db")
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "apply",
+            "--policy",
+            str(policy),
+            "--permissions-db",
+            str(db_file),
+            "--main-domain",
+            "family-a.test",
+        ],
+    )
+    monkeypatch.setattr(mod, "_group_members", lambda _g: set())
+    assert mod.main() == 1
