@@ -34,6 +34,8 @@ fi
 # shellcheck source=/dev/null
 source "${_tws_lib_dir}/common.sh"
 # shellcheck source=/dev/null
+source "${_tws_lib_dir}/tws_state_dir.sh"
+# shellcheck source=/dev/null
 source "${_tws_lib_dir}/matrix-server.sh"
 load_config
 
@@ -118,21 +120,17 @@ fi
 #   TWS_SKIP_RESTART=1          skip systemctl restart (sandbox tests only)
 
 POLICY_PATH="${TWS_POLICY_PATH:-/etc/tinywebstack/family-policy.json}"
+if [[ "${TWS_ALLOW_NONROOT:-0}" == "1" ]]; then
+  TWS_STATE_DIR="$(dirname "$POLICY_PATH")"
+  export TWS_STATE_DIR
+else
+  : "${TWS_STATE_DIR:=/etc/tinywebstack}"
+  export TWS_STATE_DIR
+fi
 if dry_run_is_active; then
   log "DRY_RUN: would ensure ${POLICY_PATH} exists (mode 664, group www-data)"
 else
-  if [[ "$(id -u)" -eq 0 ]] && [[ "${TWS_ALLOW_NONROOT:-0}" != "1" ]]; then
-    if ! getent group tws-perms >/dev/null 2>&1; then
-      groupadd --system tws-perms
-    fi
-    install -d -m 750 -o root -g tws-perms /etc/tinywebstack
-    if getent group synapse >/dev/null 2>&1; then
-      usermod -aG tws-perms synapse || true
-    fi
-    if getent group www-data >/dev/null 2>&1; then
-      usermod -aG tws-perms www-data || true
-    fi
-  fi
+  ensure_tws_state_dir
   if [[ ! -f "$POLICY_PATH" ]]; then
     SERVER="${MAIN_DOMAIN:-local.test}"
     mkdir -p "$(dirname "$POLICY_PATH")"
@@ -147,16 +145,7 @@ else
 EOF
     log "Created empty policy at ${POLICY_PATH}"
   fi
-  if [[ "$(id -u)" -eq 0 ]] && [[ "${TWS_ALLOW_NONROOT:-0}" != "1" ]]; then
-    chmod 640 "$POLICY_PATH"
-    if getent group tws-perms >/dev/null 2>&1; then
-      chown root:tws-perms "$POLICY_PATH" || true
-    elif getent group www-data >/dev/null 2>&1; then
-      chown root:www-data "$POLICY_PATH" || true
-    fi
-  else
-    chmod 640 "$POLICY_PATH" 2>/dev/null || chmod 664 "$POLICY_PATH"
-  fi
+  tws_state_shared_file "$POLICY_PATH"
 fi
 
 CONF_D="${TWS_SYNAPSE_CONF_D:-/etc/matrix-synapse/conf.d}"

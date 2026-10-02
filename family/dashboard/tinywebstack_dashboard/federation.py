@@ -35,6 +35,22 @@ DEFAULT_STATE_PATH = "/etc/tinywebstack/federation-state.json"
 DEFAULT_NODES_CONF = "config/nodes.conf"
 
 
+def resolve_nodes_conf_path(explicit: Optional[Path] = None) -> Path:
+    """Locate nodes.conf on the VM or in a checkout."""
+    if explicit is not None and explicit.is_file():
+        return explicit
+    env = os.environ.get("TW_NODES_CONF", "").strip()
+    if env and Path(env).is_file():
+        return Path(env)
+    for candidate in (
+        Path("/opt/tinywebstack/config/nodes.conf"),
+        Path("config/nodes.conf"),
+    ):
+        if candidate.is_file():
+            return candidate
+    return Path(explicit or env or DEFAULT_NODES_CONF)
+
+
 class InvalidDomain(ValueError):
     """Raised when a domain fails validation."""
 
@@ -100,7 +116,11 @@ def merged_trusted_domains(
 
 def domains_from_synapse_whitelist(path: Path = Path("/etc/matrix-synapse/conf.d/tinywebstack-federation.yaml")) -> List[str]:
     """Best-effort read of existing Synapse federation_domain_whitelist."""
-    if not path.is_file():
+    try:
+        if not path.is_file():
+            return []
+    except OSError as exc:
+        log.debug("Cannot access Synapse federation snippet %s: %s", path, exc)
         return []
     try:
         import yaml  # type: ignore
@@ -121,6 +141,7 @@ def reconcile_state_with_policy(
     *,
     server_name: str,
     synapse_snippet_path: Optional[Path] = None,
+    include_synapse_snippet: bool = True,
 ) -> List[str]:
     """Ensure federation-state.json and family-policy trusted_domains stay in sync."""
     state = load_state(state_path)
@@ -129,8 +150,12 @@ def reconcile_state_with_policy(
     if policy_path.is_file():
         policy = load_policy(policy_path)
         policy_domains = _domain_list(policy.get("trusted_domains"))
-    snippet_path = synapse_snippet_path or Path("/etc/matrix-synapse/conf.d/tinywebstack-federation.yaml")
-    synapse_domains = domains_from_synapse_whitelist(snippet_path)
+    synapse_domains: List[str] = []
+    if include_synapse_snippet:
+        snippet_path = synapse_snippet_path or Path(
+            "/etc/matrix-synapse/conf.d/tinywebstack-federation.yaml"
+        )
+        synapse_domains = domains_from_synapse_whitelist(snippet_path)
     merged = merged_trusted_domains(
         state_domains + synapse_domains,
         policy_domains,
@@ -158,6 +183,10 @@ def save_state(path: Path, domains: List[str]) -> Dict[str, Any]:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(json.dumps(state, indent=2, sort_keys=True) + "\n")
         os.replace(tmp, path)
+        try:
+            os.chmod(path, 0o660)
+        except OSError:
+            pass
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)
@@ -222,9 +251,7 @@ def create_router(
     router = APIRouter()
     auth = _parent_dep(cfg)
     state_file = Path(state_path) if state_path else state_path_from_env()
-    nodes_file = Path(
-        nodes_conf if nodes_conf else os.environ.get("TW_NODES_CONF", DEFAULT_NODES_CONF)
-    )
+    nodes_file = resolve_nodes_conf_path(Path(nodes_conf) if nodes_conf else None)
     policy_file = Path(cfg.policy_path)
 
     def sync_policy(domains: List[str]) -> None:
@@ -239,6 +266,7 @@ def create_router(
             state_file,
             policy_file,
             server_name=cfg.server_name,
+            include_synapse_snippet=False,
         )
 
     @router.get("/federation/domains", dependencies=[Depends(auth)])

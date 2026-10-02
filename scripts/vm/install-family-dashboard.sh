@@ -13,6 +13,8 @@ source "${TW_STACK_ROOT}/lib/matrix-server.sh"
 source "${TW_STACK_ROOT}/lib/synapse-admin-token.sh"
 # shellcheck source=scripts/lib/portal_tiles.sh
 source "${TW_STACK_ROOT}/lib/portal_tiles.sh"
+# shellcheck source=scripts/lib/tws_state_dir.sh
+source "${TW_STACK_ROOT}/lib/tws_state_dir.sh"
 load_config
 
 usage() {
@@ -69,10 +71,7 @@ fi
 "${VENV}/bin/pip" install -q --upgrade pip
 "${VENV}/bin/pip" install -q -e "$MODULE_FAMILY" -e "$MODULE_DASH" -e "$MODULE_PERMS"
 
-if ! getent group tws-perms >/dev/null 2>&1; then
-  groupadd --system tws-perms
-fi
-install -d -m 750 -o root -g tws-perms /etc/tinywebstack
+ensure_tws_state_dir
 if [[ ! -s /etc/tinywebstack/owntracks-kids.json ]]; then
   printf '{}\n' > /etc/tinywebstack/owntracks-kids.json
   chown root:www-data /etc/tinywebstack/owntracks-kids.json
@@ -113,6 +112,7 @@ TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
 TWS_OWNTRACKS_HTPASSWD=/etc/tinywebstack/owntracks-recorder.htpasswd
 TWS_SYNAPSE_ADMIN_TOKEN_FILE=/etc/tinywebstack/synapse-admin-token
 TWS_PERMISSIONS_DB=/etc/tinywebstack/permissions.db
+TW_NODES_CONF=${TW_NODES_CONF:-/opt/tinywebstack/config/nodes.conf}
 TWS_DASHBOARD_PERM=${DASH_PERM}
 TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}
 TWS_DASHBOARD_ROOT_PATH=/family

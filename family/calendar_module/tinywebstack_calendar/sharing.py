@@ -77,13 +77,15 @@ def _open_caldav(
             text = resp.read().decode("utf-8", errors="replace")
             return resp.status, text, dict(resp.headers)
     except urllib.error.HTTPError as exc:
-        detail = exc.read().decode("utf-8", errors="replace")
         if exc.code in (301, 302, 303, 307, 308):
             location = exc.headers.get("Location", "")
             raise RuntimeError(
                 f"unexpected redirect ({exc.code}) to {location!r} for {url} — "
                 "check YunoHost nextcloud.main permissions (CalDAV needs visitors or public DAV path)"
             ) from exc
+        detail = ""
+        if exc.fp is not None:
+            detail = exc.read().decode("utf-8", errors="replace")
         raise RuntimeError(f"CalDAV request failed ({exc.code}): {detail[:500]}") from exc
 
 

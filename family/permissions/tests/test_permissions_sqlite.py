@@ -30,6 +30,20 @@ STRANGER = "@stranger:evil.test"
 ROLE_FILES = [str(p) for p in default_role_seed_files()]
 
 
+def test_readonly_open_does_not_mutate_db(tmp_path: Path) -> None:
+    db_file = tmp_path / "permissions.db"
+    with PermissionsDB(db_file) as db:
+        db.seed_default_roles()
+        db.set_role(KID, "kid", username="kid", server_name=SERVER)
+    before = db_file.read_bytes()
+    mtime_before = db_file.stat().st_mtime_ns
+    with PermissionsDB.open_readonly(db_file) as ro:
+        ps = ro.get_permissions("kid")
+        assert ps is not None
+    assert db_file.read_bytes() == before
+    assert db_file.stat().st_mtime_ns == mtime_before
+
+
 class MockMemberEvent:
     def __init__(self, mxid: str, membership: str = "join"):
         self.type = "m.room.member"

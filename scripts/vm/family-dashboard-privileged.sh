@@ -184,7 +184,20 @@ PY
     USER=$1
     PASS="$(read_secret)"
     valid_username "$USER" || die "Invalid username"
-    yunohost user update "$USER" -p "$PASS"
+    PW_FILE="$(mktemp)"
+    chmod 600 "$PW_FILE"
+    printf '%s' "$PASS" >"$PW_FILE"
+    python3 - "$USER" "$PW_FILE" <<'PY'
+import sys
+from pathlib import Path
+import yunohost
+
+user = sys.argv[1]
+password = Path(sys.argv[2]).read_text(encoding="utf-8")
+yunohost.init(interface="cli")
+yunohost.user.update(user, password=password)
+PY
+    rm -f "$PW_FILE"
     if [[ -f "$HTPASSWD" ]] && grep -q "^${USER}:" "$HTPASSWD" 2>/dev/null; then
       printf '%s\n' "$PASS" | htpasswd -i "$HTPASSWD" "$USER"
     fi
