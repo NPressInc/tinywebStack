@@ -10,6 +10,8 @@ set -euo pipefail
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=scripts/lib/common.sh
 source "${TW_STACK_ROOT}/lib/common.sh"
+# shellcheck source=scripts/lib/tws_state_dir.sh
+source "${TW_STACK_ROOT}/lib/tws_state_dir.sh"
 load_config
 
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -51,20 +53,10 @@ with PermissionsDB(db_path) as db:
 PY
 fi
 
-if ! getent group tws-perms >/dev/null 2>&1; then
-  groupadd --system tws-perms
-fi
-install -d -m 750 -o root -g tws-perms /etc/tinywebstack
-if [[ -f "$DB_PATH" ]]; then
-  chown root:tws-perms "$DB_PATH"
-  chmod 640 "$DB_PATH"
-  if getent group synapse >/dev/null 2>&1; then
-    usermod -aG tws-perms synapse || true
-  fi
-  if getent group www-data >/dev/null 2>&1; then
-    usermod -aG tws-perms www-data || true
-  fi
-fi
+ensure_tws_state_dir
+tws_state_shared_file "$DB_PATH"
+tws_state_shared_file "$POLICY_PATH"
+tws_state_shared_file "${TWS_FEDERATION_STATE_PATH:-/etc/tinywebstack/federation-state.json}"
 
 # Keep YunoHost/Mobilizon enforcement aligned with the (now authoritative) store:
 # refresh per-kid Mobilizon permissions through the same DB.

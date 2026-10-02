@@ -1,4 +1,6 @@
 # Pinned deps for scripts/validate.sh (repo-local venv only — never global pip).
+setuptools==75.8.0
+wheel==0.45.1
 -e family/synapse_module[test]
 -e family/dashboard[test]
 -e family/calendar_module[test]

@@ -58,6 +58,66 @@ from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
 
+def _username_from_kid_mxid(kid_mxid: str) -> str:
+    raw = kid_mxid.strip()
+    if raw.startswith("@") and ":" in raw:
+        return raw[1:].split(":", 1)[0]
+    if ":" in raw:
+        return raw.split(":", 1)[0]
+    return raw
+
+
+def _kid_entry_for_edit(username: str, json_entry: Dict[str, Any]) -> Dict[str, Any]:
+    """Prefer SQLite permissions (enforcement source); JSON is legacy fallback."""
+    try:
+        from tinywebstack_permissions.store import PermissionsDB, get_db_path
+    except ImportError:
+        return json_entry
+    path = get_db_path()
+    if not path.is_file():
+        return json_entry
+    with PermissionsDB(path) as db:
+        ps = db.get_permissions(username)
+        if ps is None:
+            return json_entry
+        data = ps.to_dict()
+        out = dict(json_entry)
+        out["allowlist_mxids"] = list(data.get("allowlist_mxids") or [])
+        out["allowlist_domains"] = list(data.get("allowlist_domains") or [])
+        out["events_enabled"] = bool(data.get("events_enabled", True))
+        if data.get("quiet_hours"):
+            out["quiet_hours"] = data["quiet_hours"]
+        return out
+
+
+def _save_kid_permissions_sqlite(
+    *,
+    server_name: str,
+    kid_mxid: str,
+    allowlist_mxids: List[str],
+    allowlist_domains: List[str],
+    events_enabled: bool,
+    quiet_hours: Optional[Dict[str, Any]],
+) -> None:
+    from tinywebstack_permissions.store import PermissionsDB, get_db_path
+
+    path = get_db_path()
+    if not path.is_file():
+        raise HTTPException(status_code=503, detail="Permissions store not seeded")
+    username = _username_from_kid_mxid(kid_mxid)
+    mxid = kid_mxid if kid_mxid.startswith("@") else f"@{username}:{server_name}"
+    with PermissionsDB(path) as db:
+        if db.get_permissions(username) is None:
+            db.set_role(mxid, "kid", username=username, server_name=server_name)
+        db.set_permission(mxid, "allowlist_mxids", allowlist_mxids)
+        db.set_permission(mxid, "allowlist_domains", allowlist_domains)
+        db.set_permission(mxid, "events_enabled", events_enabled)
+        if quiet_hours:
+            db.set_permission(mxid, "quiet_hours", quiet_hours)
+        else:
+            db.revoke_permission(mxid, "quiet_hours")
+
+
 def config_from_env() -> DashboardConfig:
     return DashboardConfig(
         parents_group=os.environ.get("TWS_PARENTS_GROUP", "parents"),
@@ -530,9 +590,10 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     @app.get("/kid/{kid_mxid:path}", response_class=HTMLResponse)
     async def edit_kid(request: Request, kid_mxid: str, user: str = Depends(current_user)):
         policy = refreshed_policy()
-        entry = (policy.get("kids") or {}).get(kid_mxid)
-        if not entry:
+        json_entry = (policy.get("kids") or {}).get(kid_mxid)
+        if not json_entry:
             raise HTTPException(status_code=404, detail="Unknown kid")
+        entry = _kid_entry_for_edit(_username_from_kid_mxid(kid_mxid), json_entry)
         qh = entry.get("quiet_hours") or {}
         return TEMPLATES.TemplateResponse(
             request,
@@ -571,23 +632,26 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         prev_entry = dict((policy.get("kids") or {}).get(kid_mxid) or {})
         mxids = [ln.strip() for ln in allowlist_mxids.splitlines() if ln.strip()]
         domains = [ln.strip() for ln in allowlist_domains.splitlines() if ln.strip()]
-        entry: Dict[str, Any] = {
-            "allowlist_mxids": mxids,
-            "allowlist_domains": domains,
-        }
         if events_rules_form == "1":
-            entry["events_enabled"] = events_enabled in ("1", "on", "true", "yes")
+            events_on = events_enabled in ("1", "on", "true", "yes")
         else:
-            entry["events_enabled"] = prev_entry.get("events_enabled", True)
+            events_on = bool(prev_entry.get("events_enabled", True))
+        quiet_hours = None
         if qh_start and qh_end:
-            entry["quiet_hours"] = {
+            quiet_hours = {
                 "start": qh_start,
                 "end": qh_end,
                 "timezone": qh_timezone or "UTC",
                 "days": list(range(7)),
             }
-        policy["kids"][kid_mxid] = entry
-        save_policy(policy_path, policy)
+        _save_kid_permissions_sqlite(
+            server_name=cfg.server_name,
+            kid_mxid=kid_mxid,
+            allowlist_mxids=mxids,
+            allowlist_domains=domains,
+            events_enabled=events_on,
+            quiet_hours=quiet_hours,
+        )
         if events_perms_cmd:
             subprocess.run(events_perms_cmd.split(), check=False, timeout=120)
         return RedirectResponse(url=dash_url("/", root_path), status_code=303)

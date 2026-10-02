@@ -11,18 +11,32 @@ from tinywebstack_dashboard.app import DashboardConfig, create_app
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     policy = tmp_path / "family-policy.json"
+    db_path = tmp_path / "permissions.db"
     policy.write_text(
         json.dumps(
             {
                 "server_name": "family-a.test",
-                "kids": {},
-                "parent_mxids": [],
+                "kids": {
+                    "@kid1:family-a.test": {
+                        "allowlist_mxids": [],
+                        "allowlist_domains": [],
+                        "events_enabled": True,
+                    }
+                },
+                "parent_mxids": ["@parent1:family-a.test"],
                 "trusted_domains": [],
                 "reject_encryption": True,
             }
         ),
         encoding="utf-8",
     )
+    monkeypatch.setenv("TWS_PERMISSIONS_DB", str(db_path))
+    from tinywebstack_permissions.store import PermissionsDB, default_role_seed_files
+
+    with PermissionsDB(db_path) as db:
+        db.seed_roles([p for p in default_role_seed_files() if p.is_file()])
+        db.set_role("@kid1:family-a.test", "kid", username="kid1", server_name="family-a.test")
+        db.set_server_name("family-a.test")
     monkeypatch.setenv(
         "TWS_DASHBOARD_MOCK_GROUPS",
         json.dumps({"parents": ["parent1"], "kids": ["kid1"]}),
@@ -46,29 +60,29 @@ def client(tmp_path, monkeypatch):
         location_base_url="https://owntracks.example/",
     )
     app = create_app(cfg)
-    return TestClient(app), policy
+    return TestClient(app), policy, db_path
 
 
 def test_auth_required(client):
-    c, _ = client
+    c, _, _ = client
     assert c.get("/", headers={"Remote-User": "parent1"}).status_code == 401
 
 
 def test_parent_can_list_kids(client):
-    c, policy = client
+    c, policy, _ = client
     r = c.get("/", headers={"YNH_USER": "parent1"})
     assert r.status_code == 200
     assert "@kid1:family-a.test" in r.text
 
 
 def test_non_parent_forbidden(client):
-    c, _ = client
+    c, _, _ = client
     r = c.get("/", headers={"YNH_USER": "kid1"})
     assert r.status_code == 403
 
 
 def test_save_allowlist(client):
-    c, policy = client
+    c, policy, db_path = client
     kid = "@kid1:family-a.test"
     page = c.get(f"/kid/{kid}", headers={"YNH_USER": "parent1"})
     assert page.status_code == 200
@@ -92,7 +106,11 @@ def test_save_allowlist(client):
         follow_redirects=False,
     )
     assert r.status_code == 303
-    data = json.loads(policy.read_text())
-    entry = data["kids"][kid]
-    assert "@friend:family-b.test" in entry["allowlist_mxids"]
-    assert entry["quiet_hours"]["start"] == "21:00"
+    from tinywebstack_permissions.store import PermissionsDB
+
+    with PermissionsDB(db_path) as db:
+        ps = db.get_permissions("kid1")
+        assert ps is not None
+        assert "@friend:family-b.test" in ps.allowlist_mxids
+        assert ps.quiet_hours is not None
+        assert ps.quiet_hours.start == "21:00"

@@ -105,7 +105,9 @@ result = sync_instance_federation(
     trusted_main_domains=trusted,
     ssl_context=ctx,
 )
-result.raise_on_errors()
+if result.outgoing_errors:
+    for host, err in result.outgoing_errors.items():
+        print(f"WARN: Mobilizon peer sync skipped for {host}: {err}", file=sys.stderr)
 print(json.dumps(asdict(result), indent=2))
 PY
 

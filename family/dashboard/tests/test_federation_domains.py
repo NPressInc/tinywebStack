@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from tinywebstack_dashboard.app import DashboardConfig, create_app
-from tinywebstack_dashboard.federation import reconcile_state_with_policy
+from tinywebstack_dashboard.federation import domains_from_synapse_whitelist, reconcile_state_with_policy
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 ALLOWLIST_SCRIPT = REPO_ROOT / "scripts" / "vm" / "synapse-federation-allowlist.sh"
@@ -87,6 +87,14 @@ def test_federation_non_parent_forbidden(fed_env):
     assert r.status_code == 403
     r = c.delete("/federation/domains/evil.test", headers={"YNH_USER": "mallory"})
     assert r.status_code == 403
+
+
+def test_synapse_whitelist_read_handles_permission_denied() -> None:
+    from unittest.mock import MagicMock
+
+    blocked = MagicMock()
+    blocked.is_file.side_effect = PermissionError(13, "Permission denied")
+    assert domains_from_synapse_whitelist(blocked) == []
 
 
 def test_reconcile_seeds_state_from_legacy_policy(fed_env, tmp_path):

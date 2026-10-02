@@ -2,7 +2,7 @@
 # Resolve Mobilizon admin API password for root-only federation sync (never echo).
 set -euo pipefail
 
-MOBILIZON_ADMIN_PASSWORD_FILE="${MOBILIZON_ADMIN_PASSWORD_FILE:-/etc/tinywebstack/mobilizon-admin.password}"
+MOBILIZON_ADMIN_PASSWORD_FILE="${MOBILIZON_ADMIN_PASSWORD_FILE:-/etc/tinywebstack/secrets/mobilizon-admin.password}"
 
 read_mobilizon_admin_password() {
   if [[ -n "${MOBILIZON_ADMIN_PASSWORD:-}" ]]; then
@@ -14,8 +14,11 @@ read_mobilizon_admin_password() {
     return 0
   fi
   if [[ -f "$MOBILIZON_ADMIN_PASSWORD_FILE" ]]; then
-    # Root-only file (0400); dashboard sudo helpers run as root.
     cat "$MOBILIZON_ADMIN_PASSWORD_FILE"
+    return 0
+  fi
+  if [[ -f /etc/tinywebstack/mobilizon-admin.password ]]; then
+    cat /etc/tinywebstack/mobilizon-admin.password
     return 0
   fi
   return 1
@@ -24,9 +27,12 @@ read_mobilizon_admin_password() {
 ensure_mobilizon_admin_password_file() {
   local pw=$1
   [[ -n "$pw" ]] || return 1
-  install -d -m 750 -o root -g root /etc/tinywebstack
+  # shellcheck source=scripts/lib/tws_state_dir.sh
+  _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck source=/dev/null
+  source "${_lib}/tws_state_dir.sh"
+  ensure_tws_state_dir
   umask 077
   printf '%s' "$pw" >"$MOBILIZON_ADMIN_PASSWORD_FILE"
-  chmod 400 "$MOBILIZON_ADMIN_PASSWORD_FILE"
-  chown root:root "$MOBILIZON_ADMIN_PASSWORD_FILE"
+  tws_state_secret_file "$MOBILIZON_ADMIN_PASSWORD_FILE"
 }

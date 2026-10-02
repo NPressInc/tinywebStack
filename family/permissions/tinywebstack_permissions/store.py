@@ -281,12 +281,26 @@ CREATE TABLE IF NOT EXISTS user_permissions (
 class PermissionsDB:
     """Thin library API over the SQLite permission store."""
 
-    def __init__(self, db_path: str | Path | None = None) -> None:
+    def __init__(self, db_path: str | Path | None = None, *, read_only: bool = False) -> None:
         self.path = Path(db_path) if db_path is not None else get_db_path()
-        self._conn = sqlite3.connect(str(self.path), timeout=10)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA foreign_keys = ON")
-        self._ensure_schema()
+        self._read_only = bool(read_only)
+        if self._read_only:
+            uri = f"file:{self.path.resolve()}?mode=ro"
+            self._conn = sqlite3.connect(uri, uri=True, timeout=10)
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA foreign_keys = ON")
+            self._conn.execute("PRAGMA query_only = ON")
+            self._verify_schema_readable()
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._conn = sqlite3.connect(str(self.path), timeout=10)
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA foreign_keys = ON")
+            self._ensure_schema()
+
+    @classmethod
+    def open_readonly(cls, db_path: str | Path) -> "PermissionsDB":
+        return cls(db_path, read_only=True)
 
     def close(self) -> None:
         try:
@@ -300,13 +314,34 @@ class PermissionsDB:
     def __exit__(self, *exc: Any) -> None:
         self.close()
 
-    def _ensure_schema(self) -> None:
+    def _schema_version(self) -> int:
         cur = self._conn.execute("PRAGMA user_version")
-        version = int(cur.fetchone()[0])
+        return int(cur.fetchone()[0])
+
+    def _verify_schema_readable(self) -> None:
+        version = self._schema_version()
         if version > SCHEMA_VERSION:
             raise RuntimeError(
                 f"permissions DB schema v{version} newer than supported v{SCHEMA_VERSION}"
             )
+        if version < SCHEMA_VERSION:
+            log.warning(
+                "permissions DB %s schema v%s (expected v%s); run family-permissions-seed as root",
+                self.path,
+                version,
+                SCHEMA_VERSION,
+            )
+
+    def _ensure_schema(self) -> None:
+        if self._read_only:
+            return
+        version = self._schema_version()
+        if version > SCHEMA_VERSION:
+            raise RuntimeError(
+                f"permissions DB schema v{version} newer than supported v{SCHEMA_VERSION}"
+            )
+        if version >= SCHEMA_VERSION:
+            return
         with self._conn:
             self._conn.executescript(_SCHEMA_SQL)
             self._conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -780,7 +815,7 @@ class SqliteFamilyPolicyStore:
         try:
             from tinywebstack_family.policy import FamilyPolicy
 
-            with PermissionsDB(db) as pdb:
+            with PermissionsDB.open_readonly(db) as pdb:
                 self._db_policy = FamilyPolicy.from_dict(pdb.to_policy_dict())
             self._stamp = stamp
             log.info("Loaded family permissions from SQLite DB %s", db)
