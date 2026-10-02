@@ -30,35 +30,36 @@ from tinywebstack_family.mobilizon import (  # noqa: E402
 from tinywebstack_family.yunohost_json import groups_map  # noqa: E402
 
 
+class MobilizonPermissionsSourceError(RuntimeError):
+    """Permissions DB exists but cannot be read (fail closed — do not grant)."""
+
+
 def _enabled_kid_usernames(policy: dict, permissions_db: str) -> set[str]:
     """F1.3: prefer the SQLite permission store; fall back to the JSON policy."""
+    db_path = Path(permissions_db) if permissions_db else None
+    if db_path is None or not db_path.is_file():
+        if permissions_db:
+            print(f"WARN: no permissions DB at {db_path}; using JSON policy", file=sys.stderr)
+        return kid_usernames_with_events(policy)
     try:
-        from pathlib import Path
-
         from tinywebstack_permissions.store import PermissionsDB
-
-        db_path = Path(permissions_db) if permissions_db else None
-        if db_path is None or not db_path.is_file():
-            if permissions_db:
-                print(f"INFO: no permissions DB at {db_path}; using JSON policy", file=sys.stderr)
-            return kid_usernames_with_events(policy)
+    except ImportError as exc:
+        raise MobilizonPermissionsSourceError(
+            f"tinywebstack_permissions unavailable ({exc}) but permissions DB exists at {db_path}; "
+            "install family/permissions into the Synapse/dashboard venv"
+        ) from exc
+    try:
         with PermissionsDB(db_path) as db:
             users = db.enabled_event_usernames()
             has_kids = bool(db.users_with_role("kid"))
-        if not users and not has_kids:
-            # DB seeded with roles only (no household rows yet) — JSON wins.
-            return kid_usernames_with_events(policy)
-        return users
-    except ImportError as exc:  # pragma: no cover - package optional on nodes
-        if permissions_db:
-            print(
-                f"ERROR: tinywebstack_permissions unavailable ({exc}) but --permissions-db was set; "
-                "install family/permissions into the Synapse/dashboard venv",
-                file=sys.stderr,
-            )
-        else:
-            print(f"INFO: tinywebstack_permissions unavailable ({exc}); using JSON policy", file=sys.stderr)
+    except Exception as exc:
+        raise MobilizonPermissionsSourceError(
+            f"cannot read permissions DB at {db_path}: {exc}"
+        ) from exc
+    if not users and not has_kids:
+        # DB seeded with roles only (no household rows yet) — JSON wins.
         return kid_usernames_with_events(policy)
+    return users
 
 
 def _run_json(cmd: list[str]) -> dict:
@@ -109,8 +110,8 @@ def main() -> int:
     parser.add_argument("--policy", default="/etc/tinywebstack/family-policy.json")
     parser.add_argument(
         "--permissions-db",
-        default=os.environ.get("TWS_PERMISSIONS_DB", ""),
-        help="SQLite permissions DB (F1.3); falls back to --policy when absent",
+        default=os.environ.get("TWS_PERMISSIONS_DB", "/etc/tinywebstack/permissions.db"),
+        help="SQLite permissions DB (F1.3); falls back to --policy when file missing",
     )
     parser.add_argument("--permission", default="mobilizon.main")
     parser.add_argument("--kids-group", default="kids")
@@ -126,7 +127,11 @@ def main() -> int:
         print(f"WARN: missing policy {path}", file=sys.stderr)
         return 0
     policy = json.loads(path.read_text(encoding="utf-8"))
-    enabled_kids = _enabled_kid_usernames(policy, args.permissions_db)
+    try:
+        enabled_kids = _enabled_kid_usernames(policy, args.permissions_db)
+    except MobilizonPermissionsSourceError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     kid_members = _group_members(args.kids_group)
 
     for username in kid_members:

@@ -48,7 +48,16 @@ NODE_NAME="$(node_name_from_remote_script "$SCRIPT" "${SCRIPT_ARGS[@]}")"
 
 if dry_run_is_active; then
   log "DRY_RUN: rsync scripts to ${SSH_TARGET}:${REMOTE_ROOT} (node=${NODE_NAME:-none})"
-  log "DRY_RUN: ssh ${SSH_TARGET} sudo bash ${REMOTE_ROOT}/vm/${SCRIPT} ${SCRIPT_ARGS[*]:-}"
+  if [[ -f "${TW_STACK_ROOT}/config/nodes.conf" ]]; then
+    log "DRY_RUN: rsync config/nodes.conf to ${SSH_TARGET}:${REMOTE_ROOT}/config/nodes.conf"
+  fi
+  _stdin_note=""
+  if [[ -t 0 ]]; then
+    _stdin_note=" (ssh -n; no stdin)"
+  else
+    _stdin_note=" (forward stdin to vm/${SCRIPT})"
+  fi
+  log "DRY_RUN: ssh ${SSH_TARGET} bash ~/tinywebstack-staging/vm/remote-run-on-node.sh ${REMOTE_ROOT} ${SCRIPT} ${SCRIPT_ARGS[*]:-}${_stdin_note}"
   exit 0
 fi
 
@@ -104,6 +113,11 @@ rsync -az \
 rsync -az \
   "${TW_STACK_ROOT}/brand/" \
   "${SSH_TARGET}:~/tinywebstack-staging/brand/"
+if [[ -f "${TW_STACK_ROOT}/config/nodes.conf" ]]; then
+  ssh "${_ssh_opts[@]}" -n "$SSH_TARGET" "mkdir -p ~/tinywebstack-staging/config"
+  rsync -az "${TW_STACK_ROOT}/config/nodes.conf" \
+    "${SSH_TARGET}:~/tinywebstack-staging/config/nodes.conf"
+fi
 rsync -az "$REMOTE_ENV" "${SSH_TARGET}:~/tinywebstack-staging/remote.env"
 
 rm -f "$REMOTE_ENV"
@@ -122,46 +136,13 @@ elif [[ -n "${NODE_NAME:-}" && -f "${TW_STACK_SECRETS_DIR}/peers.${NODE_NAME}.ho
     "${SSH_TARGET}:~/tinywebstack-staging/peers.hosts"
 fi
 
-# shellcheck disable=SC2086
-ssh "${_ssh_opts[@]}" "$SSH_TARGET" \
+SSH_STDIN_FLAGS=()
+if [[ -t 0 ]]; then
+  SSH_STDIN_FLAGS=(-n)
+fi
+
+# shellcheck disable=SC2029
+ssh "${_ssh_opts[@]}" "${SSH_STDIN_FLAGS[@]}" "$SSH_TARGET" \
   env LC_ALL=C.UTF-8 LANG=C.UTF-8 \
-  bash -s -- "$REMOTE_ROOT" "$SCRIPT" "${SCRIPT_ARGS[@]}" <<'EOF'
-set -euo pipefail
-REMOTE_ROOT=$1
-SCRIPT=$2
-shift 2
-STAGING="${HOME}/tinywebstack-staging"
-sudo mkdir -p "${REMOTE_ROOT}"
-sudo rsync -a "${STAGING}/" "${REMOTE_ROOT}/"
-sudo install -m 644 "${STAGING}/defaults.env" "${REMOTE_ROOT}/defaults.env"
-sudo install -m 600 "${STAGING}/remote.env" "${REMOTE_ROOT}/remote.env"
-set -a
-# shellcheck source=/dev/null
-source "${REMOTE_ROOT}/remote.env"
-set +a
-if [[ -d "${STAGING}/lab-certs" ]]; then
-  sudo mkdir -p "${REMOTE_ROOT}/lab-certs"
-  sudo rsync -a "${STAGING}/lab-certs/" "${REMOTE_ROOT}/lab-certs/"
-fi
-if [[ -f "${STAGING}/peers.hosts" ]]; then
-  sudo install -m 644 "${STAGING}/peers.hosts" "${REMOTE_ROOT}/peers.hosts"
-fi
-sudo bash -s -- "${REMOTE_ROOT}" "${SCRIPT}" "$@" <<'INNER'
-set -euo pipefail
-REMOTE_ROOT=$1
-SCRIPT=$2
-shift 2
-STAGING="${HOME}/tinywebstack-staging"
-cleanup() {
-  rm -f "${REMOTE_ROOT}/remote.env"
-  rm -f "${STAGING}/remote.env"
-}
-trap cleanup EXIT
-set -a
-# shellcheck source=/dev/null
-source "${REMOTE_ROOT}/remote.env"
-set +a
-export TW_STACK_ROOT="${REMOTE_ROOT}" TW_STACK_IS_REMOTE=1
-bash "${REMOTE_ROOT}/vm/${SCRIPT}" "$@"
-INNER
-EOF
+  bash ~/tinywebstack-staging/vm/remote-run-on-node.sh \
+  "$REMOTE_ROOT" "$SCRIPT" "${SCRIPT_ARGS[@]}"

@@ -175,6 +175,76 @@ With `LAB_PASSWORD=dummydummy` in `config/local.env` (≥8 characters), after bo
 
 ---
 
+## Spark upgrade runbook (existing lab VMs)
+
+Use this after pulling a release that includes the SQLite permissions store
+(PR #29/#30) and dashboard federation UI (L2.2). Example IPs for the default
+lab pair: `IP_A=192.168.122.47`, `IP_B=192.168.122.18`. Set `DOMAIN_A`,
+`DOMAIN_B`, `NODE_A=family-a`, `NODE_B=family-b` to match your `config/nodes.conf`.
+
+From the repo on **spark** (control machine), with `config/nodes.conf` and secrets
+already in place:
+
+```bash
+IP_A=192.168.122.47
+IP_B=192.168.122.18
+DOMAIN_A=family-a.family.test
+DOMAIN_B=family-b.family.test
+NODE_A=family-a
+NODE_B=family-b
+
+# 0 — sync scripts to both nodes (first step; no separate "true" probe script)
+./scripts/vm/remote-run.sh "$IP_A" family-groups.sh
+./scripts/vm/remote-run.sh "$IP_B" family-groups.sh
+
+# 1 — Synapse module + family dashboard (main domain only)
+./scripts/vm/remote-run.sh "$IP_A" install-family-module.sh "$DOMAIN_A"
+./scripts/vm/remote-run.sh "$IP_B" install-family-module.sh "$DOMAIN_B"
+./scripts/vm/remote-run.sh "$IP_A" install-family-dashboard.sh "$DOMAIN_A"
+./scripts/vm/remote-run.sh "$IP_B" install-family-dashboard.sh "$DOMAIN_B"
+
+# 2 — seed permissions DB from legacy policy (per node)
+./scripts/vm/remote-run.sh "$IP_A" family-permissions-seed.sh "$DOMAIN_A" "$NODE_A"
+./scripts/vm/remote-run.sh "$IP_B" family-permissions-seed.sh "$DOMAIN_B" "$NODE_B"
+
+# 3 — federation state file for dashboard trusted-domain UI
+./scripts/vm/remote-run.sh "$IP_A" family-federation-state-seed.sh "$DOMAIN_A"
+./scripts/vm/remote-run.sh "$IP_B" family-federation-state-seed.sh "$DOMAIN_B"
+
+# 4 — Mobilizon admin API password (stdin; never on argv)
+pw="$(grep '^YUNOHOST_ADMIN_PASSWORD_FAMILY_A=' ~/.tinywebstack-secrets/passwords.env | cut -d= -f2-)"
+printf '%s' "$pw" | ./scripts/vm/remote-run.sh "$IP_A" tws-store-mobilizon-admin-password.sh
+pw="$(grep '^YUNOHOST_ADMIN_PASSWORD_FAMILY_B=' ~/.tinywebstack-secrets/passwords.env | cut -d= -f2-)"
+printf '%s' "$pw" | ./scripts/vm/remote-run.sh "$IP_B" tws-store-mobilizon-admin-password.sh
+unset pw
+
+# 5 — Matrix + Mobilizon federation sync, then kid events LDAP/SSO from the DB
+./scripts/vm/remote-run.sh "$IP_A" family-sync-federation.sh "$DOMAIN_A"
+./scripts/vm/remote-run.sh "$IP_B" family-sync-federation.sh "$DOMAIN_B"
+./scripts/vm/remote-run.sh "$IP_A" family-events-perms.sh
+./scripts/vm/remote-run.sh "$IP_B" family-events-perms.sh
+
+# 6 — verifiers (federation: run on spark, not inside unshare)
+./scripts/spark/verify-federation-e2e.sh \
+  "$NODE_A" "$NODE_B" \
+  "$DOMAIN_A" "$DOMAIN_B" \
+  alice bob matrix.org
+./scripts/spark/verify-calendar-e2e.sh "$NODE_A" "$DOMAIN_A"
+./scripts/spark/verify-calendar-e2e.sh "$NODE_B" "$DOMAIN_B"
+./scripts/spark/verify-events-e2e.sh \
+  "$NODE_A" "$NODE_B" \
+  "$DOMAIN_A" "$DOMAIN_B"
+```
+
+Calendar and events verifiers need **spark** to resolve `nextcloud.*` / `mobilizon.*`
+lab hostnames; run `sudo ./scripts/spark/apply-private-dns.sh` once if you have not
+already.
+
+`remote-run.sh` rsyncs `config/nodes.conf` when present so the dashboard
+**Federation** page lists peer nodes. Re-run step 0 after editing `nodes.conf`.
+
+---
+
 ## YunoHost 12 user creation (manual)
 
 ```bash
