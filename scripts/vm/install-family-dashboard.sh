@@ -223,6 +223,7 @@ sys.argv = [
     'setup_family_dashboard_perms.py',
     '--synapse-app', '${SYNAPSE_APP}',
     '--parents-group', '${TWS_PARENTS_GROUP:-parents}',
+    '--main-domain', '${MAIN_DOMAIN}',
 ]
 runpy.run_path('${PERMS_PY}', run_name='__main__')
 " || die "YunoHost permission setup failed"

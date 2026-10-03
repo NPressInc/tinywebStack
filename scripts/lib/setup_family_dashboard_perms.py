@@ -7,6 +7,20 @@ import argparse
 import sys
 
 
+def _family_permission_urls(main_domain: str | None) -> tuple[str, str, list[str]]:
+    if main_domain:
+        return (
+            f"{main_domain}/family",
+            f"{main_domain}/family/api/invite/verify",
+            [f"{main_domain}/.well-known/tinywebstack-family.json"],
+        )
+    return (
+        "/family",
+        "/family/api/invite/verify",
+        ["/.well-known/tinywebstack-family.json"],
+    )
+
+
 def ensure_permission(
     name: str,
     *,
@@ -45,12 +59,14 @@ def setup_family_dashboard_permissions(
     parents_group: str,
     *,
     create_owntracks_pub: bool = True,
+    main_domain: str | None = None,
 ) -> None:
+    dash_url, pub_url, pub_extra = _family_permission_urls(main_domain)
     dash = f"{synapse_app}.family_dashboard"
     pub = f"{synapse_app}.family_public"
     ensure_permission(
         dash,
-        url="/family",
+        url=dash_url,
         allowed=[parents_group],
         auth_header=True,
         show_tile=True,
@@ -58,12 +74,12 @@ def setup_family_dashboard_permissions(
     )
     ensure_permission(
         pub,
-        url="/family/api/invite/verify",
+        url=pub_url,
         allowed=["visitors"],
         auth_header=False,
         show_tile=False,
         protected=True,
-        additional_urls=["/.well-known/tinywebstack-family.json"],
+        additional_urls=pub_extra,
     )
     if create_owntracks_pub:
         try:
@@ -83,12 +99,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--synapse-app", default="synapse")
     parser.add_argument("--parents-group", default="parents")
+    parser.add_argument("--main-domain", default=None)
     parser.add_argument("--skip-owntracks-pub", action="store_true")
     args = parser.parse_args()
     setup_family_dashboard_permissions(
         args.synapse_app,
         args.parents_group,
         create_owntracks_pub=not args.skip_owntracks_pub,
+        main_domain=args.main_domain,
     )
     return 0
 

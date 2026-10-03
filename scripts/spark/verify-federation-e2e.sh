@@ -109,6 +109,20 @@ def req(method, url, token=None, body=None):
             return {"errcode": f"HTTP_{e.code}", "error": raw[:500]}
 
 
+def discover_client_base(domain: str) -> str:
+    url = f"https://{domain}/.well-known/matrix/client"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url), context=ctx, timeout=90) as resp:
+            data = json.loads(resp.read().decode())
+        base = (data.get("m.homeserver") or {}).get("base_url") or ""
+        base = base.rstrip("/")
+        if base:
+            return base
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
+        pass
+    return f"https://{domain}"
+
+
 def login(base, user, password):
     out = req(
         "POST",
@@ -131,13 +145,16 @@ alice = os.environ["ALICE_USER"]
 bob = os.environ["BOB_USER"]
 reject = os.environ["REJECT_DOMAIN"]
 
-a_token = login(f"https://{da}", alice, os.environ["ALICE_PASSWORD"])
-b_token = login(f"https://{db}", bob, os.environ["BOB_PASSWORD"])
+base_a = discover_client_base(da)
+base_b = discover_client_base(db)
+
+a_token = login(base_a, alice, os.environ["ALICE_PASSWORD"])
+b_token = login(base_b, bob, os.environ["BOB_PASSWORD"])
 bob_id = f"@{bob}:{db}"
 
 room = req(
     "POST",
-    f"https://{da}/_matrix/client/v3/createRoom",
+    f"{base_a}/_matrix/client/v3/createRoom",
     token=a_token,
     body={"invite": [bob_id], "is_direct": True, "preset": "trusted_private_chat"},
 )
@@ -146,7 +163,7 @@ if "room_id" not in room:
 room_id = room["room_id"]
 room_enc = urllib.parse.quote(room_id, safe="")
 
-join = req("POST", f"https://{db}/_matrix/client/v3/join/{room_enc}", token=b_token, body={})
+join = req("POST", f"{base_b}/_matrix/client/v3/join/{room_enc}", token=b_token, body={})
 if "room_id" not in join:
     sys.exit(f"{bob} join failed: {join}")
 
@@ -154,7 +171,7 @@ msg = f"tinywebstack federation ping {uuid.uuid4()}"
 txn = uuid.uuid4().hex
 send = req(
     "PUT",
-    f"https://{da}/_matrix/client/v3/rooms/{room_enc}/send/m.room.message/{txn}",
+    f"{base_a}/_matrix/client/v3/rooms/{room_enc}/send/m.room.message/{txn}",
     token=a_token,
     body={"msgtype": "m.text", "body": msg},
 )
@@ -165,7 +182,7 @@ found = False
 for _ in range(30):
     hist = req(
         "GET",
-        f"https://{db}/_matrix/client/v3/rooms/{room_enc}/messages?dir=b&limit=20",
+        f"{base_b}/_matrix/client/v3/rooms/{room_enc}/messages?dir=b&limit=20",
         token=b_token,
     )
     if msg in json.dumps(hist):
@@ -180,7 +197,7 @@ print(f"OK: {bob} received federated message")
 
 bad = req(
     "POST",
-    f"https://{da}/_matrix/client/v3/createRoom",
+    f"{base_a}/_matrix/client/v3/createRoom",
     token=a_token,
     body={"invite": [f"@someone:{reject}"], "preset": "private_chat"},
 )
@@ -269,16 +286,31 @@ def req(method, url, token=None, body=None):
             return {"errcode": f"HTTP_{e.code}", "error": raw[:500]}
 
 
+def discover_client_base(domain: str) -> str:
+    url = f"https://{domain}/.well-known/matrix/client"
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url), context=ctx, timeout=90) as resp:
+            data = json.loads(resp.read().decode())
+        base = (data.get("m.homeserver") or {}).get("base_url") or ""
+        base = base.rstrip("/")
+        if base:
+            return base
+    except (urllib.error.URLError, urllib.error.HTTPError, json.JSONDecodeError, OSError):
+        pass
+    return f"https://{domain}"
+
+
 da = os.environ["DOMAIN_A"]
 rt = os.environ["RT_DOMAIN"]
 expect = os.environ["RT_EXPECT"]
+base_a = discover_client_base(da)
 
 token = None
 out = {}
 for _ in range(30):  # tolerate the synapse restart triggered by the state apply
     out = req(
         "POST",
-        f"https://{da}/_matrix/client/v3/login",
+        f"{base_a}/_matrix/client/v3/login",
         body={
             "type": "m.login.password",
             "identifier": {"type": "m.id.user", "user": os.environ["ALICE_USER"]},
@@ -291,11 +323,11 @@ for _ in range(30):  # tolerate the synapse restart triggered by the state apply
         break
     time.sleep(2)
 if not token:
-    sys.exit(f"login failed for {os.environ['ALICE_USER']} on {da}: {out}")
+    sys.exit(f"login failed for {os.environ['ALICE_USER']} on {base_a}: {out}")
 
 res = req(
     "POST",
-    f"https://{da}/_matrix/client/v3/createRoom",
+    f"{base_a}/_matrix/client/v3/createRoom",
     token=token,
     body={"invite": [f"@roundtrip-user:{rt}"], "preset": "private_chat"},
 )

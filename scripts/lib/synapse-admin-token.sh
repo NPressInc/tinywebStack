@@ -128,8 +128,16 @@ provision_synapse_admin_token() {
     return 0
   fi
 
-  local matrix_host
-  matrix_host="$(matrix_public_host "$main_domain")"
+  local matrix_client_base matrix_https_host matrix_ca
+  matrix_client_base="$(matrix_client_base_url "$main_domain")"
+  matrix_https_host="$(
+    python3 -c 'import sys; from urllib.parse import urlparse; print(urlparse(sys.argv[1]).hostname or "")' \
+      "$matrix_client_base"
+  )"
+  matrix_ca="/etc/yunohost/certs/${matrix_https_host}/ca.pem"
+  if [[ ! -f "$matrix_ca" ]]; then
+    matrix_ca="/etc/yunohost/certs/${main_domain}/ca.pem"
+  fi
   local login_body
   login_body="$(python3 - <<PY
 import json
@@ -147,12 +155,12 @@ PY
     "http://127.0.0.1:8008/_matrix/client/v3/login" "$login_body" "$tmp")"
   if [[ "$tok_http" != "200" ]]; then
     tok_http="$(synapse_login_http_code \
-      "https://${matrix_host}/_matrix/client/v3/login" "$login_body" "$tmp" \
-      --cacert "/etc/yunohost/certs/${main_domain}/ca.pem")"
+      "${matrix_client_base}/_matrix/client/v3/login" "$login_body" "$tmp" \
+      --cacert "$matrix_ca")"
   fi
   if [[ "$tok_http" != "200" ]]; then
     tok_http="$(synapse_login_http_code \
-      "https://${matrix_host}/_matrix/client/v3/login" "$login_body" "$tmp" -k)"
+      "${matrix_client_base}/_matrix/client/v3/login" "$login_body" "$tmp" -k)"
   fi
   if [[ "$tok_http" != "200" ]]; then
     rm -f "$tmp"

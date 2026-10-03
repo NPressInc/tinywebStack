@@ -7,6 +7,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${REPO_ROOT}/scripts/lib/common.sh"
 # shellcheck source=scripts/lib/domains.sh
 source "${REPO_ROOT}/scripts/lib/domains.sh"
+# shellcheck source=scripts/lib/matrix-server.sh
+source "${REPO_ROOT}/scripts/lib/matrix-server.sh"
 # shellcheck source=scripts/lib/tinyweb-install-env.sh
 source "${REPO_ROOT}/scripts/lib/tinyweb-install-env.sh"
 # shellcheck source=scripts/lib/tinyweb-install-secrets.sh
@@ -705,11 +707,60 @@ step_selfcheck() {
   fi
 
   selfcheck_https_curl_opts "$TWS_DOMAIN"
-  if curl -fsS -o /dev/null "${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}" \
-    "https://${TWS_DOMAIN}/_matrix/client/versions" 2>/dev/null; then
+  MATRIX_CLIENT_DISCOVER_CURL=("${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}")
+  local matrix_client_base matrix_client_host
+  matrix_client_base="$(matrix_client_base_url "$TWS_DOMAIN")"
+  matrix_client_host="$(
+    python3 -c 'import sys; from urllib.parse import urlparse; print(urlparse(sys.argv[1]).hostname or "")' \
+      "$matrix_client_base"
+  )"
+  tmpcode="$(
+    curl -sS -o /dev/null -w '%{http_code}' \
+      "${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}" \
+      "https://${TWS_DOMAIN}/.well-known/matrix/client" 2>/dev/null || echo 000
+  )"
+  if [[ "$tmpcode" == "200" ]]; then
+    results+=("PASS	matrix client well-known HTTP 200")
+  else
+    results+=("FAIL	matrix client well-known HTTP ${tmpcode}")
+    fail=1
+  fi
+  selfcheck_https_curl_opts "$matrix_client_host"
+  tmpcode="$(
+    curl -sS -o /dev/null -w '%{http_code}' \
+      "${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}" \
+      "${matrix_client_base}/_matrix/client/versions" 2>/dev/null || echo 000
+  )"
+  if [[ "$tmpcode" == "200" ]]; then
     results+=("PASS	Synapse client versions HTTPS 200")
   else
-    results+=("FAIL	Synapse client versions HTTPS")
+    results+=("FAIL	Synapse client versions HTTPS ${tmpcode}")
+    fail=1
+  fi
+
+  tmpcode="$(
+    curl -sS -o /dev/null -w '%{http_code}' \
+      "${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}" \
+      "https://${TWS_DOMAIN}/.well-known/tinywebstack-family.json" 2>/dev/null || echo 000
+  )"
+  if [[ "$tmpcode" == "200" ]]; then
+    results+=("PASS	family well-known HTTP 200")
+  else
+    results+=("FAIL	family well-known HTTP ${tmpcode}")
+    fail=1
+  fi
+
+  tmpcode="$(
+    curl -sS -o /dev/null -w '%{http_code}' \
+      "${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}" \
+      -X POST "https://${TWS_DOMAIN}/family/api/invite/verify" \
+      -H 'Content-Type: application/json' \
+      -d '{}' 2>/dev/null || echo 000
+  )"
+  if [[ "$tmpcode" == "400" ]]; then
+    results+=("PASS	family invite verify public HTTP 400")
+  else
+    results+=("FAIL	family invite verify public HTTP ${tmpcode}")
     fail=1
   fi
 

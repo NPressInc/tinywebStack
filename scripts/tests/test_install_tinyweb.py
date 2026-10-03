@@ -533,3 +533,16 @@ if should_create_swap off; then echo OFF_YES; else echo OFF_NO; fi
     assert "SWAP_YES" in out
     assert "HIGH_NO" in out
     assert "OFF_NO" in out
+
+
+def test_selfcheck_includes_family_public_nginx_checks() -> None:
+    text = INSTALL.read_text(encoding="utf-8")
+    assert "tinywebstack-family.json" in text
+    assert "family invite verify public HTTP 400" in text
+    assert "family well-known HTTP 200" in text
+    assert "matrix client well-known HTTP 200" in text
+    assert "matrix_client_base_url" in text
+    assert "--resolve" in text
+    block = text[text.find("step_selfcheck()") : text.find("print_dry_run_plan()")]
+    assert "/family/api/invite/verify" in block
+    assert "POST" in block

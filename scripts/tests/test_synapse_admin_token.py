@@ -102,8 +102,9 @@ def test_register_gets_password_twice_and_local_login_first(tmp_path: Path) -> N
 
     curl_log = tmp_path / "curl.log"
     urls = [ln for ln in curl_log.read_text(encoding="utf-8").splitlines() if ln]
-    assert urls[0] == "http://127.0.0.1:8008/_matrix/client/v3/login"
-    assert len(urls) == 1
+    login_urls = [u for u in urls if "_matrix/client/v3/login" in u]
+    assert login_urls[0] == "http://127.0.0.1:8008/_matrix/client/v3/login"
+    assert len(login_urls) == 1
 
     token_file = tmp_path / "etc" / "tinywebstack" / "synapse-admin-token"
     assert token_file.read_text(encoding="utf-8").strip() == "stub-token"
