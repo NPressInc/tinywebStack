@@ -59,11 +59,18 @@ def test_kid_usernames_with_events():
     assert kid_usernames_with_events(policy) == {"kid1"}
 
 
-def test_federation_sync_surfaces_add_instance_errors():
+def _mock_federation_client(**overrides):
     client = MagicMock()
-    client.instance_followed_status.return_value = "NONE"
+    client.instance_followed_status.return_value = overrides.get("followed_status", "NONE")
+    client.list_relay_followers.return_value = overrides.get("followers", [])
+    client.list_following_instances.return_value = overrides.get("following_instances", [])
+    client.list_relay_followings.return_value = overrides.get("relay_followings", [])
+    return client
+
+
+def test_federation_sync_surfaces_add_instance_errors():
+    client = _mock_federation_client()
     client.add_instance.side_effect = [RuntimeError("Unable to find an instance"), None]
-    client.list_relay_followers.return_value = []
     result = sync_instance_federation(
         client,
         local_main_domain="family-a.test",
@@ -75,10 +82,8 @@ def test_federation_sync_surfaces_add_instance_errors():
 
 
 def test_federation_sync_treats_already_following_as_ok():
-    client = MagicMock()
-    client.instance_followed_status.return_value = "NONE"
+    client = _mock_federation_client()
     client.add_instance.side_effect = RuntimeError("You are already following this instance")
-    client.list_relay_followers.return_value = []
     result = sync_instance_federation(
         client,
         local_main_domain="family-a.test",
@@ -89,9 +94,7 @@ def test_federation_sync_treats_already_following_as_ok():
 
 
 def test_federation_sync_skips_add_when_already_approved():
-    client = MagicMock()
-    client.instance_followed_status.return_value = "APPROVED"
-    client.list_relay_followers.return_value = []
+    client = _mock_federation_client(followed_status="APPROVED")
     result = sync_instance_federation(
         client,
         local_main_domain="family-a.test",
@@ -99,6 +102,41 @@ def test_federation_sync_skips_add_when_already_approved():
     )
     client.add_instance.assert_not_called()
     assert "mobilizon.family-b.test" in result.outgoing_ok
+
+
+def test_federation_sync_removes_untrusted_outgoing_and_revokes_approved_followers():
+    client = _mock_federation_client(
+        followed_status="APPROVED",
+        following_instances=[
+            {"domain": "mobilizon.family-b.test", "relayAddress": "relay@mobilizon.family-b.test"},
+            {"domain": "mobilizon.solo.family.test", "relayAddress": "relay@mobilizon.solo.family.test"},
+            {"domain": "mobilizon.family-a.test", "relayAddress": "relay@mobilizon.family-a.test"},
+        ],
+        followers=[
+            {
+                "approved": True,
+                "actor": {"domain": "mobilizon.family-b.test", "preferredUsername": "relay"},
+            },
+            {
+                "approved": True,
+                "actor": {"domain": "mobilizon.solo.family.test", "preferredUsername": "relay"},
+            },
+        ],
+    )
+    result = sync_instance_federation(
+        client,
+        local_main_domain="family-a.test",
+        trusted_main_domains=["family-b.test"],
+    )
+    client.remove_relay.assert_called_once_with(
+        "relay@mobilizon.solo.family.test", ssl_context=None, timeout=30
+    )
+    client.reject_relay.assert_called_once_with(
+        "mobilizon.solo.family.test", ssl_context=None, timeout=30
+    )
+    assert result.removed_relays == ["mobilizon.solo.family.test"]
+    assert result.revoked_followers == ["mobilizon.solo.family.test"]
+    client.add_instance.assert_not_called()
 
 
 def test_passive_probe_does_not_call_add_instance():

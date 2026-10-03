@@ -24,6 +24,17 @@ def peer_events_hosts(trusted_main_domains: Iterable[str]) -> List[str]:
     return sorted({events_domain(d) for d in trusted_main_domains if d and str(d).strip()})
 
 
+def relay_remove_address_from_instance(instance: Dict[str, Any]) -> Optional[str]:
+    """Hostname / relay id for removeRelay from an instances(FOLLOWING) element."""
+    relay = instance.get("relayAddress")
+    if isinstance(relay, str) and relay.strip():
+        return relay.strip()
+    domain = instance.get("domain")
+    if isinstance(domain, str) and domain.strip():
+        return domain.strip().lower()
+    return None
+
+
 def relay_address_from_follower(follower: Dict[str, Any]) -> Optional[str]:
     """Best-effort hostname for acceptRelay/rejectRelay from a relayFollowers element."""
     actor = follower.get("actor") or {}
@@ -155,6 +166,20 @@ class MobilizonClient:
                 return
             raise
 
+    def remove_relay(self, address: str, **kwargs: Any) -> None:
+        try:
+            self.gql(
+                'mutation RemoveRelay($address: String!) { removeRelay(address: $address) { id } }',
+                {"address": address},
+                **kwargs,
+            )
+        except RuntimeError as exc:
+            if "422" in str(exc) or "unprocessable" in str(exc).lower():
+                return
+            if _is_not_found_error(str(exc)):
+                return
+            raise
+
     def list_relay_followers(self, *, limit: int = 50, **kwargs: Any) -> List[Dict[str, Any]]:
         data = self.gql(
             "query RelayFollowers($limit: Int) { relayFollowers(limit: $limit) { elements { id actor { preferredUsername url domain } targetActor { preferredUsername domain } approved } } }",
@@ -162,6 +187,22 @@ class MobilizonClient:
             **kwargs,
         )
         return list((data.get("relayFollowers") or {}).get("elements") or [])
+
+    def list_relay_followings(self, *, limit: int = 50, **kwargs: Any) -> List[Dict[str, Any]]:
+        data = self.gql(
+            "query RelayFollowings($limit: Int) { relayFollowings(limit: $limit) { elements { id actor { preferredUsername url domain } targetActor { preferredUsername domain } approved } } }",
+            {"limit": limit},
+            **kwargs,
+        )
+        return list((data.get("relayFollowings") or {}).get("elements") or [])
+
+    def list_following_instances(self, *, limit: int = 100, **kwargs: Any) -> List[Dict[str, Any]]:
+        data = self.gql(
+            "query FollowingInstances($limit: Int) { instances(limit: $limit, filterFollowStatus: FOLLOWING) { elements { domain relayAddress followedStatus } } }",
+            {"limit": limit},
+            **kwargs,
+        )
+        return list((data.get("instances") or {}).get("elements") or [])
 
     def instance_followed_status(self, domain: str, **kwargs: Any) -> str:
         try:
@@ -314,6 +355,8 @@ class FederationSyncResult:
     outgoing_errors: Dict[str, str] = field(default_factory=dict)
     accepted_relays: List[str] = field(default_factory=list)
     rejected_relays: List[str] = field(default_factory=list)
+    removed_relays: List[str] = field(default_factory=list)
+    revoked_followers: List[str] = field(default_factory=list)
 
     def raise_on_errors(self) -> None:
         if self.outgoing_errors:
@@ -333,8 +376,8 @@ def sync_instance_federation(
     """
     Align Mobilizon ActivityPub relays with tinywebStack trusted_domains (pairwise allowlist).
 
-    - Outgoing: addInstance for each peer events host (errors surfaced).
-    - Incoming: acceptRelay for trusted pending followers, rejectRelay for others.
+    - Outgoing: addInstance for trusted peers; removeRelay for followed instances no longer trusted.
+    - Incoming: acceptRelay for trusted pending followers; rejectRelay for untrusted (pending or approved).
 
     Never probes or follows non-trusted instances (see verify_passive_untrusted_probe).
     """
@@ -360,21 +403,55 @@ def sync_instance_federation(
             else:
                 result.outgoing_errors[peer] = msg
 
-    for follower in client.list_relay_followers(ssl_context=ssl_context, timeout=timeout):
-        if follower.get("approved"):
+    seen_following_hosts: Set[str] = set()
+    for inst in client.list_following_instances(ssl_context=ssl_context, timeout=timeout):
+        domain = normalize_hostname(str(inst.get("domain") or ""))
+        if not domain or domain == local_events:
             continue
+        seen_following_hosts.add(domain)
+        if is_trusted_relay(domain, trusted_hosts, local_events):
+            continue
+        address = relay_remove_address_from_instance(inst) or domain
+        try:
+            client.remove_relay(address, ssl_context=ssl_context, timeout=timeout)
+            result.removed_relays.append(domain)
+        except RuntimeError as exc:
+            result.outgoing_errors.setdefault(f"unfollow:{domain}", str(exc))
+
+    for following in client.list_relay_followings(ssl_context=ssl_context, timeout=timeout):
+        address = relay_address_from_follower(following)
+        if not address:
+            continue
+        host = normalize_hostname(address)
+        if host == local_events or host in seen_following_hosts:
+            continue
+        if is_trusted_relay(host, trusted_hosts, local_events):
+            continue
+        try:
+            client.remove_relay(address, ssl_context=ssl_context, timeout=timeout)
+            result.removed_relays.append(host)
+            seen_following_hosts.add(host)
+        except RuntimeError as exc:
+            result.outgoing_errors.setdefault(f"unfollow:{host}", str(exc))
+
+    for follower in client.list_relay_followers(ssl_context=ssl_context, timeout=timeout):
         address = relay_address_from_follower(follower)
         if not address:
             continue
+        approved = bool(follower.get("approved"))
         if is_trusted_relay(address, trusted_hosts, local_events):
-            try:
-                client.accept_relay(address, ssl_context=ssl_context, timeout=timeout)
-                result.accepted_relays.append(address)
-            except RuntimeError as exc:
-                if "422" not in str(exc):
-                    result.outgoing_errors.setdefault(f"relay:{address}", str(exc))
+            if not approved:
+                try:
+                    client.accept_relay(address, ssl_context=ssl_context, timeout=timeout)
+                    result.accepted_relays.append(address)
+                except RuntimeError as exc:
+                    if "422" not in str(exc):
+                        result.outgoing_errors.setdefault(f"relay:{address}", str(exc))
+            continue
+        client.reject_relay(address, ssl_context=ssl_context, timeout=timeout)
+        if approved:
+            result.revoked_followers.append(address)
         else:
-            client.reject_relay(address, ssl_context=ssl_context, timeout=timeout)
             result.rejected_relays.append(address)
 
     return result
