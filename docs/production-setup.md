@@ -137,15 +137,94 @@ access to the node on port 22.
 
 ---
 
-## 2. Install Debian and bootstrap YunoHost
+## 2. One-box install (recommended)
+
+Run everything **on the node** with `scripts/install-tinyweb.sh`. No control
+machine, no `remote-run.sh`, no spark `passwords.env`. Secrets are generated
+once on the box under `/etc/tinywebstack/secrets/` (mode 700; never logged).
 
 ### 2.1 Fresh OS
 
-Flash the Debian 12 netinst (or your VPS's Debian 12 image). Minimal install,
-no desktop tasks, **enable SSH**. Create one admin user with sudo. Set a
-static LAN IP or DHCP reservation.
+Flash Debian 12 netinst or boot the official YunoHost 12 image. Minimal
+Debian: enable SSH, one sudo user, static LAN IP or DHCP reservation. The
+installer can install YunoHost on plain Debian; if YunoHost is already
+postinstalled, bootstrap steps are skipped.
 
-### 2.2 Root SSH for `remote-run.sh`
+### 2.2 Get the code onto the box
+
+Either clone or unpack a release tarball:
+
+```bash
+sudo apt update && sudo apt install -y git rsync curl sudo
+git clone https://github.com/NPressInc/tinywebStack.git /opt/tinywebstack-src
+cd /opt/tinywebstack-src
+```
+
+(Any path is fine; the installer copies `scripts/`, `family/`, and `brand/`
+into `/opt/tinywebstack` — the same flat layout `remote-run.sh` uses.)
+
+### 2.3 Write `/etc/tinywebstack/tinyweb.env`
+
+```bash
+sudo install -d -m 755 /etc/tinywebstack
+sudo cp config/tinyweb.env.example /etc/tinywebstack/tinyweb.env
+sudo $EDITOR /etc/tinywebstack/tinyweb.env
+```
+
+Production example:
+
+```bash
+TWS_DOMAIN=home.example.com
+TWS_NODE_NAME=home-a
+TWS_MODE=production
+TWS_ADMIN_USER=twsowner
+LOCATION_APP=owntracks
+TWS_FAMILY_USERS=william,sophie,emma
+TWS_FAMILY_PARENTS=william,sophie
+TWS_FAMILY_KIDS=emma
+TWS_LE_EMAIL=you@example.com
+```
+
+Do **not** set `LAB_PASSWORD` when `TWS_MODE=production`. See
+`config/tinyweb.env.example` for every key.
+
+### 2.4 Run the installer
+
+```bash
+cd /opt/tinywebstack-src
+sudo ./scripts/install-tinyweb.sh --config /etc/tinywebstack/tinyweb.env
+```
+
+Optional: `--dry-run` (plan only), `--skip-selfcheck` (skip the final health
+table). Log file: `/var/log/tinywebstack-install.log` (root-only, no secrets).
+
+**Expected:** step banners through self-check; a PASS/FAIL table; exit 0 when
+all checks pass. YunoHost admin is `twsowner` (or `TWS_ADMIN_USER`) with a
+random password in `/etc/tinywebstack/secrets/install.env` — back that file up
+off-box; the installer does not print it.
+
+**If this fails:**
+
+- **DNS / postinstall:** satisfy §1.2 before re-running; `yunohost log list`.
+- **Let's Encrypt warnings in step 3:** DNS or port 80 not ready — fix §1.2/§1.3,
+  then `sudo yunohost domain cert install <fqdn>` per name (§3).
+- **Self-check FAIL on CalDAV or Synapse:** apps still starting (Mobilizon is
+  slow) — wait and re-run with `--skip-selfcheck` to finish provisioning, then
+  run the installer again for self-check only, or fix the failing unit with
+  `journalctl`.
+- **Password policy errors:** delete the relevant line from `install.env` and
+  re-run (secrets are only regenerated when missing).
+- Re-running the full installer is idempotent.
+
+The installer sets `TWS_LAB_TLS_INSECURE=0` for production before the
+dashboard is created and attempts LE certs for all app domains (§3).
+
+### 2.5 Alternative: control machine + `remote-run.sh`
+
+Use this when you prefer secrets on a laptop and SSH orchestration (same as
+the original S5.2 flow).
+
+#### 2.5.1 Root SSH for `remote-run.sh`
 
 `remote-run.sh` defaults to `root@host` (`REMOTE_SSH_USER=root`) and uses
 `BatchMode=yes` + pinned host keys, so password auth will not work. From the
@@ -167,7 +246,7 @@ hostname with no prompt.
 and file permissions (`/root`, `/root/.ssh`, `authorized_keys` must not be
 group-writable).
 
-### 2.3 Control-machine repo + config
+#### 2.5.2 Control-machine repo + config
 
 ```bash
 git clone https://github.com/NPressInc/tinywebStack.git ~/Documents/codingProj/tinywebStack
@@ -220,41 +299,28 @@ after; nothing is ever printed.
 *If this fails:* YunoHost rejects passwords < 8 chars — delete the offending
 key from `passwords.env` and re-run.
 
-### 2.4 Bootstrap YunoHost
+#### 2.5.3 Bootstrap and apps via `remote-run.sh`
 
 ```bash
 IP=<node-ip>
 scripts/vm/remote-run.sh "$IP" yunohost-bootstrap.sh home.example.com home-a
+# §3 Let's Encrypt on the node, then:
+scripts/vm/remote-run.sh "$IP" yunohost-family-apps.sh home.example.com home-a
+scripts/vm/remote-run.sh "$IP" family-init.sh home.example.com
 ```
 
-This runs `scripts/vm/yunohost-bootstrap.sh` on the node as root: installs
-YunoHost (`curl -sSf https://install.yunohost.org | bash -s -- -a`), runs
-`yunohost tools postinstall --domain home.example.com --username twsowner
---password <YUNOHOST_ADMIN_PASSWORD_HOME_A> --ignore-dyndns
---force-diskspace --i-have-read-terms-of-services`, adds all six app
-subdomains, and installs **self-signed** certs where no cert exists.
-
-**Expected:** ends with
-`[tinywebstack] YunoHost bootstrap complete for home.example.com node=home-a (admin: twsowner)`.
-Then `https://home.example.com/` loads with a self-signed warning, and the
-admin portal works at `https://home.example.com/yunohost.admin` (log in as
-`twsowner`).
-*If this fails:*
-- postinstall DNS errors → §1.2 not satisfied (the domain must resolve to this
-  box publicly); `yunohost tools postinstall` logs land in `yunohost log list`.
-- "Server is unreachable" behind NAT → the hairpin/`/etc/hosts` trick (§1.3).
-- `YUNOHOST_ADMIN_PASSWORD must be set` → you skipped §2.3 secret generation,
-  or the node name doesn't match the secret key (`home-a` →
-  `YUNOHOST_ADMIN_PASSWORD_HOME_A`).
-- Re-running the script is safe: every step is idempotent.
+Continue with §3–§7 (certs, federation, accounts). Secrets are pushed per
+invocation in `remote.env` (deleted after each run). Do **not** pass the node
+name to `family-init.sh` in production.
 
 ---
 
 ## 3. Let's Encrypt (replace bootstrap's self-signed certs)
 
-There is **no production TLS path in the scripts** (they handle lab-CA certs or
-self-signed) — this is a manual step, done once per domain, **after** §2.4 and
-**before** apps start federating. For each of the six domains, on the node:
+`install-tinyweb.sh` (§2.4) already attempts Let's Encrypt for every app
+domain in production (warnings only if DNS is not ready). Use this section if
+you used the **remote-run** path (§2.5), or to fix a failed name after the
+one-box installer. For each of the six domains, on the node:
 
 ```bash
 for d in home.example.com matrix.home.example.com element.home.example.com \
@@ -301,10 +367,15 @@ if `LOCATION_APP=traccar`), and Nextcloud with the Calendar app enabled.
 Verify: `ssh root@"$IP" yunohost app list` → includes `synapse`, `element`,
 `nextcloud`, `owntracks`.
 *If this fails:*
-- owntracks_ynh apt failures → the script auto-retries after
+- owntracks_ynh apt failures → on a **fresh** node, `yunohost-family-apps.sh`
+  clones `owntracks_ynh` and patches `manifest.toml` when the upstream apt GPG
+  key URL is dead (legacy `repo.owntracks.org.gpg.key` → `OWNTRACKS_APT_KEY_URL`
+  in `config/defaults.env`). The script also auto-retries after
   `prep-owntracks-apt.sh`; if it still dies, check the node can reach
-  `repo.owntracks.org` (GPG key URL is `OWNTRACKS_APT_KEY_URL` in
-  `config/defaults.env`) and re-run.
+  `repo.owntracks.org` and re-run. **`yunohost app upgrade owntracks`** still
+  pulls from GitHub and may hit the same upstream bug until YunoHost-Apps fixes
+  the manifest — apply the same key URL change manually or re-run the family-apps
+  patch helper against a local clone before upgrading.
 - nextcloud install timeout on slow disks → just re-run the script.
 - Mobilizon is **not** installed here — it's part of `family-init.sh` (§5).
 
@@ -572,11 +643,14 @@ sudo tar czf /backups/etc-tinywebstack-$(date +%F).tgz /etc/tinywebstack \
 
 Copy off-box (the dashboard's own files, `/opt/tinywebstack`,
 `/opt/tinywebstack-family-dashboard`, `/etc/tinywebstack/family-policy.json`,
-`dashboard.env`, `pending-invites.json`, `synapse-admin-token`, and the
-control machine's `~/.tinywebstack-secrets/passwords.env` are **not** inside
-app archives beyond YunoHost's `system` archive — include `--apps system` or
-the tar above). Restore: `yunohost backup restore <archive>`, then re-run §5
-(the scripts are idempotent) to rebuild the module/dashboard.
+`dashboard.env`, `pending-invites.json`, `synapse-admin-token`, and
+**`/etc/tinywebstack/secrets/`** (`install.env`, `mobilizon-admin.password`,
+`synapse-admin.password` — root-only; one-box installs) plus the control machine's
+`~/.tinywebstack-secrets/passwords.env` when using `remote-run.sh` are **not**
+inside app archives beyond YunoHost's `system` archive — include
+`--apps system` or the tar above). Restore: `yunohost backup restore
+<archive>`, then re-run §5 (the scripts are idempotent) to rebuild the
+module/dashboard.
 
 Test restore quarterly; an untested backup is not a backup.
 
@@ -633,10 +707,10 @@ Test restore quarterly; an untested backup is not a backup.
 
 ## Known gaps for v1.1
 
-1. **No production TLS path in the scripts.** `yunohost-bootstrap.sh` only
-   knows lab certs and `--self-signed`; Let's Encrypt is a manual per-domain
-   loop (§3). Needs a `--production` flag that runs
-   `yunohost domain cert install` for every node domain.
+1. **Production TLS is partial.** `install-tinyweb.sh` runs
+   `yunohost domain cert install` in production (best-effort; §2.4/§3).
+   `yunohost-bootstrap.sh` alone still only knows lab certs and
+   `--self-signed`; remote-run-only flows still need §3 manually.
 2. **`synapse-federation-allowlist.sh` silently disables federation TLS**
    (`federation_verify_certificates: false`) whenever the lab CA isn't staged
    — correct in lab, a security regression in production (§5.4.3). Should
@@ -644,9 +718,9 @@ Test restore quarterly; an untested backup is not a backup.
 3. **`mobilizon-federation-sync.sh` uses an unverified TLS context whenever
    `/etc/tinywebstack/lab-ca.pem` is absent** — which is exactly the
    production case; it should fall back to the system trust store
-   (`ssl.create_default_context()`), not to no verification. Same class of
-   issue: `install-family-dashboard.sh` writes `TWS_LAB_TLS_INSECURE=1` by
-   default into `dashboard.env`, and `peer_verify.py` honours it (§5.4.1).
+   (`ssl.create_default_context()`), not to no verification. The one-box
+   installer sets `TWS_LAB_TLS_INSECURE=0` before the dashboard is created
+   (§2.4); remote-run-only installs still need §5.4.1.
 4. **Member provisioning is script-driven but explicit.** Custom households
    must set `TWS_FAMILY_PARENTS` and `TWS_FAMILY_KIDS` alongside
    `TWS_FAMILY_USERS` (§6.2). `family-init.sh`'s NODE_NAME-gated block is still
@@ -660,8 +734,9 @@ Test restore quarterly; an untested backup is not a backup.
    `kid` secret keys. Needs a `--production` mode (system CA, configurable
    users).
 7. **`remote-run.sh` requires root-over-SSH** (BatchMode, no sudo-password
-   path); production Debian needs manual root key install (§2.2). Also its
+   path); production Debian needs manual root key install (§2.5.1). Also its
    "spark"/`TW_STACK_SECRETS_SOURCE=spark` naming leaks lab vocabulary.
+   (The one-box installer avoids SSH entirely.)
 8. **Synapse module is a pip wheel install into the app venv** (S5.4 done —
    see [module-packaging.md](module-packaging.md)) —
    `yunohost app upgrade synapse` still wipes the venv, but the wipe is now
@@ -677,6 +752,11 @@ Test restore quarterly; an untested backup is not a backup.
 10. **`configure-federation-pair.sh` handles only the first two rows of
     `nodes.conf`** and its RAM/VCPU/DISK columns are meaningless on real
     hardware — needs a proper production node registry.
+11. **Upstream `owntracks_ynh` apt key URL (404).** The app manifest still
+    points at a removed GPG key file; fresh installs fail with `NO_PUBKEY` /
+    “repository is not signed”. `yunohost-family-apps.sh` patches the manifest
+    automatically on first install (`scripts/lib/owntracks_ynh_patch.sh`); app
+    upgrades from the upstream URL are not patched yet (see §4 troubleshooting).
 
 ## Related documents
 

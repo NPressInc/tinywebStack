@@ -175,6 +175,64 @@ With `LAB_PASSWORD=dummydummy` in `config/local.env` (≥8 characters), after bo
 
 ---
 
+## One-box installer in the lab
+
+You can provision a **single** test VM without driving it from spark via
+`remote-run.sh` — useful when the VM has no root SSH key from your laptop yet.
+
+1. Create the VM as usual: `./scripts/spark/create-vm.sh` (or
+   `deploy-test-nodes.sh`), note its IP.
+2. Issue lab certs for the node's domain (on spark):
+
+   ```bash
+   ./scripts/lab-ca/issue-domain-cert.sh family-c.family.test
+   ```
+
+   Stage certs under `~/.tinywebstack-secrets/lab-ca/certs/` (same layout
+   `remote-run.sh` rsyncs to `lab-certs/`).
+
+3. Copy the git checkout and certs onto the VM (rsync/scp), or clone on the VM
+   and copy the `certs/<fqdn>/` tree plus `lab-ca.crt.pem` into a directory
+   referenced by `TWS_LAB_CERTS_DIR`.
+
+4. On the VM, write `tinyweb.env`:
+
+   ```bash
+   TWS_DOMAIN=family-c.family.test
+   TWS_NODE_NAME=family-c
+   TWS_MODE=lab
+   LAB_PASSWORD=dummydummy
+   TWS_LAB_CERTS_DIR=/path/to/lab-certs
+   TWS_PEERS_HOSTS_FILE=/path/to/peers.hosts   # optional; from sync-vm-peer-hosts
+   ```
+
+5. Run:
+
+   ```bash
+   sudo ./scripts/install-tinyweb.sh --config ./tinyweb.env
+   ```
+
+6. Link households from the dashboard invite UI on an existing node as usual.
+
+**Verifiers on spark** still expect per-node keys in
+`~/.tinywebstack-secrets/passwords.env`. After a one-box install, copy
+`/etc/tinywebstack/secrets/install.env` from the VM to a temp file on spark
+(mode 600) and point verifiers at it, e.g.:
+
+```bash
+# On spark — map install.env keys to verifier names (example for family-c):
+TW_STACK_SECRETS_FILE=/tmp/family-c-install.env \
+  PARENT_PASSWORD_FAMILY_C="$(grep '^PARENT_PASSWORD=' /tmp/family-c-install.env | cut -d= -f2-)" \
+  ./scripts/spark/verify-calendar-e2e.sh family-c family-c.family.test
+```
+
+Easiest path: translate `PARENT_PASSWORD` → `PARENT_PASSWORD_FAMILY_C` (and
+the same for `KID_PASSWORD`, `YUNOHOST_ADMIN_PASSWORD`, alice/bob, etc.) into
+a scratch `passwords.env` derived from the VM's `install.env` without printing
+values.
+
+---
+
 ## Spark upgrade runbook (existing lab VMs)
 
 Use this after pulling a release that includes the SQLite permissions store

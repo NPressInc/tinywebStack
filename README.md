@@ -2,6 +2,12 @@
 
 A self-hosted family app ecosystem built on YunoHost and Matrix, with a thin family layer on top. See [PLAN.md](PLAN.md).
 
+## Install on a single machine
+
+Production and lab nodes can be provisioned on the box itself (no control machine):
+`sudo ./scripts/install-tinyweb.sh` — see [docs/production-setup.md](docs/production-setup.md) §2
+and [docs/test-nodes.md](docs/test-nodes.md) (lab one-box section).
+
 ## Test nodes on `spark`
 
 Scripts and runbook for two YunoHost KVM test VMs and Matrix federation allowlists: [docs/test-nodes.md](docs/test-nodes.md). After PR #1, see spark-specific fixes (arm64, libvirt system URI, lab CA, unattended YunoHost) in that doc.

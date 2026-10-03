@@ -9,7 +9,7 @@ load_config
 
 KEY_URL="${OWNTRACKS_APT_KEY_URL:-https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo-v2.owntracks.org.gpg.key}"
 LEGACY_KEY_URL="https://raw.githubusercontent.com/owntracks/recorder/master/etc/repo.owntracks.org.gpg.key"
-KEY_GPG="/etc/apt/trusted.gpg.d/owntracks.gpg"
+KEY_GPG="${OWNTRACKS_APT_KEY_GPG:-/etc/apt/trusted.gpg.d/owntracks.gpg}"
 PACKAGE="ot-recorder"
 REPO_URI="http://repo.owntracks.org/debian/"
 
@@ -38,8 +38,14 @@ install_apt_key() {
   local url=$1
   local tmp
   tmp="$(mktemp)"
-  curl -fsSL "$url" -o "$tmp"
-  grep -q "BEGIN PGP" "$tmp" || die "Downloaded key from ${url} does not look like a PGP key"
+  if ! curl -fsSL "$url" -o "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! grep -q "BEGIN PGP" "$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
   gpg --dearmor --yes -o "$KEY_GPG" "$tmp"
   rm -f "$tmp"
   chmod 644 "$KEY_GPG"
@@ -52,8 +58,7 @@ remove_conflicting_sources() {
 }
 
 try_apt_install() {
-  apt-get update
-  DEBIAN_FRONTEND=noninteractive apt-get install -y "$PACKAGE"
+  apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y "$PACKAGE"
 }
 
 install_deb_fallback() {
@@ -82,7 +87,7 @@ if dpkg -s "$PACKAGE" >/dev/null 2>&1; then
 fi
 
 remove_conflicting_sources
-install_apt_key "$KEY_URL"
+install_apt_key "$KEY_URL" || die "Could not install OwnTracks apt key from ${KEY_URL}"
 
 if try_apt_install; then
   log "${PACKAGE} installed via apt"
@@ -90,10 +95,13 @@ if try_apt_install; then
 fi
 
 log "apt install ${PACKAGE} failed; trying legacy key"
-install_apt_key "$LEGACY_KEY_URL"
-if try_apt_install; then
-  log "${PACKAGE} installed via apt (legacy key)"
-  exit 0
+if install_apt_key "$LEGACY_KEY_URL"; then
+  if try_apt_install; then
+    log "${PACKAGE} installed via apt (legacy key)"
+    exit 0
+  fi
+else
+  log "WARN: could not install legacy OwnTracks apt key from ${LEGACY_KEY_URL}; continuing to .deb fallback"
 fi
 
 install_deb_fallback

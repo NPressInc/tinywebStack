@@ -48,6 +48,27 @@ sys.exit(0 if permission_exists(json.load(sys.stdin), sys.argv[1]) else 1)
 " "$p"
 }
 
+_YNH_APPS_JSON_LOADED=0
+_YNH_APPS_JSON=""
+ynh_app_installed() {
+  local app_id=$1
+  if [[ "$_YNH_APPS_JSON_LOADED" -eq 0 ]]; then
+    _YNH_APPS_JSON="$(yunohost app list --output-as json 2>/dev/null || echo '{}')"
+    _YNH_APPS_JSON_LOADED=1
+  fi
+  python3 -c "
+import json, sys
+data = json.loads(sys.argv[1])
+apps = data.get('apps', data)
+app_id = sys.argv[2]
+if isinstance(apps, dict):
+    sys.exit(0 if app_id in apps else 1)
+if isinstance(apps, list):
+    sys.exit(0 if app_id in apps else 1)
+sys.exit(1)
+" "$_YNH_APPS_JSON" "$app_id"
+}
+
 ensure_group() {
   local g=$1
   if ynh_group_exists "$g"; then
@@ -93,12 +114,12 @@ if ynh_perm_exists nextcloud.main; then
   hide_portal_tile nextcloud.main
 fi
 
-if [[ "$LOCATION_APP" == "owntracks" ]]; then
+if [[ "$LOCATION_APP" == "owntracks" ]] && ynh_app_installed owntracks; then
   perm_remove owntracks.main all_users || true
   perm_remove owntracks.main visitors || true
   perm_remove owntracks.main "$KIDS_GROUP" || true
   perm_add owntracks.main "$PARENTS_GROUP"
-elif [[ "$LOCATION_APP" == "traccar" ]]; then
+elif [[ "$LOCATION_APP" == "traccar" ]] && ynh_app_installed traccar; then
   perm_remove traccar.main all_users || true
   perm_remove traccar.main visitors || true
   perm_remove traccar.main "$KIDS_GROUP" || true
@@ -155,7 +176,11 @@ fi
 configure_element_tile_logo || true
 
 # Traccar is fallback-only; Owntracks map is linked from the dashboard (avoid broken portal tiles).
-hide_portal_tile traccar.main
-hide_portal_tile owntracks.main
+if ynh_app_installed traccar; then
+  hide_portal_tile traccar.main
+fi
+if ynh_app_installed owntracks; then
+  hide_portal_tile owntracks.main
+fi
 
 log "Family groups and permissions applied (${PARENTS_GROUP}, ${KIDS_GROUP}, ${FED_TEST_GROUP})"
