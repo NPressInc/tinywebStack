@@ -15,6 +15,8 @@ Do not use the same directory for the git repo and VM data.
 
 ## App layout (per node)
 
+Fresh installs (and production-style boxes) run the Matrix **Client-Server API** on `matrix.<main>` while keeping `server_name=<main>`; nginx on `<main>` serves `/.well-known/matrix/client` and `/.well-known/matrix/server` so clients and federation resolve the right host. Older lab VMs may still serve Synapse directly on `<main>` with no delegation — scripts discover the client base URL from well-known and fall back to `https://<main>`.
+
 | Service | Hostname | Notes |
 |---------|----------|--------|
 | YunoHost main | `family-a.family.test` | postinstall domain |
