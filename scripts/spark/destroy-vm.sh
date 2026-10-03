@@ -20,6 +20,7 @@ REMOVE_DISK=0
 
 DOMAIN="$(vm_domain_name "$NODE_NAME")"
 DISK="$(vm_disk_path "$NODE_NAME")"
+SEED_ISO="$(vm_seed_iso_path "$NODE_NAME")"
 
 require_cmd virsh
 
@@ -29,16 +30,38 @@ if ! virsh dominfo "$DOMAIN" >/dev/null 2>&1; then
 fi
 
 if dry_run_is_active; then
-  log "DRY_RUN: virsh destroy ${DOMAIN}; virsh undefine ${DOMAIN}"
+  log "DRY_RUN: virsh destroy ${DOMAIN}"
+  log "DRY_RUN: virsh undefine ${DOMAIN} --nvram --remove-all-storage (else --nvram, else --remove-all-storage, else plain)"
+  if [[ "$REMOVE_DISK" == 1 ]]; then
+    log "DRY_RUN: rm -f ${DISK}"
+    if [[ -f "$SEED_ISO" ]]; then
+      log "DRY_RUN: rm -f ${SEED_ISO}"
+    fi
+  fi
   exit 0
 fi
 
 virsh destroy "$DOMAIN" 2>/dev/null || true
-virsh undefine "$DOMAIN" --remove-all-storage 2>/dev/null || virsh undefine "$DOMAIN"
 
-if [[ "$REMOVE_DISK" == 1 && -f "$DISK" ]]; then
-  rm -f "$DISK"
-  log "Removed disk ${DISK}"
+virsh undefine "$DOMAIN" --nvram --remove-all-storage 2>/dev/null \
+  || virsh undefine "$DOMAIN" --nvram 2>/dev/null \
+  || virsh undefine "$DOMAIN" --remove-all-storage 2>/dev/null \
+  || virsh undefine "$DOMAIN" 2>/dev/null \
+  || true
+
+if virsh dominfo "$DOMAIN" >/dev/null 2>&1; then
+  die "Failed to undefine libvirt domain ${DOMAIN} (still defined; try: virsh undefine ${DOMAIN} --nvram)"
+fi
+
+if [[ "$REMOVE_DISK" == 1 ]]; then
+  if [[ -f "$DISK" ]]; then
+    rm -f "$DISK"
+    log "Removed disk ${DISK}"
+  fi
+  if [[ -f "$SEED_ISO" ]]; then
+    rm -f "$SEED_ISO"
+    log "Removed cloud-init seed ${SEED_ISO}"
+  fi
 fi
 
 log "Destroyed ${DOMAIN}"

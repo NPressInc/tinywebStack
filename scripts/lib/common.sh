@@ -36,12 +36,17 @@ require_cmd() {
 
 load_config() {
   local f
-  for f in \
-    "${TW_STACK_ROOT}/config/defaults.env" \
-    "${TW_STACK_ROOT}/defaults.env" \
-    "${TW_STACK_ROOT}/config/local.env" \
-    "${TW_STACK_ROOT}/local.env"
-  do
+  local -a files=(
+    "${TW_STACK_ROOT}/config/defaults.env"
+    "${TW_STACK_ROOT}/defaults.env"
+  )
+  if [[ "${TW_STACK_SKIP_LOCAL_ENV:-0}" != "1" ]]; then
+    files+=(
+      "${TW_STACK_ROOT}/config/local.env"
+      "${TW_STACK_ROOT}/local.env"
+    )
+  fi
+  for f in "${files[@]}"; do
     if [[ -f "$f" ]]; then
       # shellcheck source=/dev/null
       source "$f"
@@ -74,6 +79,10 @@ vm_domain_name() {
 
 vm_disk_path() {
   printf '%s/%s.qcow2' "${TW_STACK_VM_DIR}" "$(vm_domain_name "$1")"
+}
+
+vm_seed_iso_path() {
+  printf '%s/%s/seed/cloud-init.iso' "${TW_STACK_VM_DIR}" "$(vm_domain_name "$1")"
 }
 
 dry_run_is_active() {
