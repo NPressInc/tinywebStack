@@ -2,7 +2,7 @@
 
 tinywebStack is a private, self-hosted app ecosystem for families that runs on hardware at home. It replaces the custom C platform in NPressInc/TinyWebC with existing, proven open-source software plus a thin family layer on top.
 
-**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [Test nodes lab](docs/test-nodes.md)
+**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Test nodes lab](docs/test-nodes.md)
 
 ## Why the change
 
@@ -34,3 +34,7 @@ TinyWebC rebuilt things that already exist: a gossip protocol, a message store, 
 2. Document the users, groups, and permissions model for one family.
 3. Prove that two YunoHost family nodes can federate over Matrix with an allowlist.
 4. Write down the gaps that need custom code, and build the smallest one first.
+
+## Next milestone: TinyWeb app
+
+The v1 client choice (Element X + OwnTracks + parent dashboard) is being replaced **in stages** by one **TinyWeb** mobile app that connects to every backend on the family box. Element X and OwnTracks remain the supported clients until those stages ship. See [docs/TINYWEB_APP_PLAN.md](docs/TINYWEB_APP_PLAN.md).

@@ -145,7 +145,7 @@ Components on each node:
 - **Synapse:** `tinywebstack_family` module — spam checker + encryption rejection ([FAMILY_MODULE.md](FAMILY_MODULE.md)).
 - **Dashboard:** FastAPI app at `/family/` — parents group via SSO ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
 - **VM scripts:** `family-groups.sh`, `install-family-module.sh`, `install-family-dashboard.sh`, `family-init.sh`.
-- **Clients (v1):** **Element X** (and Element Android/iOS) for chat; **OwnTracks** app for location. Element Web may remain for admins; not the kid client.
+- **Clients (v1):** **Element X** (and Element Android/iOS) for chat; **OwnTracks** app for location. Element Web may remain for admins; not the kid client. **Direction:** a single **TinyWeb** mobile app will subsume these in stages — see [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md); Element X + OwnTracks stay v1 until the app plan lands.
 - **Parent UX:** The dashboard is the **only** required web UI for families; backend admin panels are optional ([PHILOSOPHY.md](PHILOSOPHY.md) §5b).
 - **No centralized cloud** in v1.
 
@@ -155,7 +155,7 @@ Components on each node:
 
 William Floyd confirmed:
 
-1. **Kid Matrix clients:** Target **mobile apps** (Element X / Element Android/iOS), not Element Web as the kid client.
+1. **Kid Matrix clients:** Target **mobile apps** (Element X / Element Android/iOS), not Element Web as the kid client. **Updated direction:** one **TinyWeb** app (staged rollout in [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md)); Element X remains the v1 chat client until in-app Matrix ships.
 2. **Parent vs admin:** **Family dashboard** for parents; parent Matrix accounts are ordinary **non-admin** Synapse users so spam-checker rules apply. `twsowner` (YunoHost admin) stays separate.
 3. **E2EE:** **Off in v1** — unencrypted family rooms by default; Synapse config + module rejects `m.room.encryption`. **Deferred:** parent-key decrypt scheme (TinyWebC-style).
 4. **Cross-household contact:** **Per-kid allowlist** is enough; no reciprocal approval between households.
