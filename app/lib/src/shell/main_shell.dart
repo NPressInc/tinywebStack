@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../api/family_api.dart';
 import '../api/models.dart';
 import '../app_session.dart';
 import '../chat/chat_list_screen.dart';
@@ -15,10 +16,12 @@ class MainShell extends StatefulWidget {
     super.key,
     required this.session,
     this.chatService,
+    this.locationsApi,
   });
 
   final AppSession session;
   final ChatService? chatService;
+  final FamilyApiClient? locationsApi;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -133,7 +136,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       ),
       CalendarScreen(session: widget.session),
       if (_showEventsTab) EventsScreen(session: widget.session),
-      if (_isParent) LocationsScreen(session: widget.session),
+      if (_isParent)
+        LocationsScreen(
+          session: widget.session,
+          api: widget.locationsApi,
+        ),
       if (_isParent) KidControlsScreen(session: widget.session),
       ChatListScreen(session: widget.session, chat: _chat),
     ];

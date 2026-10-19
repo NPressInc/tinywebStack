@@ -47,7 +47,7 @@ Branding follows [tinyweb.win](https://tinyweb.win) and vendored assets in `bran
 
 **CalDAV:** Plain HTTP client (`PROPFIND`, `REPORT`, `PUT`, `DELETE`) against Nextcloud’s CalDAV root (`TWS_CALDAV_ROOT`, e.g. `https://nextcloud.<domain>/nextcloud/remote.php/dav` — [CALENDAR.md](CALENDAR.md), [`calendar_setup.py`](../family/dashboard/tinywebstack_dashboard/calendar_setup.py)).
 
-**Maps (parents):** `flutter_map` + raster tiles. Default: OSM or other public tile CDN — **tile requests leak approximate map viewport to the tile provider**; document in app settings; optional later: self-hosted tile server on the box.
+**Maps (parents):** `flutter_map` + **self-hosted Protomaps PMTiles** on the box ([MAP.md](MAP.md)); list-only fallback when no region is configured. No third-party tile CDNs at runtime.
 
 ---
 
@@ -122,7 +122,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Stage 1 — Shell app (“everything” navigation)
 
-**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, **CalDAV calendar — built** (agenda list, create/edit/delete, family invites, accept/decline), **Mobilizon events — built** (list/detail, RSVP, parent create PUBLIC), parent location list + track API (map deferred), **in-app background location publishing — built** (OwnTracks-format JSON to `/recorder/pub`), **parent controls — built** (Family tab + permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Chat is **end-to-end encrypted**: sqlite crypto store, cross-signing and key backup, with a recovery key shown at enrollment so a new phone can read history. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Native simplified sliding sync was confirmed on lab Synapse by the spike.
+**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, **CalDAV calendar — built** (agenda list, create/edit/delete, family invites, accept/decline), **Mobilizon events — built** (list/detail, RSVP, parent create PUBLIC), parent location list + track API + **self-hosted map** (when `TWS_MAP_BBOX` / `TWS_MAP_REGION` set), **in-app background location publishing — built** (OwnTracks-format JSON to `/recorder/pub`), **parent controls — built** (Family tab + permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Chat is **end-to-end encrypted**: sqlite crypto store, cross-signing and key backup, with a recovery key shown at enrollment so a new phone can read history. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Native simplified sliding sync was confirmed on lab Synapse by the spike.
 
 | Test | Pass criteria |
 |------|----------------|
@@ -174,6 +174,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | `POST /family/api/invite/verify` | **Built** | Public peer verify (issuer) |
 | `GET /family/api/locations` | **Built** | Parent-only: latest position per kid (Recorder `/api/0/last` via `TWS_OWNTRACKS_API_URL`) |
 | `GET /family/api/locations/{username}/track` | **Built** | Parent-only track history (`hours` query, max 2000 points) |
+| `GET /family/api/map` | **Built** | Parent-only: self-hosted PMTiles URLs + bounds ([MAP.md](MAP.md)) |
 
 **Existing (keep):** `GET/PUT /family/permissions/{user}`, `/family/federation/domains`, public invite verify, well-known.
 

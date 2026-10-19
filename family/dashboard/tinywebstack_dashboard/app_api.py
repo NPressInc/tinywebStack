@@ -36,6 +36,8 @@ from tinywebstack_dashboard.auth import (
     require_parent_user,
     user_in_group,
 )
+from tinywebstack_dashboard.map_assets import mint_map_assets_token
+from tinywebstack_dashboard.map_config import load_map_config
 from tinywebstack_dashboard.invite_store import load_pending
 from tinywebstack_dashboard.link_invite import (
     LinkInviteError,
@@ -595,6 +597,20 @@ def create_app_api_router(
                 }
             )
         return _no_store(rows)
+
+    @router.get("/api/map")
+    async def api_map(request: Request):
+        """Parent-only: self-hosted basemap URLs and bounds (kids cannot load the family region)."""
+        auth = api_user(request, cfg)
+        require_parent_user(auth, cfg)
+        import os
+
+        public_base = (os.environ.get("TWS_PUBLIC_BASE_URL") or "").rstrip("/")
+        if not public_base:
+            public_base = f"https://{cfg.server_name}" if cfg.server_name else "https://localhost"
+        map_cfg = load_map_config()
+        assets_query, _ = mint_map_assets_token(auth.username)
+        return _no_store(map_cfg.to_api_dict(public_base, assets_query))
 
     @router.get("/api/locations")
     async def api_locations(request: Request):

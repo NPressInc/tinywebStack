@@ -11,7 +11,7 @@ Stage 1 shell: enroll against your family box, home shortcuts, and **in-app Matr
 - **Calendar:** CalDAV tab — upcoming events from Nextcloud (shared + personal calendars); create/edit/delete; invite family members; accept/decline invites (credentials from enrollment)
 - **Events:** Mobilizon tab — upcoming family and federated **PUBLIC** events; detail + join/leave RSVP; parents can create events (password enrollment issues Mobilizon GraphQL tokens). Kids without the dashboard **Events** toggle do not see the tab.
 - **Kids:** background location publish to your box’s OwnTracks Recorder (no OwnTracks app); status card on Home; one-time explainer after enroll
-- **Parents:** **Home | Calendar | Events | Locations | Family | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet); **Family** tab lists members (roles, enrolled phones), add/remove accounts, reset passwords, one-time enroll QR/codes, outgoing household invites, **linked families** and **accept incoming invite** (preview/accept/decline via `/family/api/link-invites/*`), and per-kid chat allowlists, quiet hours, and Events access (`GET/PUT /family/permissions/{user}` with the dashboard bearer token)
+- **Parents:** **Home | Calendar | Events | Locations | Family | Chat** — Locations tab: self-hosted Protomaps map (when configured on the box) or list fallback; latest fix per kid + 24 h track; **Family** tab lists members (roles, enrolled phones), add/remove accounts, reset passwords, one-time enroll QR/codes, outgoing household invites, **linked families** and **accept incoming invite** (preview/accept/decline via `/family/api/link-invites/*`), and per-kid chat allowlists, quiet hours, and Events access (`GET/PUT /family/permissions/{user}` with the dashboard bearer token)
 - **Kids (events enabled):** **Home | Calendar | Events | Chat**
 - **Kids (events disabled):** **Home | Calendar | Chat**
 - Bottom nav chat: family Matrix chat in-app (no Element X)
@@ -73,7 +73,9 @@ Kids enrolled on a family box receive OwnTracks HTTP publish credentials in the 
 
 Battery: iOS defaults to low-power significant-change + region monitoring; Android uses geolocator with distance filter. Tuning iOS region radius is deferred.
 
-**Deferred:** in-app family map (needs self-hosted tiles — public OSM would leak viewport to a third party); parent pause/resume of kid sharing.
+**Map:** optional regional PMTiles extract on the box ([docs/MAP.md](../docs/MAP.md)); `GET /family/api/map` (parent-only). No third-party tile hosts at runtime.
+
+**Deferred:** parent pause/resume of kid sharing.
 
 Lab: `flutter test lab_test/location_publish_test.dart` (requires `TW_HS`, `TW_CA_FILE`, `TW_TEST_PASSWORD`; optional `TW_KID_USER` / `TW_PARENT_USER`, default `kid` / `parent`). Runs serially with other `lab_test/` tests.
 

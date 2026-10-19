@@ -163,6 +163,7 @@ TW_NODES_CONF=${TW_NODES_CONF:-/opt/tinywebstack/config/nodes.conf}
 TWS_DASHBOARD_PERM=${DASH_PERM}
 TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}
 TWS_DASHBOARD_ROOT_PATH=/family
+TWS_MAP_DATA_DIR=${TWS_MAP_DATA_DIR:-/var/lib/tinywebstack/map}
 TWS_LAB_TLS_INSECURE=${TWS_LAB_TLS_INSECURE:-1}
 ${CA_LINE}
 EOF
@@ -211,6 +212,7 @@ else
 fi
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack
+install -d -m 755 -o root -g root /var/lib/tinywebstack/map
 touch /etc/tinywebstack/app-devices.db
 chown www-data:www-data /etc/tinywebstack/app-devices.db
 chmod 600 /etc/tinywebstack/app-devices.db
@@ -315,6 +317,17 @@ location /family/api/app/enroll {
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
     proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Remote-User "";
+    proxy_set_header YNH_USER "";
+}
+location /family/tiles/ {
+    proxy_pass http://127.0.0.1:8765/tiles/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Authorization \$http_authorization;
+    proxy_set_header Cookie \$http_cookie;
     proxy_set_header Remote-User "";
     proxy_set_header YNH_USER "";
 }

@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:tinyweb/src/api/family_api.dart';
 import 'package:tinyweb/src/api/models.dart';
 import 'package:tinyweb/src/app_session.dart';
 import 'package:tinyweb/src/chat/chat_service.dart';
@@ -35,6 +38,22 @@ AppSession _session(String role) {
   return session;
 }
 
+FamilyApiClient _locationsApi() {
+  final client = MockClient((request) async {
+    if (request.url.path.endsWith('/map')) {
+      return http.Response(
+        '{"available":false,"attribution":"x","maxzoom":14,"flavor":"light","tiles_url":"https://family.example/family/tiles/basemap.pmtiles","glyphs_url":"https://family.example/family/tiles/fonts/x","sprites_url":"https://family.example/family/tiles/sprites/v4/light","style_url":"https://family.example/family/tiles/style.json"}',
+        200,
+      );
+    }
+    if (request.url.path.endsWith('/locations')) {
+      return http.Response('{"kids":[]}', 200);
+    }
+    return http.Response('{}', 404);
+  });
+  return FamilyApiClient(client: client);
+}
+
 void main() {
   testWidgets('parent sees Events and Locations tabs', (tester) async {
     await tester.pumpWidget(
@@ -42,6 +61,7 @@ void main() {
         home: MainShell(
           session: _session('parent'),
           chatService: UnconfiguredChatService(),
+          locationsApi: _locationsApi(),
         ),
       ),
     );
@@ -77,6 +97,7 @@ void main() {
         home: MainShell(
           session: session,
           chatService: UnconfiguredChatService(),
+          locationsApi: _locationsApi(),
         ),
       ),
     );
@@ -89,6 +110,7 @@ void main() {
         home: MainShell(
           session: _session('kid'),
           chatService: UnconfiguredChatService(),
+          locationsApi: _locationsApi(),
         ),
       ),
     );

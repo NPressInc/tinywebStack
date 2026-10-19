@@ -39,6 +39,14 @@ AppSession _parentSession() {
 
 FamilyApiClient _fakeApi() {
   final client = MockClient((request) async {
+    if (request.url.path.endsWith('/map')) {
+      return http.Response(
+        '''
+        {"available":false,"attribution":"© OpenStreetMap contributors, Protomaps","maxzoom":14,"flavor":"light","tiles_url":"https://family.example/family/tiles/basemap.pmtiles","glyphs_url":"https://family.example/family/tiles/fonts/{fontstack}/{range}.pbf","sprites_url":"https://family.example/family/tiles/sprites/v4/light","style_url":"https://family.example/family/tiles/style.json"}
+        ''',
+        200,
+      );
+    }
     if (request.url.path.endsWith('/locations')) {
       return http.Response(
         '''

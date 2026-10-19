@@ -246,6 +246,19 @@ class FamilyApiClient {
     _throwForStatus(response);
   }
 
+  Future<FamilyMapConfig> fetchMapConfig(EnrollmentBundle bundle) async {
+    final url = _apiUrl(bundle, '/map');
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      final json = _jsonMapFromResponse(response);
+      return FamilyMapConfig.fromJson(json);
+    }
+    _throwForStatus(response);
+  }
+
   Future<LocationsResponse> fetchLocations(EnrollmentBundle bundle) async {
     final url = _apiUrl(bundle, '/locations');
     final response = await _client.get(

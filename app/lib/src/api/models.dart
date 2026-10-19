@@ -672,6 +672,47 @@ class KidLocationSnapshot {
   }
 }
 
+class FamilyMapConfig {
+  FamilyMapConfig({
+    required this.available,
+    required this.attribution,
+    required this.maxZoom,
+    required this.flavor,
+    required this.tilesUrl,
+    required this.glyphsUrl,
+    required this.spritesUrl,
+    required this.styleUrl,
+    this.bounds,
+  });
+
+  final bool available;
+  final String attribution;
+  final int maxZoom;
+  final String flavor;
+  final String tilesUrl;
+  final String glyphsUrl;
+  final String spritesUrl;
+  final String styleUrl;
+  final List<double>? bounds;
+
+  factory FamilyMapConfig.fromJson(Map<String, dynamic> json) {
+    final boundsRaw = json['bounds'] as List<dynamic>?;
+    return FamilyMapConfig(
+      available: json['available'] as bool? ?? false,
+      attribution: json['attribution'] as String? ?? '',
+      maxZoom: (json['maxzoom'] as num?)?.toInt() ?? 14,
+      flavor: json['flavor'] as String? ?? 'light',
+      tilesUrl: json['tiles_url'] as String? ?? '',
+      glyphsUrl: json['glyphs_url'] as String? ?? '',
+      spritesUrl: json['sprites_url'] as String? ?? '',
+      styleUrl: json['style_url'] as String? ?? '',
+      bounds: boundsRaw
+          ?.map((e) => (e as num).toDouble())
+          .toList(),
+    );
+  }
+}
+
 class LocationsResponse {
   LocationsResponse({required this.kids, this.status});
 
