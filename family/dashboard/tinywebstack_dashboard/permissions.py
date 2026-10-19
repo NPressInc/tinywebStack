@@ -6,7 +6,9 @@ edit here flips enforcement immediately.
 
 Auth model (SSO header or parent app bearer token on ``/family/api/*``):
 - GET  /permissions/{user}  — SSO: non-parents see only themselves; bearer: parents only.
+- GET  /api/permissions/{user}  — same handler for app bearer (SSOwat bypass).
 - PUT  /permissions/{user}  — parents group only (SSO or bearer; kids get 403);
+- PUT  /api/permissions/{user}  — same for app bearer.
   parent-only fields: unknown keys and role escalation to an admin role from
   a non-parent are rejected; role may only be an existing seeded role.
 If the DB file does not exist yet, PUT seeds it from the bundled role YAMLs
@@ -108,8 +110,8 @@ def _db():
     return PermissionsDB(path)
 
 
-def create_permissions_router(cfg: DashboardConfig) -> APIRouter:
-    router = APIRouter(tags=["permissions"])
+def create_permissions_router(cfg: DashboardConfig, *, prefix: str = "") -> APIRouter:
+    router = APIRouter(tags=["permissions"], prefix=prefix)
 
     def _server_name() -> str:
         server = cfg.server_name or os.environ.get("TWS_SERVER_NAME", "")

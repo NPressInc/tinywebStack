@@ -625,6 +625,7 @@ def create_app_api_router(
             policy_file,
             server_name=cfg.server_name,
             include_synapse_snippet=False,
+            read_only=True,
         )
         nodes_conf = Path(os.environ.get("TWS_NODES_CONF", "/etc/tinywebstack/nodes.conf"))
         peer_nodes = [n for n in read_nodes_conf(nodes_conf) if n["domain"] != cfg.server_name]
