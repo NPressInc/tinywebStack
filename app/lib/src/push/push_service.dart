@@ -109,6 +109,7 @@ class PushService {
       return;
     }
     if (enabled) {
+      await _requestAndroidNotificationPermission();
       await syncFromEnrollment(bundle);
     } else {
       pushSetupDetail = null;
@@ -234,6 +235,7 @@ class PushService {
   }
 
   Future<String?> _ensureAndroidPushkey(PushEnrollmentConfig config) async {
+    await _requestAndroidNotificationPermission();
     await _initUnifiedPush(config);
 
     final cached = await store.readUnifiedPushEndpoint();
@@ -273,6 +275,19 @@ class PushService {
       }
     } catch (_) {}
     return null;
+  }
+
+  Future<void> _requestAndroidNotificationPermission() async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+    try {
+      final android = _notifications.resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>();
+      await android?.requestNotificationsPermission();
+    } catch (_) {
+      // No platform implementation in unit tests.
+    }
   }
 
   Future<void> _initNotifications() async {
