@@ -4,7 +4,7 @@ This document breaks down the **family layer** described in [PLAN.md](../PLAN.md
 
 **Current lab state** (see [test-nodes.md](test-nodes.md), PRs #14–#25):
 
-- Two YunoHost nodes (`family-a`, `family-b`) with Synapse, Element, OwnTracks (default; `LOCATION_APP=traccar` for fallback), Nextcloud CalDAV, and Mobilizon events.
+- Two YunoHost nodes (`family-a`, `family-b`) with Synapse, OwnTracks Recorder (default; `LOCATION_APP=traccar` for fallback), Nextcloud CalDAV, and Mobilizon events. Element Web remains for **operator/lab** Matrix debugging; families use the **TinyWeb app**.
 - Matrix federation works **pairwise** with `federation_domain_whitelist`; `matrix.org` is rejected in e2e checks.
 - Test users (`alice`, `bob`, `parent`, `kid`) are created via `yunohost user create`.
 - **Built and shipped:** family groups (`parents` / `kids` / `federation-test`, `family-groups.sh`), kid provisioning via the family dashboard + privileged helper (`family-dashboard-privileged.sh`), the `tinywebstack_family` Synapse module (per-kid contact allowlists, 3PID-invite denial, quiet hours; E2EE allowed and on by default since Stage 1), location permissions (web UI parents-only), and the parent-facing dashboard at `https://<main>/family/` ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
@@ -61,8 +61,8 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 |----|---------|-------------------|------------------------|--------------|-------------------|------------|-------|-----|
 | F1.1 | **Canonical group model** | Parents manage who is in the household; kids get only kid-appropriate apps. | YunoHost groups + permission matrix | Convention + automation for `parents`, `kids`, optional `family-<slug>` | Shell script or small Python CLI: create groups, document naming; idempotent `yunohost user group create` | YunoHost postinstall | 1 | **Must** |
 | F1.2 | **Create kid account** | Parent adds a child without giving them admin rights. | `yunohost user create`; Synapse user via SSO | **Dashboard** “Add family member” (+ sudo helper) or lab script `create-family-test-users.sh` | F1.1 | 2 | **Must** |
-| F1.3 | **App permissions by role** | Kid sees Element + location; not Traccar admin or YunoHost admin. | `yunohost user permission update` per app | Map role → permission set (remove `all_users` where too broad; grant `kids` / `parents`) | Declarative YAML consumed by apply script | F1.1, apps installed | 3 | **Must** |
-| F1.4 | **Matrix identity alignment** | Kid logs into Element as `@kid:family.domain`. | Synapse `server_name` = main domain ([yunohost-family-apps.sh](../scripts/vm/yunohost-family-apps.sh)); SSO | Ensure LDAP/SSO user matches localpart; document password reset flow | YunoHost + Synapse app docs; optional admin API check script | F1.2 | 3 | **Must** |
+| F1.3 | **App permissions by role** | Kid uses TinyWeb app (chat, calendar, events, location publish); not Traccar admin or YunoHost admin. | `yunohost user permission update` per app | Map role → permission set (remove `all_users` where too broad; grant `kids` / `parents`) | Declarative YAML consumed by apply script | F1.1, apps installed | 3 | **Must** |
+| F1.4 | **Matrix identity alignment** | Kid chats as `@kid:family.domain` via the TinyWeb app. | Synapse `server_name` = main domain ([yunohost-family-apps.sh](../scripts/vm/yunohost-family-apps.sh)); SSO | Ensure LDAP/SSO user matches localpart; document password reset flow | YunoHost + Synapse app docs; optional admin API check script | F1.2 | 3 | **Must** |
 | F1.5 | **Parent admin surface (family dashboard)** | **Only** UI non-technical families need; optional YunoHost/Synapse/OwnTracks admin for power users. | YunoHost SSO + LDAP groups | Dashboard: members, passwords, Matrix status, kid allowlists, quiet hours, invites, OwnTracks QR | [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), `family-dashboard-privileged.sh` | F1.2–F1.3 | 6 | **Must** |
 | F1.6 | **Kid credential recovery** | Parent resets forgotten kid password. | `yunohost user update` | Audit log + parent-only command wrapper | Thin CLI calling YunoHost API | F1.2 | 7 | Later |
 
@@ -103,7 +103,7 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 
 | ID | Feature | Parent / kid value | Stack already provides | Gap (custom) | Smallest approach | Depends on | Order | v1 |
 |----|---------|-------------------|------------------------|--------------|-------------------|------------|-------|-----|
-| G4.1 | **Kid publishes location (OwnTracks)** | Parent sees kid on map. | OwnTracks Recorder + mobile app (HTTP/MQTT) | Per-user credentials; kid uses app only | Default `LOCATION_APP=owntracks`; [prep-owntracks-apt.sh](../scripts/vm/prep-owntracks-apt.sh) | F1.2 | 4 | **Must** |
+| G4.1 | **Kid publishes location (OwnTracks)** | Parent sees kid on map. | OwnTracks Recorder HTTP publish endpoint | Per-user credentials; **TinyWeb app** background publish (Stage 1) | Default `LOCATION_APP=owntracks`; [prep-owntracks-apt.sh](../scripts/vm/prep-owntracks-apt.sh) | F1.2 | 4 | **Must** |
 | G4.2 | **Parent-only location web** | Parents see all kid traces; kids cannot browse map. | YunoHost app permissions | `family-groups.sh` grants `owntracks.main` to `parents` only | F1.3 | 5 | **Must** |
 | G4.3 | **Trusted adult (other household)** | Godparent sees location if parents approve. | OwnTracks / Traccar ACL | Extra viewer accounts in family config | Extend dashboard later | G4.2, L2.2 | 7 | Later |
 | G4.4 | **Traccar fallback** | Same lab without OwnTracks apt. | Traccar catalog app | `LOCATION_APP=traccar`; existing setup scripts | [yunohost-family-apps.sh](../scripts/vm/yunohost-family-apps.sh) | F1.3 | 4 | **Fallback** |
@@ -145,7 +145,7 @@ Components on each node:
 - **Synapse:** `tinywebstack_family` module — spam checker (allowlists, quiet hours), E2EE allowed and on by default ([FAMILY_MODULE.md](FAMILY_MODULE.md)).
 - **Dashboard:** FastAPI app at `/family/` — parents group via SSO ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
 - **VM scripts:** `family-groups.sh`, `install-family-module.sh`, `install-family-dashboard.sh`, `family-init.sh`.
-- **Clients (v1):** **Element X** (and Element Android/iOS) for chat; **OwnTracks** app for location. Element Web may remain for admins; not the kid client. **Direction:** a single **TinyWeb** mobile app will subsume these in stages — see [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md); Element X + OwnTracks stay v1 until the app plan lands.
+- **Clients (families):** **TinyWeb app** (iOS/Android) + **parent dashboard** (`/family/`). Backends stay Synapse, OwnTracks Recorder, Nextcloud, Mobilizon. **Operator/lab only:** Element Web at `element.<domain>`, curl, or legacy third-party clients — see [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) and [PHILOSOPHY.md](PHILOSOPHY.md) §5c.
 - **Parent UX:** The dashboard is the **only** required web UI for families; backend admin panels are optional ([PHILOSOPHY.md](PHILOSOPHY.md) §5b).
 - **No centralized cloud** in v1.
 
@@ -155,11 +155,11 @@ Components on each node:
 
 William Floyd confirmed:
 
-1. **Kid Matrix clients:** Target **mobile apps** (Element X / Element Android/iOS), not Element Web as the kid client. **Updated direction:** one **TinyWeb** app (staged rollout in [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md)); Element X remains the v1 chat client until in-app Matrix ships.
+1. **Family clients:** **TinyWeb app** for kids and parents; **parent dashboard** for provisioning. Element Web / Element X are **operator testing** tools, not the family path ([TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) Stage 1 in-app chat).
 2. **Parent vs admin:** **Family dashboard** for parents; parent Matrix accounts are ordinary **non-admin** Synapse users so spam-checker rules apply. `twsowner` (YunoHost admin) stays separate.
 3. **E2EE:** **On from Stage 1** (reverses v1 'off'). New rooms and DMs are encrypted (`encryption_enabled_by_default_for_room_type: all`), and the module no longer rejects `m.room.encryption`. Allowlists and quiet hours still work on membership and sender. **Deferred:** a parent-key decrypt scheme (TinyWebC-style); for now, parents read a kid's chats only on the kid's device.
 4. **Cross-household contact:** **Per-kid allowlist** is enough; no reciprocal approval between households.
-5. **Location:** **OwnTracks** (Recorder + app) is the default stack; **Traccar** is fallback only (`LOCATION_APP=traccar`). Kid location visible to **parents only** (web UI permissions).
+5. **Location:** **OwnTracks Recorder** on the box (kid publishes from the **TinyWeb app**); **Traccar** is fallback only (`LOCATION_APP=traccar`). Kid location visible to **parents only** (Recorder web UI permissions + app map).
 6. **OwnTracks install:** Fix unattended install on Debian 12 arm64/amd64 ([prep-owntracks-apt.sh](../scripts/vm/prep-owntracks-apt.sh)) — current signing key + `signed-by`, with `.deb` fallback.
 7. **Linking families:** **Invite flow** in dashboard (one-time code/link, mutual verification, federation allowlist update) replaces manual domain/fingerprint ceremony (PR2).
 8. **Quiet hours:** **Server-enforced** in v1 (per kid, timezone-aware, including midnight wrap).

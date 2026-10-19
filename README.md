@@ -1,6 +1,6 @@
 # tinywebStack
 
-A self-hosted family app ecosystem built on YunoHost and Matrix, with a thin family layer on top. See [PLAN.md](PLAN.md).
+A self-hosted family app ecosystem built on YunoHost and Matrix (Synapse), with a thin family layer on top. Families use the **TinyWeb app** and **parent dashboard** (`/family/`); open-source backends (Synapse, OwnTracks Recorder, Nextcloud, Mobilizon) stay on the box. See [PLAN.md](PLAN.md).
 
 ## Install on a single machine
 

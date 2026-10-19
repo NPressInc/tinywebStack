@@ -1,6 +1,6 @@
 # tinywebStack design philosophy
 
-This document states the design philosophies behind **tinywebStack**, adapted from the predecessor project [NPressInc/TinyWebC](https://github.com/NPressInc/TinyWebC). Each principle cites its source in TinyWebC and notes how it applies to the new stack: **YunoHost + Matrix (Synapse/Element) + location (Traccar or OwnTracks) + a thin family layer**, instead of a custom C gossip node.
+This document states the design philosophies behind **tinywebStack**, adapted from the predecessor project [NPressInc/TinyWebC](https://github.com/NPressInc/TinyWebC). Each principle cites its source in TinyWebC and notes how it applies to the new stack: **YunoHost + Matrix (Synapse) + location (OwnTracks Recorder or Traccar) + a thin family layer**, with the **TinyWeb app** as the unified family client, instead of a custom C gossip node.
 
 For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). For the overall direction, see [PLAN.md](../PLAN.md).
 
@@ -41,7 +41,7 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 **Source:** [TinyWebC `PLAN.md`](https://github.com/NPressInc/TinyWebC/blob/main/PLAN.md) — roadmap repeatedly defers “extensions,” dashboard, and mobile apps while prioritizing user management and permissions; [tinywebStack `PLAN.md`](../PLAN.md) states explicitly that gossip, message store, and location storage already exist elsewhere.
 
-**tinywebStack:** **Carries over (sharpened).** Engineering effort goes into **parent-managed identity, linking trusted households, parental controls, and location visibility**—not another chat protocol or GPS database. Synapse, Element, Traccar, Jellyfin, Immich, and Nextcloud come from mature projects and the YunoHost catalog.
+**tinywebStack:** **Carries over (sharpened).** Engineering effort goes into **parent-managed identity, linking trusted households, parental controls, and location visibility**—not another chat protocol or GPS database. Synapse, OwnTracks Recorder, Traccar, Jellyfin, Immich, and Nextcloud come from mature projects and the YunoHost catalog; families interact through the **TinyWeb app** and dashboard, not separate vendor clients.
 
 ---
 
@@ -63,7 +63,13 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 ### 5b. One dashboard for non-technical families
 
-**tinywebStack:** **Carries over (product core).** The **TinyWeb parent dashboard** (`/family/` on the main domain) is the **only** interface a non-technical family should need for everyday life: add or remove parents and children, reset passwords, see whether chat is working, set who kids may message, link another home, and set up location on a child’s phone. **YunoHost admin**, **Synapse admin**, and **OwnTracks/Traccar admin UIs** remain available for installers and power users, but they are **optional**, not part of the parent story. If a workflow still requires opening those panels, treat that as a family-layer gap to close.
+**tinywebStack:** **Carries over (product core).** The **TinyWeb parent dashboard** (`/family/` on the main domain) is the **only web interface** a non-technical family should need for provisioning and household admin: add or remove parents and children, reset passwords, see whether chat is working, set who kids may message, link another home, and enroll the **TinyWeb app** on a child’s phone (including location). **YunoHost admin**, **Synapse admin**, **Element Web**, and **OwnTracks/Traccar admin UIs** remain available for installers and power users, but they are **optional**, not part of the parent story. If a workflow still requires opening those panels, treat that as a family-layer gap to close.
+
+---
+
+### 5c. Open backends, unified family frontend
+
+**tinywebStack:** **Adapted (product core).** Chat, calendar, events, and location run on **existing open-source servers** (Synapse, Nextcloud CalDAV, Mobilizon, OwnTracks Recorder or Traccar). Families do **not** install or rely on third-party client apps (Element X / Element, the OwnTracks app, Nextcloud or DAVx5, Mobilizon web, Traccar web) for day-to-day use. **Stage 1** of the **TinyWeb app** covers in-app E2EE chat (matrix-rust-sdk), CalDAV calendar, Mobilizon events via GraphQL, and built-in location publish to the Recorder endpoint. The **parent dashboard** (`/family/`) is the only other default surface. Operator and lab docs may reference Element Web, curl, or legacy apps for debugging — not as the family path.
 
 ---
 
@@ -79,7 +85,7 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 **Source:** [TinyWebC `README.md`](https://github.com/NPressInc/TinyWebC/blob/main/README.md) — library metaphor; business plan mentions Jellyfin, Immich, and an extensions catalog.
 
-**tinywebStack:** **Adapted.** “Approved books” means **which YunoHost apps each group may open** (Element, Traccar, Jellyfin, etc.) and **which Matrix rooms and federated domains exist**. Extensions are **YunoHost apps** (and future family-layer automation), not Docker sidecars wired to a custom gossip bridge—unless we explicitly add bridge apps later.
+**tinywebStack:** **Adapted.** “Approved books” means **which capabilities each family member gets in the TinyWeb app and dashboard** (chat, calendar, events, location, media later) and **which Matrix rooms and federated domains exist**, backed by YunoHost group permissions on the underlying apps. Extensions are **YunoHost apps** (and future family-layer automation), not Docker sidecars wired to a custom gossip bridge—unless we explicitly add bridge apps later.
 
 ---
 

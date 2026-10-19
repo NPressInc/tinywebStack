@@ -11,7 +11,7 @@ TinyWebC rebuilt things that already exist: a gossip protocol, a message store, 
 ## The stack
 
 - **Base OS:** [YunoHost](https://yunohost.org), a Debian-based self-hosting OS with an app catalog, user accounts and groups, single sign-on (one login for every app), per-app permissions, domains, and HTTPS.
-- **Texting and calling:** Matrix, using the Synapse server with the Element client. It provides encrypted text and voice/video calls, uses YunoHost logins, and can federate between homes.
+- **Texting and calling:** Matrix on **Synapse** (homeserver). Families use the **TinyWeb app** for chat; voice/video calls land in a later app stage (Element Call on the box). Synapse uses YunoHost logins and can federate between homes.
 - **Location:** OwnTracks or Traccar, self-hosted.
 - **Media and apps:** Jellyfin, Immich, Nextcloud, and others from the YunoHost catalog.
 
@@ -30,11 +30,13 @@ TinyWebC rebuilt things that already exist: a gossip protocol, a message store, 
 
 ## First milestones
 
-1. Stand up YunoHost on a test machine and install Synapse, Element, and one location app.
+1. Stand up YunoHost on a test machine and install Synapse (plus Element Web for operator debugging), OwnTracks Recorder or Traccar, and the family layer.
 2. Document the users, groups, and permissions model for one family.
 3. Prove that two YunoHost family nodes can federate over Matrix with an allowlist.
 4. Write down the gaps that need custom code, and build the smallest one first.
 
 ## Next milestone: TinyWeb app
 
-The v1 client choice (Element X + OwnTracks + parent dashboard) is being replaced by one **TinyWeb** mobile app (`app/`, Flutter) that connects to every backend on the family box with one enrollment. **Chat is built into the app from Stage 1**, with no Element X hand-off, using matrix-rust-sdk through the `tinyweb_core` Rust bridge. Chat is **end-to-end encrypted from Stage 1**: allowlists and quiet hours are still enforced on the server, parent-key oversight is deferred, and parents read a kid's chats only on the kid's device for now. Kids keep publishing location with the OwnTracks app until background location lands in the app (Stage 2). Release builds come from CI (`.github/workflows/app.yml`). See [docs/TINYWEB_APP_PLAN.md](docs/TINYWEB_APP_PLAN.md).
+**Backends can be open-source apps; the family frontend is unified.** Families use only the **TinyWeb app** (iOS/Android) and the **parent dashboard** (`/family/`) for everyday life — not Element X, the OwnTracks app, DAVx5, Nextcloud mobile apps, Mobilizon web, or Traccar web.
+
+One **TinyWeb** mobile app (`app/`, Flutter) connects to every backend on the family box with one enrollment. **Chat is built into the app from Stage 1**, with no Element X hand-off, using matrix-rust-sdk through the `tinyweb_core` Rust bridge. Chat is **end-to-end encrypted from Stage 1**: allowlists and quiet hours are still enforced on the server, parent-key oversight is deferred, and parents read a kid's chats only on the kid's device for now. **Built-in background location** (Stage 1) publishes OwnTracks-format JSON to the box’s Recorder HTTP endpoint with enrollment credentials; parents see the same traces in the app and on the dashboard map. Release builds come from CI (`.github/workflows/app.yml`). See [docs/TINYWEB_APP_PLAN.md](docs/TINYWEB_APP_PLAN.md).

@@ -22,8 +22,8 @@ Fresh installs (and production-style boxes) run the Matrix **Client-Server API**
 | YunoHost main | `family-a.family.test` | postinstall domain |
 | Synapse | `matrix.family-a.family.test` | `server_name=family-a.family.test` → `@user:family-a.family.test` |
 | Element | `element.family-a.family.test` | Web client |
-| Location (default) | `owntracks.family-a.family.test` | OwnTracks Recorder + app; set `LOCATION_APP=traccar` for catalog fallback |
-| Nextcloud CalDAV | `nextcloud.family-a.family.test` | Calendar app; web tile hidden — phones use CalDAV ([CALENDAR.md](CALENDAR.md)) |
+| Location (default) | `owntracks.family-a.family.test` | OwnTracks Recorder backend; families publish from the **TinyWeb app** (`LOCATION_APP=traccar` for catalog fallback) |
+| Nextcloud CalDAV | `nextcloud.family-a.family.test` | Calendar backend; web tile hidden — families use calendar in the **TinyWeb app** ([CALENDAR.md](CALENDAR.md)) |
 | Events (Mobilizon) | `mobilizon.family-a.family.test` | SSO/LDAP; arm64 catalog package; see [EVENTS.md](EVENTS.md) |
 | Family dashboard | `https://family-a.family.test/family/` | Parents group only (after `family-init.sh`) |
 
