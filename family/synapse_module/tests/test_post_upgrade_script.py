@@ -12,6 +12,7 @@ site-packages on PYTHONPATH. No root, no systemctl, no network.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import stat
@@ -220,8 +221,7 @@ def test_installer_dry_run_writes_nothing(node: Path, tmp_path: Path) -> None:
 
 
 def test_installer_writes_expected_snippet(node: Path, tmp_path: Path) -> None:
-    """The conf.d snippet must still point Synapse at the module by dotted
-    path (the whole reason packaging works) and keep E2EE off."""
+    """The conf.d snippet must point Synapse at the module and enable E2EE by default."""
     env = _base_env(node, tmp_path)
     r = _run(node, INSTALLER, env)
     assert r.returncode == 0, r.stderr
@@ -238,3 +238,20 @@ def test_installer_writes_expected_snippet(node: Path, tmp_path: Path) -> None:
         "tinywebstack_family.module.FamilySpamCheckerModule"
     )
     assert data["modules"][0]["config"]["login_ticket_secret_file"]
+    assert data["encryption_enabled_by_default_for_room_type"] == "all"
+    assert data["modules"][0]["config"].get("reject_encryption") is not True
+    policy = json.loads(Path(env["TWS_POLICY_PATH"]).read_text())
+    assert policy.get("reject_encryption") is False
+
+
+def test_installer_migrates_legacy_reject_encryption(node: Path, tmp_path: Path) -> None:
+    env = _base_env(node, tmp_path)
+    policy_path = Path(env["TWS_POLICY_PATH"])
+    policy_path.parent.mkdir(parents=True)
+    policy_path.write_text(
+        '{"server_name": "legacy.test", "reject_encryption": true, "kids": {}}\n',
+        encoding="utf-8",
+    )
+    r = _run(node, INSTALLER, env)
+    assert r.returncode == 0, r.stderr
+    assert json.loads(policy_path.read_text())["reject_encryption"] is False

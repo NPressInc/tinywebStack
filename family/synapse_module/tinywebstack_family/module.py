@@ -79,7 +79,7 @@ class FamilySpamCheckerModule:
 
         policy_path = config.get("policy_path", "/etc/tinywebstack/family-policy.json")
         self.store = _make_policy_store(policy_path, config)
-        self.reject_encryption = bool(config.get("reject_encryption", True))
+        self.reject_encryption = bool(config.get("reject_encryption", False))
 
         api.register_spam_checker_callbacks(
             user_may_invite=self.user_may_invite,

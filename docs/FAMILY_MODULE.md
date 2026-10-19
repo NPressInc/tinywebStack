@@ -16,7 +16,7 @@ Or step by step:
 ./scripts/vm/remote-run.sh "$IP" install-family-module.sh family-a.family.test
 ```
 
-This pip-installs the module into the Synapse venv, drops `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`, sets `encryption_enabled_by_default_for_room_type: off`, and restarts Synapse.
+This pip-installs the module into the Synapse venv, drops `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`, sets `encryption_enabled_by_default_for_room_type: all` so new rooms and DMs are E2EE by default, and restarts Synapse.
 
 `install-family-module.sh` also creates `/etc/tinywebstack/matrix-login-ticket.secret` (32 random bytes, mode `640`, group `www-data`) and sets module config `login_ticket_secret_file` to that path. The family dashboard reads the same path via `TWS_MATRIX_LOGIN_TICKET_SECRET_FILE` to mint short-lived tickets for code enrollment.
 
@@ -29,6 +29,12 @@ When `login_ticket_secret_file` (or inline `login_ticket_secret`) is configured,
 Path: `/etc/tinywebstack/family-policy.json` (configurable via module config `policy_path`).
 
 The parent dashboard syncs kid MXIDs from the YunoHost `kids` group and parent MXIDs from `parents`. Group names are overridable with `TWS_KIDS_GROUP` / `TWS_PARENTS_GROUP`.
+
+### End-to-end encryption (Stage 1)
+
+Chat is **end-to-end encrypted by default**. The module still enforces allowlists and quiet hours using **membership, sender MXIDs, and invites** — metadata the homeserver must see to route events. Message **content** is not visible to the server or to parents on the dashboard. Parent-key oversight is deferred; parents read a kid’s encrypted chats only on the kid’s device for now.
+
+Legacy opt-out: set `reject_encryption: true` in policy JSON and/or module config to block `m.room.encryption` state events (not recommended).
 
 ### Kid join rule
 

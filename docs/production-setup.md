@@ -401,8 +401,9 @@ additionally runs `create-family-test-users.sh` and `setup-family-calendars.sh`
 - `install-family-module.sh` pip-installs `tinywebstack_family` and
   `tinywebstack_permissions` into the Synapse venv and writes
   `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`
-  (spam-checker module, SQLite `permissions_db`, `reject_encryption: true`,
-  E2EE off) + `/etc/tinywebstack/family-policy.json`, then restarts Synapse.
+  (spam-checker module, SQLite `permissions_db`, E2EE on by default via
+  `encryption_enabled_by_default_for_room_type: all`) +
+  `/etc/tinywebstack/family-policy.json`, then restarts Synapse.
 - `family-permissions-seed.sh` creates `/etc/tinywebstack/permissions.db` once
   (roles + one-time import from `family-policy.json` when the DB is empty).
 - `family-federation-state-seed.sh` merges existing `trusted_domains` from

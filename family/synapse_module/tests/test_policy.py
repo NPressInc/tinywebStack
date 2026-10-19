@@ -86,6 +86,13 @@ def test_fail_closed_invalid_json(tmp_path):
     assert not p.contact_allowed_between("@kid:a", "@friend:b")
 
 
+def test_empty_policy_reject_encryption_default_false():
+    data = empty_policy("family-a.test")
+    assert data["reject_encryption"] is False
+    policy = FamilyPolicy.from_dict(data)
+    assert policy.reject_encryption is False
+
+
 def test_policy_store_reload(tmp_path):
     path = tmp_path / "family-policy.json"
     write_policy_atomic(path, empty_policy("family-a.test"))

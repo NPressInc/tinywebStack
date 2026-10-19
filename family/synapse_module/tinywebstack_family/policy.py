@@ -88,7 +88,7 @@ class FamilyPolicy:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "FamilyPolicy":
         server = str(data.get("server_name", "")).strip()
-        reject_enc = bool(data.get("reject_encryption", True))
+        reject_enc = bool(data.get("reject_encryption", False))
         parents = {str(x).strip() for x in data.get("parent_mxids", []) if x}
         trusted = {str(x).strip() for x in data.get("trusted_domains", []) if x}
         kids_raw = data.get("kids") or {}
@@ -144,7 +144,7 @@ class FamilyPolicy:
             kids={},
             parent_mxids=set(),
             trusted_domains=set(),
-            reject_encryption=True,
+            reject_encryption=False,
             valid=False,
             fail_closed_kids=True,
         )
@@ -288,6 +288,6 @@ def empty_policy(server_name: str) -> Dict[str, Any]:
         "server_name": server_name,
         "parent_mxids": [],
         "trusted_domains": [],
-        "reject_encryption": True,
+        "reject_encryption": False,
         "kids": {},
     }

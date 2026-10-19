@@ -61,6 +61,14 @@ def policy_file(tmp_path):
 @pytest.fixture
 def module(policy_file):
     api = MockApi(members={})
+    mod = FamilySpamCheckerModule({"policy_path": str(policy_file)}, api)
+    mod._callbacks = api.registered
+    return mod, api
+
+
+@pytest.fixture
+def module_reject_encryption(policy_file):
+    api = MockApi(members={})
     mod = FamilySpamCheckerModule(
         {"policy_path": str(policy_file), "reject_encryption": True},
         api,
@@ -146,9 +154,98 @@ async def test_quiet_hours_message(module):
 
 
 @pytest.mark.asyncio
-async def test_encryption_rejected(module):
+async def test_encryption_allowed_by_default_parent(module):
     mod, _ = module
+    event = {"type": "m.room.encryption", "sender": "@parent:family-a.test"}
+    allowed, info = await mod._callbacks["check_event_allowed"](event, [])
+    assert allowed is True
+    assert info is None
+
+
+@pytest.mark.asyncio
+async def test_encryption_allowed_by_default_kid(module):
+    mod, _ = module
+    event = {"type": "m.room.encryption", "sender": "@kid:family-a.test"}
+    allowed, info = await mod._callbacks["check_event_allowed"](event, [])
+    assert allowed is True
+    assert info is None
+
+
+@pytest.mark.asyncio
+async def test_encryption_rejected_when_configured(module_reject_encryption):
+    mod, _ = module_reject_encryption
     event = {"type": "m.room.encryption", "sender": "@parent:family-a.test"}
     allowed, info = await mod._callbacks["check_event_allowed"](event, [])
     assert allowed is False
     assert info and "encryption" in info.get("tws_reason", "").lower()
+
+
+@pytest.mark.asyncio
+async def test_quiet_hours_encrypted_message_kid_denied(module):
+    mod, _ = module
+
+    def _always_quiet(kid_mxid: str, when=None):
+        return kid_mxid == "@kid:family-a.test"
+
+    mod.store.policy.kid_in_quiet_hours = _always_quiet  # type: ignore[method-assign]
+    event = {"sender": "@kid:family-a.test", "room_id": "!r:x", "type": "m.room.encrypted"}
+    result = await mod._callbacks["check_event_for_spam"](event)
+    assert _denied(result)
+
+
+@pytest.mark.asyncio
+async def test_quiet_hours_encrypted_message_parent_allowed(module):
+    mod, api = module
+
+    def _always_quiet(kid_mxid: str, when=None):
+        return kid_mxid == "@kid:family-a.test"
+
+    mod.store.policy.kid_in_quiet_hours = _always_quiet  # type: ignore[method-assign]
+    api.members = {
+        ("m.room.member", "@parent:family-a.test"): MockMemberEvent("@parent:family-a.test"),
+    }
+    event = {"sender": "@parent:family-a.test", "room_id": "!r:x", "type": "m.room.encrypted"}
+    result = await mod._callbacks["check_event_for_spam"](event)
+    assert result is NOT_SPAM
+
+
+@pytest.mark.asyncio
+async def test_kid_encrypted_non_allowlisted_room_denied(module):
+    mod, api = module
+    api.members = {
+        ("m.room.member", "@kid:family-a.test"): MockMemberEvent("@kid:family-a.test"),
+        ("m.room.member", "@stranger:evil.test"): MockMemberEvent("@stranger:evil.test"),
+    }
+    event = {"sender": "@kid:family-a.test", "room_id": "!r:x", "type": "m.room.encrypted"}
+    result = await mod._callbacks["check_event_for_spam"](event)
+    assert _denied(result)
+
+
+@pytest.mark.asyncio
+async def test_kid_encrypted_allowlisted_room_allowed(module):
+    mod, api = module
+    api.members = {
+        ("m.room.member", "@kid:family-a.test"): MockMemberEvent("@kid:family-a.test"),
+        ("m.room.member", "@friend:family-b.test"): MockMemberEvent("@friend:family-b.test"),
+    }
+    event = {"sender": "@kid:family-a.test", "room_id": "!r:x", "type": "m.room.encrypted"}
+    result = await mod._callbacks["check_event_for_spam"](event)
+    assert result is NOT_SPAM
+
+
+@pytest.mark.asyncio
+async def test_kid_invite_stranger_in_encrypted_room_denied(module):
+    mod, api = module
+    mod.store.policy.kid_in_quiet_hours = lambda kid_mxid, when=None: False  # type: ignore[method-assign]
+    api.members = {
+        ("m.room.member", "@kid:family-a.test"): MockMemberEvent("@kid:family-a.test"),
+        ("m.room.encryption", ""): type(
+            "EncState",
+            (),
+            {"type": "m.room.encryption", "state_key": "", "content": {"algorithm": "m.megolm.v1.aes-sha2"}},
+        )(),
+    }
+    result = await mod._callbacks["user_may_invite"](
+        "@kid:family-a.test", "@stranger:evil.test", "!encrypted:family-a.test"
+    )
+    assert _denied(result)
