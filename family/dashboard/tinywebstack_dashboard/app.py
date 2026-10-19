@@ -43,18 +43,22 @@ from tinywebstack_dashboard.owntracks_setup import (
     owntracks_otcp_link,
 )
 from tinywebstack_dashboard.policy_store import load_policy, save_policy, set_parent_mxids, sync_kids_from_usernames
-from tinywebstack_dashboard.app_api import create_app_api_router, revoke_user_devices
+from tinywebstack_dashboard.app_api import create_app_api_router
+from tinywebstack_dashboard.member_ops import (
+    create_family_member,
+    create_pending_family_invite,
+    issue_member_enroll_code,
+    member_role,
+    remove_family_member,
+    reset_member_password,
+    revoke_member_app_device,
+)
 from tinywebstack_dashboard.app_devices import list_devices_for_user
 from tinywebstack_dashboard.yunohost_actions import (
-    create_member,
-    delete_member,
-    generate_password,
     issue_owntracks,
-    reset_password,
     synapse_user_status,
-    validate_username,
 )
-from tinywebstack_family.invite import create_invite_token, verify_invite_token
+from tinywebstack_family.invite import verify_invite_token
 from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -315,14 +319,17 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     ):
         verify_csrf(request, csrf)
         secret = ensure_invite_secret()
-        token, nonce = create_invite_token(cfg.server_name, secret)
-        add_pending(
-            pending_path,
-            nonce,
-            {"created_by": user, "issuer": cfg.server_name},
+        invite = create_pending_family_invite(
+            server_name=cfg.server_name,
+            invite_secret=secret,
+            pending_path=pending_path,
+            created_by=user,
+            public_base_url=os.environ.get(
+                "TWS_PUBLIC_BASE_URL", f"https://{cfg.server_name}/family"
+            ),
         )
-        base = os.environ.get("TWS_PUBLIC_BASE_URL", f"https://{cfg.server_name}/family")
-        invite_url = f"{base.rstrip('/')}/invite/redeem?token={token}"
+        token = invite["token"]
+        invite_url = invite["invite_url"]
         return TEMPLATES.TemplateResponse(
             request,
             "invite.html",
@@ -389,13 +396,6 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             {"user": user, "csrf": csrf_token(request), "token": token, "message": message},
         )
 
-    def member_role(username: str) -> str | None:
-        if username in list_group_members(cfg.parents_group, cfg.yunohost_cli):
-            return "parent"
-        if username in list_group_members(cfg.kids_group, cfg.yunohost_cli):
-            return "kid"
-        return None
-
     @app.get("/", response_class=HTMLResponse)
     async def index(request: Request, user: str = Depends(current_user)):
         policy = refreshed_policy()
@@ -439,11 +439,23 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     ):
         verify_csrf(request, csrf)
         try:
-            uname = validate_username(username)
-            if role not in ("parent", "kid"):
-                raise ValueError("Role must be parent or kid")
-            password = generate_password()
-            create_member(uname, full_name.strip(), role, cfg.server_name, password)
+            result = create_family_member(
+                cfg,
+                username=username,
+                role=role,
+                display_name=full_name,
+                issue_enroll_code=False,
+                enroll_issued_by=user,
+            )
+            uname = result.username
+            password = result.password
+            role = result.role
+        except HTTPException as exc:
+            return TEMPLATES.TemplateResponse(
+                request,
+                "member_add.html",
+                {"user": user, "csrf": csrf_token(request), "error": str(exc.detail)},
+            )
         except ValueError as exc:
             return TEMPLATES.TemplateResponse(
                 request,
@@ -463,7 +475,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
 
     @app.get("/members/{username}", response_class=HTMLResponse)
     async def member_detail(request: Request, username: str, user: str = Depends(current_user)):
-        role = member_role(username)
+        role = member_role(cfg, username)
         if not role:
             raise HTTPException(status_code=404, detail="Not a family member")
         st = synapse_user_status(username, cfg.server_name)
@@ -494,12 +506,8 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         csrf: str = Form(...),
     ):
         verify_csrf(request, csrf)
-        if not member_role(username):
-            raise HTTPException(status_code=404, detail="Not a family member")
-        pw = generate_password()
-        reset_password(username, pw)
-        revoke_user_devices(username, cfg.server_name)
-        role = member_role(username)
+        pw = reset_member_password(cfg, username)
+        role = member_role(cfg, username)
         st = synapse_user_status(username, cfg.server_name)
         devices = list_devices_for_user(username)
         return TEMPLATES.TemplateResponse(
@@ -528,12 +536,10 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         csrf: str = Form(...),
     ):
         verify_csrf(request, csrf)
-        if not member_role(username):
-            raise HTTPException(status_code=404, detail="Not a family member")
-        from tinywebstack_dashboard.app_devices import create_enroll_code
-
-        code, expires_at = create_enroll_code(username, user)
-        qr_payload = f"tinyweb://enroll?server={cfg.server_name}&code={code}"
+        issued = issue_member_enroll_code(cfg, username, user)
+        code = issued["code"]
+        expires_at = issued["expires_at"]
+        qr_payload = issued["qr_payload"]
         from urllib.parse import quote
 
         qr_img_url = (
@@ -541,7 +547,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             + "?p="
             + quote(qr_payload, safe="")
         )
-        role = member_role(username)
+        role = member_role(cfg, username)
         st = synapse_user_status(username, cfg.server_name)
         devices = list_devices_for_user(username)
         return TEMPLATES.TemplateResponse(
@@ -568,7 +574,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         p: str = "",
         user: str = Depends(current_user),
     ):
-        if not member_role(username):
+        if not member_role(cfg, username):
             raise HTTPException(status_code=404, detail="Not found")
         if not p.startswith("tinyweb://"):
             raise HTTPException(status_code=400, detail="Invalid payload")
@@ -590,28 +596,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         csrf: str = Form(...),
     ):
         verify_csrf(request, csrf)
-        if not member_role(username):
-            raise HTTPException(status_code=404, detail="Not a family member")
-        from tinywebstack_dashboard.app_devices import get_device, revoke_device
-        from tinywebstack_dashboard.yunohost_actions import (
-            matrix_device_delete,
-            nextcloud_app_password_delete,
-        )
-
-        dev = get_device(device_id)
-        if not dev or dev.username != username:
-            raise HTTPException(status_code=404, detail="Device not found")
-        revoke_device(device_id)
-        if dev.matrix_device_id:
-            try:
-                matrix_device_delete(username, cfg.server_name, dev.matrix_device_id)
-            except Exception:
-                pass
-        if dev.nextcloud_token_id:
-            try:
-                nextcloud_app_password_delete(username, dev.nextcloud_token_id)
-            except Exception:
-                pass
+        revoke_member_app_device(cfg, username, device_id)
         return RedirectResponse(
             url=dash_url(f"/members/{username}", root_path),
             status_code=303,
@@ -625,11 +610,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         csrf: str = Form(...),
     ):
         verify_csrf(request, csrf)
-        if username == user:
-            raise HTTPException(status_code=400, detail="You cannot remove your own account here")
-        if not member_role(username):
-            raise HTTPException(status_code=404, detail="Not a family member")
-        result = delete_member(username)
+        result = remove_family_member(cfg, user, username)
         msg = "Member+removed"
         if result.get("matrix_deactivated") == "0":
             msg = "Member+removed+but+Matrix+deactivation+failed"
@@ -637,7 +618,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
 
     @app.get("/members/{username}/location", response_class=HTMLResponse)
     async def member_location_page(request: Request, username: str, user: str = Depends(current_user)):
-        if member_role(username) != "kid":
+        if member_role(cfg, username) != "kid":
             raise HTTPException(status_code=404, detail="Location setup is for child accounts")
         stored = load_stored_credentials(cfg.owntracks_store_path, username)
         return TEMPLATES.TemplateResponse(
@@ -660,7 +641,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         regenerate: str = Form(""),
     ):
         verify_csrf(request, csrf)
-        if member_role(username) != "kid":
+        if member_role(cfg, username) != "kid":
             raise HTTPException(status_code=404, detail="Location setup is for child accounts")
         loc_domain = cfg.location_domain or cfg.location_base_url.replace("https://", "").split("/")[0]
         issue_owntracks(username, cfg.server_name, loc_domain)
@@ -697,7 +678,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
 
     @app.get("/members/{username}/location/qr.png")
     async def member_location_qr(username: str, user: str = Depends(current_user)):
-        if member_role(username) != "kid":
+        if member_role(cfg, username) != "kid":
             raise HTTPException(status_code=404, detail="Not found")
         stored = load_stored_credentials(cfg.owntracks_store_path, username)
         if not stored:
