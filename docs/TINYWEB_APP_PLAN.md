@@ -1,8 +1,8 @@
 # TinyWeb mobile app plan
 
-**App code:** [`app/`](../app/) (Flutter + `tinyweb_core` Rust crate). **Chat is in-app and end-to-end encrypted from Stage 1** (no Element X hand-off).
+**App code:** [`app/`](../app/) (Flutter + `tinyweb_core` Rust crate). **Chat is in-app and end-to-end encrypted from Stage 1** — no Element X hand-off or in-app button anywhere.
 
-**Principle:** Backends stay mature open-source apps (Synapse, OwnTracks Recorder, Nextcloud CalDAV, Mobilizon). The **family frontend is unified**: only the **TinyWeb app** and **parent dashboard** (`/family/`) are required or recommended for families — not Element X, the OwnTracks app, DAVx5, Nextcloud mobile apps, Mobilizon web, or Traccar web.
+**Principle:** Backends stay mature open-source apps (Synapse, OwnTracks Recorder, Nextcloud CalDAV, Mobilizon). **Backends can be open-source apps; the frontend is unified:** only the **TinyWeb app** and **parent dashboard** (`/family/`) are required or recommended for families — not Element X, the OwnTracks app, DAVx5, Nextcloud mobile apps, Mobilizon web, or Traccar web.
 
 One **TinyWeb** app (iOS + Android) that talks only to **the family’s own box** — no TinyWeb cloud, no third-party accounts. The existing **parent dashboard** (`/family/`, [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)) stays the admin and provisioning surface; the app is the everyday surface for parents and kids.
 
@@ -19,7 +19,7 @@ One **TinyWeb** app (iOS + Android) that talks only to **the family’s own box*
 | **Kid-safe defaults** | Same server rules as today: `tinywebstack_family` Synapse module + `/etc/tinywebstack/permissions.db` ([FAMILY_MODULE.md](FAMILY_MODULE.md), `family/permissions/`). |
 | **Data stays on the box** | Chat, calendar, events, location, and dashboard APIs hit the home server over TLS. **Exception:** push notifications (see §6) may use Apple/Google/UnifiedPush infrastructure with **content-free** payloads. |
 | **Open source** | App and server changes in this repo; families can self-host and audit. |
-| **Dashboard = admin, app = daily** | Members, passwords, invite links, QR for legacy clients remain on the dashboard; the app consumes JSON APIs where they exist or backends directly after enrollment. |
+| **Dashboard = admin, app = daily** | Members, passwords, invite links, and TinyWeb enrollment QR/codes remain on the dashboard; the app consumes JSON APIs where they exist or backends directly after enrollment. |
 
 Branding follows [tinyweb.win](https://tinyweb.win) and vendored assets in `brand/` ([TINYWEB_BRANDING.md](TINYWEB_BRANDING.md)).
 
@@ -27,14 +27,15 @@ Branding follows [tinyweb.win](https://tinyweb.win) and vendored assets in `bran
 
 ## 2. Recommended client stack
 
-**Decision (2026-10-18): Flutter (Dart)**, with `matrix-rust-sdk` reached through a `flutter_rust_bridge` facade. Release builds come from CI. Approved by William after the bridge spike ([spikes/flutter-matrix-bridge/FINDINGS.md](../spikes/flutter-matrix-bridge/FINDINGS.md)).
+**Decision (2026-10-18): Flutter (Dart)**, with **matrix-rust-sdk** reached through a small Rust bridge (`tinyweb_core`, `flutter_rust_bridge`). Approved after the bridge spike (PR #38, [spikes/flutter-matrix-bridge/FINDINGS.md](../spikes/flutter-matrix-bridge/FINDINGS.md)). **Release builds** run in CI (GitHub Actions, PR #41, `.github/workflows/app.yml`); iOS needs macOS runners.
 
 **Spike results (frb 2.13, matrix-sdk 0.19.1):**
 - Proven from a Dart test against lab Synapse (tws-family-b) and stock Synapse: login, normal sync, native sliding sync (MSC4186), room list, create, send, and receive through a Rust→Dart stream (70–225 ms). E2EE rooms work on stock Synapse, and the family module now allows them (Stage 1 is E2EE).
 - The size-optimized Rust `.so` adds about 12 MB uncompressed (about 6 MB download) per ABI.
 - A cold Rust build takes about 85 s, a warm one about 19 s. Codegen takes 30–44 s per API change.
 - **ARM64 build-host constraint:** spark (linux-arm64) can build debug APKs only, using an unofficial arm64 NDK and aapt2. Google ships no linux-arm64 NDK or aapt2, and Flutter ships no linux-arm64 Android `gen_snapshot`. **Release APKs are built on GitHub Actions ubuntu x86_64 runners and iOS on macOS runners** (`.github/workflows/app.yml`). Spark remains the dev and test box.
-- KMP was rejected: the official Kotlin and Swift bindings are separate Android-only and Swift-only artifacts, not KMP.
+- **Kotlin Multiplatform rejected:** official matrix-rust-sdk bindings are separate Android and iOS packages, not a shared KMP layer.
+- **Pin matrix-rust-sdk** (and `flutter_rust_bridge`); upgrade deliberately when the facade is ready.
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -109,7 +110,7 @@ Single **provisioning** flow so families sign in once:
 | **Home** | Dashboard bearer + well-known | Status, shortcuts, quiet-hours banner from `GET /permissions/{self}` | Read-only |
 | **Calendar** | CalDAV on `TWS_CALDAV_ROOT` | Month/agenda; shared + personal calendars ([CALENDAR.md](CALENDAR.md)) | Read/write own events; accept/decline iTIP invites |
 | **Events** | Mobilizon **GraphQL** at `mobilizon.<domain>` | List/detail, RSVP; show **PUBLIC** federated events ([EVENTS.md](EVENTS.md)) | Read + RSVP; **create event parents-only** (optional kids in stage 1.1) |
-| **Location** | OwnTracks Recorder **HTTP API** (`/api/0/...`) for parents; publish `POST .../recorder/pub` | Parents: family map read-only; kids: no map | Parents read-only; kids **publish in-app** (background location, Stage 1) |
+| **Location** | OwnTracks Recorder **HTTP API** (`/api/0/...`) for parents; publish `POST .../recorder/pub` | Parents: family map in-app (read-only); kids: no map | Parents read-only; kids **publish in-app** (background, OwnTracks-format JSON — no OwnTracks app) |
 | **Parent controls** | `GET/PUT /family/permissions/{user}`; federation JSON exists | Allowlists, quiet hours, events toggle — mirror dashboard kid edit | Parents: read/write via API; needs JSON for **members / invites** (proposed) |
 | **Chat** | `matrix-rust-sdk` (via `tinyweb_core`, frb) + Synapse | In-app room list, timeline, send, new DM; show `M_FORBIDDEN` from the module as friendly copy; rooms are created **encrypted**; recovery key / key backup set up at enrollment | Read/write (**in-app from Stage 1**) |
 

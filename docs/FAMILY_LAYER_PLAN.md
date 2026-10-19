@@ -49,9 +49,9 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 - **Groups:** Device groups (nested); linking geofences/notifications to groups affects devices, **not** user ACLs until also linked to users.
 - **API:** `POST /api/permissions` with `{ "userId", "deviceId" }` (and similar) to link users to devices ([API reference](https://www.traccar.org/api-reference), community examples on [traccar.org forums](https://www.traccar.org/forums/topic/apipermissons)).
 
-### Element
+### Element Web
 
-- Web/mobile client; policy enforcement is on **Synapse** (and YunoHost login), not Element itself.
+- Operator/lab web client; policy enforcement is on **Synapse** (and YunoHost login), not Element itself. Families use the **TinyWeb app** for Matrix chat.
 
 ---
 
@@ -151,11 +151,23 @@ Components on each node:
 
 ---
 
+## Decisions (recorded 2026-10-18)
+
+William Floyd confirmed (docs alignment with shipped Stage 1 direction):
+
+1. **TinyWeb app stack:** **Flutter** (iOS + Android) with **matrix-rust-sdk** via the **`tinyweb_core` Rust bridge**. Spike (PR #38): login, sync, send, and receive against `tws-family-b` at **70–225 ms** per message; ~**6 MB** download size cost per ABI; **pin matrix-rust-sdk** and upgrade deliberately. **Kotlin Multiplatform rejected** (official bindings are separate Android/iOS packages). **ARM64 spark** cannot produce Android **release** builds → releases in **GitHub Actions** (PR #41); **iOS** needs macOS runners.
+2. **Unified frontend:** **Backends can be open-source apps; the frontend is unified.** Families use only the **TinyWeb app** and **parent dashboard** — not Element X, OwnTracks, DAVx5, Nextcloud mobile, Mobilizon web, or Traccar web clients.
+3. **Chat:** Built into the app from **Stage 1**; no Element X hand-off or button.
+4. **E2EE:** **On from Stage 1** — box allows encrypted rooms, new rooms encrypted by default, recovery key + key backup in the app; allowlists and quiet hours remain metadata-based. Parent-key oversight **deferred**.
+5. **Location:** Built into the app (background publish, OwnTracks-format posts to the box endpoint); parent-only map in app + dashboard.
+
+---
+
 ## Decisions (recorded 2026-09-28)
 
 William Floyd confirmed:
 
-1. **Family clients:** **TinyWeb app** for kids and parents; **parent dashboard** for provisioning. Element Web / Element X are **operator testing** tools, not the family path ([TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) Stage 1 in-app chat).
+1. **Family clients:** **TinyWeb app** for kids and parents; **parent dashboard** for provisioning. **Element Web** is an **operator/lab** Matrix client, not the family path ([TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) Stage 1 in-app chat).
 2. **Parent vs admin:** **Family dashboard** for parents; parent Matrix accounts are ordinary **non-admin** Synapse users so spam-checker rules apply. `twsowner` (YunoHost admin) stays separate.
 3. **E2EE:** **On from Stage 1** (reverses v1 'off'). New rooms and DMs are encrypted (`encryption_enabled_by_default_for_room_type: all`), and the module no longer rejects `m.room.encryption`. Allowlists and quiet hours still work on membership and sender. **Deferred:** a parent-key decrypt scheme (TinyWebC-style); for now, parents read a kid's chats only on the kid's device.
 4. **Cross-household contact:** **Per-kid allowlist** is enough; no reciprocal approval between households.
