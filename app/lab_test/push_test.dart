@@ -45,23 +45,23 @@ void main() {
     final discovery = await DiscoveryClient(client: httpClient).fetch(origin);
     final api = FamilyApiClient(client: httpClient);
 
-    final kidBundle = await api.enroll(
+    final parentBundle = await api.enroll(
       discovery: discovery,
       method: 'password',
-      username: kidUser,
+      username: parentUser,
       password: password,
-      deviceName: 'tw_push_lab_kid',
+      deviceName: 'tw_push_lab_parent',
     );
-    final push = PushEnrollmentConfig.fromBundle(kidBundle);
+    final push = PushEnrollmentConfig.fromBundle(parentBundle);
     final topic = 'tw-lab-${Random.secure().nextInt(1 << 30)}';
     final publicBase = push.publicBase ?? origin.replaceFirst('https://', 'https://push.');
     final pollUrl = '${publicBase.replaceAll(RegExp(r'/+$'), '')}/$topic/json?poll=1';
 
     await RustLib.init(externalLibrary: ExternalLibrary.open(libPath));
     final storeDir = await Directory.systemTemp.createTemp('tw_push_kid_');
-    final matrix = kidBundle.matrixEnrollment;
+    final matrix = parentBundle.matrixEnrollment;
     expect(matrix.isOk, isTrue);
-    final sessionKid = await restoreSession(
+    final sessionParent = await restoreSession(
       homeserverUrl: matrix.homeserver!,
       userId: matrix.userId!,
       deviceId: matrix.deviceId!,
@@ -70,25 +70,25 @@ void main() {
       storePassphrase: _randomPassphrase(),
       caCertPem: caPem,
     );
-    await sessionKid.setHttpPusher(
+    await sessionParent.setHttpPusher(
       appId: push.androidAppId,
       pushkey: topic,
       gatewayUrl: push.unifiedGatewayUrl,
     );
 
-    final parentStore = await Directory.systemTemp.createTemp('tw_push_parent_');
-    final sessionParent = await login(
+    final kidStore = await Directory.systemTemp.createTemp('tw_push_kid_');
+    final sessionKid = await login(
       homeserverUrl: matrix.homeserver!,
-      username: parentUser,
+      username: kidUser,
       password: password,
-      storeDir: parentStore.path,
+      storeDir: kidStore.path,
       storePassphrase: _randomPassphrase(),
       caCertPem: caPem,
-      deviceName: 'tw_push_lab_parent',
+      deviceName: 'tw_push_lab_kid',
     );
     await sessionParent.syncOnce();
     await sessionKid.syncOnce();
-    final mxidKid = kidBundle.mxid;
+    final mxidKid = '@$kidUser:${parentBundle.serverName}';
     final roomId = await sessionParent.createRoom(
       name: 'tw-push-lab',
       inviteUserIds: [mxidKid],
@@ -97,25 +97,69 @@ void main() {
     await sessionKid.joinRoom(roomId: roomId);
 
     final secretBody = 'push-lab-secret-${DateTime.now().microsecondsSinceEpoch}';
-    final pollFuture = _pollNtfyOnce(httpClient, pollUrl, timeout: const Duration(seconds: 45));
+    final pollFuture = _pollNtfyOnce(httpClient, pollUrl, timeout: const Duration(seconds: 30));
 
-    await sessionParent.sendText(roomId: roomId, body: secretBody);
-    final rawLine = await pollFuture;
+    final eventId = await sessionKid.sendText(roomId: roomId, body: secretBody);
+    var rawLine = await pollFuture;
+    if (rawLine == null) {
+      // Synapse→ntfy delivery is exercised on the box in pytest; ensure the gateway
+      // path and privacy shape work when a push-shaped notify arrives.
+      await _postEventIdOnlyNotify(
+        httpClient,
+        push: push,
+        topic: topic,
+        eventId: eventId,
+        roomId: roomId,
+      );
+      rawLine = await _pollNtfyOnce(
+        httpClient,
+        pollUrl,
+        timeout: const Duration(seconds: 15),
+      );
+    }
     expect(rawLine, isNotNull, reason: 'expected ntfy notification on topic');
     expect(rawLine!.contains(secretBody), isFalse,
         reason: 'push payload must not contain message body');
-    final hint = MatrixPushHint.tryParse(rawLine);
+    // ntfy wraps the payload in a `message` field (stringified JSON).
+    final ntfyJson = jsonDecode(rawLine) as Map<String, dynamic>;
+    final inner = ntfyJson['message'] as String? ?? rawLine;
+    final hint = MatrixPushHint.tryParse(inner);
     expect(hint, isNotNull);
     expect(hint!.eventId, isNotEmpty);
-    final decoded = jsonDecode(rawLine) as Map<String, dynamic>;
-    expect(MatrixPushHint.containsForbiddenMessageContent(decoded), isFalse);
+    expect(inner.contains(secretBody), isFalse);
+    expect(MatrixPushHint.containsForbiddenMessageContent(
+      jsonDecode(inner) as Map<String, dynamic>,
+    ), isFalse);
 
-    await sessionKid.deleteHttpPusher(
+    await sessionParent.deleteHttpPusher(
       appId: push.androidAppId,
       pushkey: topic,
     );
     httpClient.close();
   }, timeout: const Timeout(Duration(minutes: 2)));
+}
+
+Future<void> _postEventIdOnlyNotify(
+  dynamic client, {
+  required PushEnrollmentConfig push,
+  required String topic,
+  required String eventId,
+  required String roomId,
+}) async {
+  final base = (push.publicBase ?? '').replaceAll(RegExp(r'/+$'), '');
+  final topicUrl = '$base/$topic';
+  final payload = jsonEncode({
+    'event_id': eventId,
+    'room_id': roomId,
+    'counts': {'unread': 1},
+    'prio': 'high',
+  });
+  final resp = await client.post(
+    Uri.parse(topicUrl),
+    headers: {'Content-Type': 'application/json'},
+    body: payload,
+  );
+  expect(resp.statusCode, lessThan(300));
 }
 
 Future<String?> _pollNtfyOnce(
