@@ -1,5 +1,7 @@
 # TinyWeb mobile app plan
 
+**App code:** [`app/`](../app/) (Flutter + `tinyweb_core` Rust crate). **Chat is in-app from Stage 1** (no Element X hand-off).
+
 One **TinyWeb** app (iOS + Android) that talks only to **the family’s own box** — no TinyWeb cloud, no third-party accounts. The existing **parent dashboard** (`/family/`, [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)) stays the admin and provisioning surface; the app is the everyday surface for parents and kids.
 
 **Grounding:** [PLAN.md](../PLAN.md), [PHILOSOPHY.md](PHILOSOPHY.md), [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md), [CALENDAR.md](CALENDAR.md), [EVENTS.md](EVENTS.md), [FAMILY_MODULE.md](FAMILY_MODULE.md), [FAMILY_INVITE.md](FAMILY_INVITE.md), [TINYWEB_BRANDING.md](TINYWEB_BRANDING.md). Dashboard code: `family/dashboard/tinywebstack_dashboard/`.
@@ -82,7 +84,7 @@ Single **provisioning** flow so families sign in once:
    - **Password:** `{ "method": "password", "username", "password", "device_name", "platform": "android"|"ios"|"other" }` — Synapse `m.login.password` (+ optional Mobilizon GraphQL `login` when `TWS_EVENTS_URL` is set).
    - **Code:** `{ "method": "code", "code", "device_name", "platform" }` — parent mints code via dashboard or `POST /family/api/app/codes` (`{"username"}` → `{code, expires_at, qr_payload}`).
 3. **Server** returns a **one-time JSON bundle** (`Cache-Control: no-store`): dashboard bearer `tws_…` (SHA-256 in `/etc/tinywebstack/app-devices.db`), CalDAV app password, OwnTracks (kids), Mobilizon tokens when password login succeeded, Matrix when password login succeeded.
-4. **Code enrollment limitation (Stage 1):** Matrix is **not** provisioned (`matrix.status: not_provisioned`); use Element X until Stage 2. Mobilizon returns `password_required`.
+4. **Code enrollment** also provisions a real Matrix device. The dashboard mints a 60-second HMAC ticket and logs in server-side through the family module's `org.tinywebstack.login_ticket` login type; the ticket never leaves the box ([FAMILY_MODULE.md](FAMILY_MODULE.md)). Mobilizon returns `password_required` for code enrollment.
 5. App stores secrets in **Keychain / Keystore**; never logs them.
 
 **Lifecycle (built):**
@@ -106,8 +108,7 @@ Single **provisioning** flow so families sign in once:
 | **Events** | Mobilizon **GraphQL** at `mobilizon.<domain>` | List/detail, RSVP; show **PUBLIC** federated events ([EVENTS.md](EVENTS.md)) | Read + RSVP; **create event parents-only** (optional kids in stage 1.1) |
 | **Location** | OwnTracks Recorder **HTTP API** (`/api/0/...`) for parents; publish `POST .../recorder/pub` | Parents: family map read-only; kids: no map | Parents read-only; kids still use **OwnTracks app** to publish |
 | **Parent controls** | `GET/PUT /family/permissions/{user}`; federation JSON exists | Allowlists, quiet hours, events toggle — mirror dashboard kid edit | Parents: read/write via API; needs JSON for **members / invites** (proposed) |
-| **Chat** | Matrix Client-Server API | Stage 1: **Open Element X** via `matrix.to` / `element://` deep link to `@user:server` | Hand-off only |
-| **Chat (Stage 2)** | `matrix-rust-sdk` + Synapse | In-app DMs/rooms; show `M_FORBIDDEN` from module as friendly copy | Read/write |
+| **Chat** | `matrix-rust-sdk` (via `tinyweb_core`, frb) + Synapse | In-app room list, timeline, send, new DM; show `M_FORBIDDEN` from the module as friendly copy; never create encrypted rooms | Read/write (**in-app from Stage 1**) |
 
 ---
 
@@ -117,7 +118,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Stage 1 — Shell app (“everything” navigation)
 
-**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, CalDAV calendar, Mobilizon events, parent location map, parent controls (permissions API), Element X hand-off for chat.
+**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, CalDAV calendar, Mobilizon events, parent location map, parent controls (permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Encryption stays off (the module rejects `m.room.encryption`, P3.8). Native simplified sliding sync was confirmed on lab Synapse by the spike.
 
 | Test | Pass criteria |
 |------|----------------|
@@ -126,21 +127,14 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | Calendar | Create event on `tws-family`; visible in app; kid sees shared calendar per [verify-calendar-e2e.sh](../scripts/spark/verify-calendar-e2e.sh) semantics |
 | Events | Parent RSVP on federated event; [verify-events-e2e.sh](../scripts/spark/verify-events-e2e.sh) still passes |
 | Location | Parent sees kid trace from Recorder; kid account cannot open map UI |
-| Chat hand-off | Tap “Messages” opens Element X to homeserver `matrix_server` from well-known |
-| Federation | Trusted-family events still appear; Matrix allowlist unchanged |
-
-### Stage 2 — In-app Matrix chat
-
-**Deliverables:** `matrix-rust-sdk` in app; sliding sync (native simplified sliding sync **confirmed** on lab Synapse by the spike); no E2EE (server rejects encryption — [FAMILY_MODULE.md](FAMILY_MODULE.md)).
-
-| Test | Pass criteria |
-|------|----------------|
+| Chat | Room list and timeline load after enrollment (password or code); a sent message reaches the other member |
 | Parent ↔ kid DM | Message delivered |
 | Allowlist | Kid DM to non-allowlisted MXID fails with user-visible “not allowed” (server `M_FORBIDDEN`) |
-| Quiet hours | Kid send denied during window; parent can send |
+| Quiet hours | Kid send denied during window (banner shown); parent can send |
 | Federation DM | Cross-family allowlisted DM per [verify-federation-e2e.sh](../scripts/spark/verify-federation-e2e.sh) |
+| Federation | Trusted-family events still appear; Matrix allowlist unchanged |
 
-### Stage 3 — Calls and background location
+### Stage 2 — Calls and background location
 
 **Deliverables:** Voice/video via **Element Call + LiveKit SFU** on box (MatrixRTC); in-app background location publishing (replaces OwnTracks app).
 
@@ -221,7 +215,7 @@ Same binary; **mode from LDAP groups** at enrollment (`parents` vs `kids` — `T
 | **App store publishing** | William owns the **Apple** developer account. **Google Play** ownership and **F-Droid** are still open. |
 | **iOS push** | APNs **approved** (content-free payloads). Key and cert lifecycle still to handle. |
 | **Mobilizon PUBLIC default** | Federated event titles visible on public URLs — app UI should not surprise parents ([EVENTS.md](EVENTS.md)). |
-| **Stage 1 Element X hand-off** | UX friction vs single app promise; temporary. |
+| **In-app chat scope** | Stage 1 chat is text only (no media, reactions, threads or calls). Room list and timeline come from a hand-written facade over `matrix-sdk`; move to `matrix-sdk-ui` (Timeline/RoomListService) as features grow. |
 | **E2EE** | Still **off** in v1 module; in-app chat must not enable encrypted rooms by default. |
 | **Box addressing** | QR `https://<main-domain>`; confirm `/.well-known/tinywebstack-family.json` fields match Matrix client discovery (`matrix_server` in [`app.py`](../family/dashboard/tinywebstack_dashboard/app.py)). |
 | **OwnTracks Recorder API** | Exact read endpoints and auth for app proxy — confirm against Recorder version shipped on YunoHost. |

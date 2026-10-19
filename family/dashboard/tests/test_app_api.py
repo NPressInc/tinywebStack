@@ -123,7 +123,6 @@ def test_well_known_fields(app_env):
     assert data["enroll_url"] == "/family/api/app/enroll"
     assert data["matrix_homeserver_url"].startswith("https://")
     assert data["caldav_root"]
-    assert data["element_x_deeplink_base"] == "https://matrix.to/#/"
 
 
 def test_code_create_parent_only(app_env):
