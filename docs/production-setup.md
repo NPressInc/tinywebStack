@@ -613,7 +613,7 @@ events: nodeinfo public, trusted-instance sync, cross-family RSVP,
 | Check | Command / action | Expected |
 |-------|------------------|----------|
 | Matrix well-known | `curl -s https://home.example.com/.well-known/matrix/server` | JSON pointing at `matrix.home.example.com` |
-| Federation works | **TinyWeb app:** A-user DMs `@<b-user>:home.b.example` | message delivered both ways (*operator:* Element Web or Element X on same accounts) |
+| Federation works | **TinyWeb app:** A-user DMs `@<b-user>:home.b.example` | message delivered both ways (*operator:* Element Web on same accounts) |
 | Federation restricted | try to join `#matrix.org:matrix.org` (or invite from a stranger's server) | refused (`M_FORBIDDEN` / never syncs) |
 | E2EE | new DM/room from TinyWeb app | encrypted; module allows `m.room.encryption` |
 | Kid policy | kid (in `kids`) tries a room invite outside the allowlist | blocked by `tinywebstack_family` module |
@@ -695,7 +695,7 @@ Test restore quarterly; an untested backup is not a backup.
 | Cross-household DM silently fails | federation allowlist missing, snippet's `ip_range_whitelist` left at lab `192.168.122.0/24`, or cert verification issue | §7 (both fixes), `journalctl -u synapse -e` on both nodes |
 | Mobilizon sync `Bad credentials` | admin email/password mismatch | admin is `${YUNOHOST_ADMIN_USER}@<main>` with `YUNOHOST_ADMIN_PASSWORD_<NODE>`; or export `MOBILIZON_ADMIN_PASSWORD` |
 | Kid sees the location web UI | `family-groups.sh` not re-run after manual app install | re-run it; check `yunohost user permission list` |
-| Kid location publish 401 | Recorder credentials missing or revoked | re-enroll **TinyWeb app** or dashboard location setup (`family-dashboard-privileged.sh owntracks-issue`); *operator:* standalone OwnTracks app with same htpasswd |
+| Kid location publish 401 | Recorder credentials missing or revoked | re-enroll **TinyWeb app** or dashboard location setup (`family-dashboard-privileged.sh owntracks-issue`); *operator:* curl to `/recorder/pub` with kid htpasswd from `/etc/tinywebstack/owntracks-kids.json` |
 | Password too short errors | YunoHost ≥8-char policy | regenerate that key in `passwords.env` (delete key, re-run `ensure-node-secrets.sh`) |
 | `sudo yunohost domain cert renew` says "not issued by Let's Encrypt" | domain still on self-signed | you skipped §3 for that name |
 | Everything fine but federation dropped after cert expiry | LE renewal failed silently | `sudo yunohost domain cert status`; renew manually (`yunohost domain cert renew <d>`) |

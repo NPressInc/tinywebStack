@@ -41,7 +41,7 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 **Source:** [TinyWebC `PLAN.md`](https://github.com/NPressInc/TinyWebC/blob/main/PLAN.md) — roadmap repeatedly defers “extensions,” dashboard, and mobile apps while prioritizing user management and permissions; [tinywebStack `PLAN.md`](../PLAN.md) states explicitly that gossip, message store, and location storage already exist elsewhere.
 
-**tinywebStack:** **Carries over (sharpened).** Engineering effort goes into **parent-managed identity, linking trusted households, parental controls, and location visibility**—not another chat protocol or GPS database. Synapse, OwnTracks Recorder, Traccar, Jellyfin, Immich, and Nextcloud come from mature projects and the YunoHost catalog; families interact through the **TinyWeb app** and dashboard, not separate vendor clients.
+**tinywebStack:** **Carries over (sharpened).** Engineering effort goes into **parent-managed identity, linking trusted households, parental controls, and location visibility**—not another chat protocol or GPS database. Synapse, OwnTracks Recorder, Traccar, Jellyfin, Immich, and Nextcloud come from mature projects and the YunoHost catalog; **backends can be open-source apps; the frontend is unified** via the **TinyWeb app** and parent dashboard.
 
 ---
 
@@ -67,9 +67,9 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 ---
 
-### 5c. Open backends, unified family frontend
+### 5c. Backends can be open-source apps; the frontend is unified
 
-**tinywebStack:** **Adapted (product core).** Chat, calendar, events, and location run on **existing open-source servers** (Synapse, Nextcloud CalDAV, Mobilizon, OwnTracks Recorder or Traccar). Families do **not** install or rely on third-party client apps (Element X / Element, the OwnTracks app, Nextcloud or DAVx5, Mobilizon web, Traccar web) for day-to-day use. **Stage 1** of the **TinyWeb app** covers in-app E2EE chat (matrix-rust-sdk), CalDAV calendar, Mobilizon events via GraphQL, and built-in location publish to the Recorder endpoint. The **parent dashboard** (`/family/`) is the only other default surface. Operator and lab docs may reference Element Web, curl, or legacy apps for debugging — not as the family path.
+**tinywebStack:** **Adapted (product core).** **Backends can be open-source apps; the frontend is unified.** Chat, calendar, events, and location run on **existing open-source servers** (Synapse, Nextcloud CalDAV, Mobilizon, OwnTracks Recorder or Traccar). Families do **not** install or rely on third-party client apps (Element X / Element, the OwnTracks app, Nextcloud or DAVx5, Mobilizon web, Traccar web) for day-to-day use. **Stage 1** of the **TinyWeb app** (Flutter + matrix-rust-sdk via `tinyweb_core`) covers in-app E2EE chat from day one (recovery key and key backup in-app; new rooms encrypted by default), CalDAV calendar, Mobilizon events via GraphQL, and built-in background location to the Recorder endpoint. The **parent dashboard** (`/family/`) is the only other default surface. Operator and lab docs may reference Element Web, curl, or legacy clients for debugging — not as the family path.
 
 ---
 
@@ -77,7 +77,7 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 **Source:** [TinyWebC `README.md`](https://github.com/NPressInc/TinyWebC/blob/main/README.md) — “encrypted message relay”; [KEY_DISTRIBUTION_ARCHITECTURE.md](https://github.com/NPressInc/TinyWebC/blob/main/docs/KEY_DISTRIBUTION_ARCHITECTURE.md) — “End-to-end encryption — Messages encrypted by clients, nodes cannot decrypt”; “Nodes only store public keys.”
 
-**tinywebStack:** **Adapted.** Matrix provides **E2EE**, and family chat is **encrypted by default from Stage 1**. The homeserver still sees metadata (who talks to whom, when), which is what the family module uses to enforce allowlists and quiet hours. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Location data in Traccar is protected by **Traccar user/device permission links**, not TinyWebC’s custom encrypted location API. The spirit—**servers verify and route, they do not become a readable copy of family life**—still guides what we log, what parents can see, and what we refuse to build (for example, a centralized family spy server).
+**tinywebStack:** **Adapted.** Matrix provides **E2EE**, and family chat is **encrypted by default from Stage 1** (encrypted rooms allowed on the box; recovery key and key backup live in the TinyWeb app). The homeserver still sees metadata (who talks to whom, when), which is what the family module uses to enforce allowlists and quiet hours. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Location data in Traccar is protected by **Traccar user/device permission links**, not TinyWebC’s custom encrypted location API. The spirit—**servers verify and route, they do not become a readable copy of family life**—still guides what we log, what parents can see, and what we refuse to build (for example, a centralized family spy server).
 
 ---
 

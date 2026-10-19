@@ -49,15 +49,15 @@ Parents (listed in `parent_mxids`) are not subject to kid allowlists. Server adm
 
 Invalid or missing policy → **fail closed** for kids (deny invites/joins/messages).
 
-## Operator testing (TinyWeb app or Element X)
+## Operator testing (TinyWeb app)
 
 Primary check: enroll the **TinyWeb app** as the kid and exercise chat policy in-app (see [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) Stage 1 tests).
 
-**Element X (lab/operator fallback):**
+**Element Web (lab/operator fallback only):**
 
 1. Create users: `create-family-test-users.sh` (parent + kid in LDAP groups).
 2. In the dashboard, add approved friend MXIDs to the kid allowlist.
-3. From Element X on the kid account, try DM to a non-allowlisted MXID → invite/message should fail with `M_FORBIDDEN`.
+3. From Element Web on the kid account, try DM to a non-allowlisted MXID → invite/message should fail with `M_FORBIDDEN`.
 4. During quiet hours (server timezone in policy), kid messages are denied; parent accounts still work.
 
 ## Unit tests (no Synapse)
