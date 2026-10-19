@@ -58,7 +58,7 @@ class FamilyApiClient {
     );
 
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = _jsonMapFromResponse(response);
       return EnrollmentBundle.fromJson(json, discovery.serverOrigin, discovery);
     }
 
@@ -78,7 +78,7 @@ class FamilyApiClient {
       headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
     );
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body);
+      final json = _jsonFromResponse(response);
       final list = json is List
           ? json
           : (json as Map<String, dynamic>)['members'] as List<dynamic>? ?? [];
@@ -96,7 +96,7 @@ class FamilyApiClient {
       headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
     );
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = _jsonMapFromResponse(response);
       return LocationsResponse.fromJson(json);
     }
     _throwForStatus(response);
@@ -114,7 +114,7 @@ class FamilyApiClient {
       headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
     );
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = _jsonMapFromResponse(response);
       return KidTrackResponse.fromJson(json);
     }
     _throwForStatus(response);
@@ -131,22 +131,11 @@ class FamilyApiClient {
     return '$base$path$tail';
   }
 
-  String _dashboardUrl(EnrollmentBundle bundle, String suffix) {
-    final base = bundle.serverOrigin.endsWith('/')
-        ? bundle.serverOrigin.substring(0, bundle.serverOrigin.length - 1)
-        : bundle.serverOrigin;
-    final dash = bundle.discovery.dashboardBase.startsWith('/')
-        ? bundle.discovery.dashboardBase
-        : '/${bundle.discovery.dashboardBase}';
-    final tail = suffix.startsWith('/') ? suffix : '/$suffix';
-    return '$base$dash$tail';
-  }
-
   Future<KidPermissions> fetchKidPermissions(
     EnrollmentBundle bundle,
     String username,
   ) async {
-    final url = _dashboardUrl(
+    final url = _apiUrl(
       bundle,
       '/permissions/${Uri.encodeComponent(username)}',
     );
@@ -155,7 +144,7 @@ class FamilyApiClient {
       headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
     );
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = _jsonMapFromResponse(response);
       return KidPermissions.fromJson(json);
     }
     _throwForStatus(response);
@@ -166,7 +155,7 @@ class FamilyApiClient {
     String username,
     Map<String, dynamic> body,
   ) async {
-    final url = _dashboardUrl(
+    final url = _apiUrl(
       bundle,
       '/permissions/${Uri.encodeComponent(username)}',
     );
@@ -179,7 +168,7 @@ class FamilyApiClient {
       body: jsonEncode(body),
     );
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = _jsonMapFromResponse(response);
       return KidPermissions.fromJson(json);
     }
     _throwForStatus(response);
@@ -194,7 +183,7 @@ class FamilyApiClient {
       headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
     );
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = _jsonMapFromResponse(response);
       return FederationPeersResponse.fromJson(json);
     }
     _throwForStatus(response);
@@ -208,7 +197,7 @@ class FamilyApiClient {
     );
 
     if (response.statusCode == 200) {
-      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final json = _jsonMapFromResponse(response);
       return AppMeProfile.fromJson(json);
     }
     if (response.statusCode == 401) {
@@ -220,10 +209,35 @@ class FamilyApiClient {
     _throwForStatus(response);
   }
 
+  dynamic _jsonFromResponse(http.Response response) {
+    try {
+      return jsonDecode(response.body);
+    } on FormatException {
+      throw EnrollException(
+        EnrollErrorKind.server,
+        'Family server returned a non-JSON response',
+      );
+    }
+  }
+
+  Map<String, dynamic> _jsonMapFromResponse(http.Response response) {
+    final decoded = _jsonFromResponse(response);
+    if (decoded is! Map<String, dynamic>) {
+      throw EnrollException(
+        EnrollErrorKind.server,
+        'Family server returned an unexpected response',
+      );
+    }
+    return decoded;
+  }
+
   Never _throwForStatus(http.Response response) {
     Map<String, dynamic>? json;
     try {
-      json = jsonDecode(response.body) as Map<String, dynamic>;
+      final decoded = jsonDecode(response.body);
+      if (decoded is Map<String, dynamic>) {
+        json = decoded;
+      }
     } catch (_) {}
 
     if (response.statusCode == 401) {

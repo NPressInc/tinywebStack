@@ -25,9 +25,9 @@ EnrollmentBundle _parentBundle() => EnrollmentBundle(
     );
 
 void main() {
-  test('fetchKidPermissions uses dashboard mount', () async {
+  test('fetchKidPermissions uses app API mount', () async {
     final client = MockClient((request) async {
-      expect(request.url.path, '/family/permissions/kid1');
+      expect(request.url.path, '/family/api/permissions/kid1');
       expect(request.headers['Authorization'], 'Bearer parent-token');
       return http.Response(
         jsonEncode({
@@ -52,6 +52,7 @@ void main() {
   test('updateKidPermissions sends PUT body', () async {
     final client = MockClient((request) async {
       expect(request.method, 'PUT');
+      expect(request.url.path, '/family/api/permissions/kid1');
       final body = jsonDecode(request.body) as Map<String, dynamic>;
       expect(body['events_enabled'], false);
       return http.Response(
@@ -94,6 +95,24 @@ void main() {
     final peers = await api.fetchFederationPeers(_parentBundle());
     expect(peers.trustedDomains, ['family-b.example']);
     expect(peers.peerNodes.first.domain, 'family-b.example');
+    api.close();
+  });
+
+  test('non-JSON 200 throws EnrollException not FormatException', () async {
+    final client = MockClient((request) async {
+      return http.Response('<html>SSO</html>', 200);
+    });
+    final api = FamilyApiClient(client: client);
+    await expectLater(
+      api.fetchKidPermissions(_parentBundle(), 'kid1'),
+      throwsA(
+        isA<EnrollException>().having(
+          (e) => e.message,
+          'message',
+          'Family server returned a non-JSON response',
+        ),
+      ),
+    );
     api.close();
   });
 }
