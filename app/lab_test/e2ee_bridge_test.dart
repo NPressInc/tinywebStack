@@ -7,12 +7,14 @@ import 'dart:math';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
+import 'package:tinyweb/src/api/tls_http_client.dart';
 import 'package:tinyweb/src/rust/api/matrix.dart';
 import 'package:tinyweb/src/rust/frb_generated.dart';
 
+import 'lab_env.dart';
+
 void main() {
+  installLabTestHttpOverrides();
   final hs = Platform.environment['TW_HS'];
   if (hs == null || hs.isEmpty) {
     test(
@@ -169,7 +171,7 @@ Future<String> _accessToken(
     },
     'password': password,
   };
-  final client = caFileHttpClient(Platform.environment['TW_CA_FILE']);
+  final client = tlsHttpClientFromEnvironment();
   final resp = await client.post(
     loginUrl,
     headers: {'Content-Type': 'application/json'},
@@ -178,16 +180,6 @@ Future<String> _accessToken(
   expect(resp.statusCode, 200);
   final json = jsonDecode(resp.body) as Map<String, dynamic>;
   return json['access_token'] as String;
-}
-
-http.Client caFileHttpClient(String? caFile) {
-  if (caFile == null || caFile.isEmpty) {
-    return http.Client();
-  }
-  final context = SecurityContext(withTrustedRoots: true)
-    ..setTrustedCertificatesBytes(File(caFile).readAsBytesSync());
-  final ioClient = HttpClient(context: context);
-  return IOClient(ioClient);
 }
 
 Future<Map<String, dynamic>> _fetchRawEvent({
@@ -201,7 +193,7 @@ Future<Map<String, dynamic>> _fetchRawEvent({
   final path =
       '${hsUri.path.replaceAll(RegExp(r'/$'), '')}/_matrix/client/v3/rooms/${Uri.encodeComponent(roomId)}/event/${Uri.encodeComponent(eventId)}';
   final url = hsUri.replace(path: path);
-  final client = caFileHttpClient(caFile);
+  final client = createTlsHttpClient(caCertFilePath: caFile);
   final resp = await client.get(
     url,
     headers: {'Authorization': 'Bearer $accessToken'},

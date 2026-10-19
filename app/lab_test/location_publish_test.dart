@@ -11,7 +11,10 @@ import 'package:tinyweb/src/location/location_fix.dart';
 import 'package:tinyweb/src/location/location_publisher.dart' show LocationPostResult, LocationPublisher;
 import 'package:tinyweb/src/location/owntracks_payload.dart';
 
+import 'lab_env.dart';
+
 void main() {
+  installLabTestHttpOverrides();
   final origin = Platform.environment['TW_HS'];
   if (origin == null || origin.isEmpty) {
     test(

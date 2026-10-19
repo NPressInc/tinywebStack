@@ -8,7 +8,10 @@ import 'package:tinyweb/src/api/tls_http_client.dart';
 import 'package:tinyweb/src/calendar/caldav_client.dart';
 import 'package:tinyweb/src/calendar/calendar_service.dart';
 
+import 'lab_env.dart';
+
 void main() {
+  installLabTestHttpOverrides();
   final origin = Platform.environment['TW_HS'];
   if (origin == null || origin.isEmpty) {
     test(

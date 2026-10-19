@@ -39,6 +39,8 @@ export TW_HS=https://family-b.family.test
 export TW_CA_FILE=$HOME/.tinywebstack-secrets/lab-ca/lab-ca.crt.pem
 export TW_TEST_PASSWORD=...   # lab password from your secrets store
 export TW_LIB=$PWD/rust/target/release/libtinyweb_core.so
+# On spark (no /etc/hosts for every lab subdomain), point lab HTTPS at the box IP:
+export TW_RESOLVE_IP=192.168.x.x   # optional; lab_test/lab_env.dart only
 cd app
 flutter test lab_test/chat_bridge_test.dart
 flutter test lab_test/e2ee_bridge_test.dart
@@ -82,6 +84,10 @@ The app uses a small in-tree CalDAV client (`PROPFIND`, `REPORT calendar-query`,
 ## Lab TLS
 
 Lab family boxes use a **private CA**. Install the lab CA on a physical device for HTTPS enrollment — the app does **not** disable TLS verification. Pass the lab CA PEM into the Matrix Rust facade when testing on the host (`TW_CA_FILE` above).
+
+### Lab DNS on spark (`TW_RESOLVE_IP`)
+
+Some lab hostnames (e.g. `nextcloud.family-b.family.test`) are not in `/etc/hosts` on spark. Lab tests only: set `TW_RESOLVE_IP` to your family box IP before `flutter test lab_test/…`. Each `lab_test/*.dart` calls `installLabTestHttpOverrides()` from `lab_test/lab_env.dart`, which installs `HttpOverrides` and wires `lib/src/api/tls_http_client.dart` so Dart `HttpClient` still uses the original URL host for SNI/`Host`, verifies TLS with `TW_CA_FILE`, but opens TCP to `TW_RESOLVE_IP` for any host under the `TW_HS` hostname (via `connectionFactory`). Production app code in `lib/` is unchanged. Matrix bridge tests still use Rust’s own resolver for Synapse unless that host is also covered by your DNS setup.
 
 ## Layout
 
