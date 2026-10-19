@@ -224,6 +224,8 @@ async def test_kid_encrypted_non_allowlisted_room_denied(module):
 @pytest.mark.asyncio
 async def test_kid_encrypted_allowlisted_room_allowed(module):
     mod, api = module
+    # Pin outside quiet hours (03:00-04:00 UTC window; wall-clock would be flaky).
+    mod.store.policy.kid_in_quiet_hours = lambda kid_mxid, when=None: False  # type: ignore[method-assign]
     api.members = {
         ("m.room.member", "@kid:family-a.test"): MockMemberEvent("@kid:family-a.test"),
         ("m.room.member", "@friend:family-b.test"): MockMemberEvent("@friend:family-b.test"),
