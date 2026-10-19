@@ -52,7 +52,7 @@ def kid_policy_module(tmp_path):
         },
     )
     api = MockApi()
-    mod = FamilySpamCheckerModule({"policy_path": str(path), "reject_encryption": True}, api)
+    mod = FamilySpamCheckerModule({"policy_path": str(path)}, api)
     return mod, api
 
 

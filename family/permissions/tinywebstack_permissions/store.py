@@ -387,7 +387,7 @@ class PermissionsDB:
 
     @property
     def reject_encryption(self) -> bool:
-        return bool(self.get_meta("reject_encryption", True))
+        return bool(self.get_meta("reject_encryption", False))
 
     @reject_encryption.setter
     def reject_encryption(self, value: bool) -> None:

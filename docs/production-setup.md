@@ -32,9 +32,9 @@ or server you run the scripts from. Node ids must match
 | YunoHost main + portal | `home.example.com` | postinstall domain; portal redirects `/` → `/family/` |
 | Family dashboard | `https://home.example.com/family/` | `parents` group only (YunoHost SSO) |
 | Synapse | `matrix.home.example.com` | `server_name=home.example.com` → `@user:home.example.com` |
-| Element (admin web client) | `element.home.example.com` | parents use Element X on phones |
-| Location (default) | `owntracks.home.example.com` | set `LOCATION_APP=traccar` for catalog fallback (`traccar.` host) |
-| Nextcloud CalDAV | `nextcloud.home.example.com` | phones use CalDAV directly ([CALENDAR.md](CALENDAR.md)) |
+| Element (operator web client) | `element.home.example.com` | lab/debug only; families use the **TinyWeb app** for Matrix chat |
+| Location (default) | `owntracks.home.example.com` | OwnTracks Recorder backend; kid publish via **TinyWeb app**; set `LOCATION_APP=traccar` for catalog fallback (`traccar.` host) |
+| Nextcloud CalDAV | `nextcloud.home.example.com` | CalDAV backend; families use calendar in the **TinyWeb app** ([CALENDAR.md](CALENDAR.md)) |
 | Mobilizon events | `mobilizon.home.example.com` | SSO/LDAP ([EVENTS.md](EVENTS.md)) |
 
 All six names **must** resolve to the node (see §1.2).
@@ -401,8 +401,9 @@ additionally runs `create-family-test-users.sh` and `setup-family-calendars.sh`
 - `install-family-module.sh` pip-installs `tinywebstack_family` and
   `tinywebstack_permissions` into the Synapse venv and writes
   `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`
-  (spam-checker module, SQLite `permissions_db`, `reject_encryption: true`,
-  E2EE off) + `/etc/tinywebstack/family-policy.json`, then restarts Synapse.
+  (spam-checker module, SQLite `permissions_db`, E2EE on by default via
+  `encryption_enabled_by_default_for_room_type: all`) +
+  `/etc/tinywebstack/family-policy.json`, then restarts Synapse.
 - `family-permissions-seed.sh` creates `/etc/tinywebstack/permissions.db` once
   (roles + one-time import from `family-policy.json` when the DB is empty).
 - `family-federation-state-seed.sh` merges existing `trusted_domains` from
@@ -504,14 +505,12 @@ scripts/vm/remote-run.sh "$IP" family-groups.sh
 ```
 
 **Expected:** `yunohost user list` shows the users in `parents`/`kids`;
-Element at `https://element.home.example.com` (or Element X pointed at the
-main domain) logs in with the YunoHost SSO; portal at `https://home.example.com/`
+enroll each member in the **TinyWeb app** (`POST /family/api/app/enroll` or dashboard QR) and confirm chat/calendar work in-app; portal at `https://home.example.com/`
 shows each user only their permitted apps.
 *If this fails:*
 - password rejected → 8-char minimum, and YunoHost's zxcvbn policy may
   reject obvious ones;
-- user can't see Element → permission drift: re-run `family-groups.sh`
-  (idempotent) and check `yunohost user permission list | grep -A3 element.main`.
+- app enroll fails → check Synapse LDAP login and `/.well-known/tinywebstack-family.json`; **operator:** Element at `https://element.home.example.com` should still SSO for Matrix debugging — if not, re-run `family-groups.sh` and check `yunohost user permission list | grep -A3 element.main`.
 
 Calendars: run `setup-family-calendars.sh` for the shared family calendar +
 personal calendars. Pass your real members with `--users` and set explicit
@@ -529,9 +528,7 @@ WILLIAM_PASSWORD='<william password>' \
 bash vm/setup-family-calendars.sh home.example.com home-a --users 'william,sophie,emma'
 ```
 
-Phones then point CalDAV at `https://nextcloud.home.example.com/nextcloud/remote.php/dav`
-with the YunoHost username + the user's Nextcloud app password (dashboard
-CalDAV page shows per-user setup). *If verify later fails with 401:* Nextcloud
+After **TinyWeb app** enrollment, calendars sync via CalDAV credentials in the enroll bundle (dashboard **Phone calendars** / member setup shows server URL for reference). *Operator:* raw CalDAV at `https://nextcloud.home.example.com/nextcloud/remote.php/dav` with username + app password. *If verify later fails with 401:* Nextcloud
 LDAP group sync lag — `sudo -u www-data php /var/www/nextcloud/occ
 ldap:check-group <group> --update`.
 
@@ -616,12 +613,12 @@ events: nodeinfo public, trusted-instance sync, cross-family RSVP,
 | Check | Command / action | Expected |
 |-------|------------------|----------|
 | Matrix well-known | `curl -s https://home.example.com/.well-known/matrix/server` | JSON pointing at `matrix.home.example.com` |
-| Federation works | A-user DMs `@<b-user>:home.b.example` from Element X | message delivered both ways |
+| Federation works | **TinyWeb app:** A-user DMs `@<b-user>:home.b.example` | message delivered both ways (*operator:* Element Web or Element X on same accounts) |
 | Federation restricted | try to join `#matrix.org:matrix.org` (or invite from a stranger's server) | refused (`M_FORBIDDEN` / never syncs) |
-| E2EE off | create a family room | no encryption shield; module rejects enabling encryption |
+| E2EE | new DM/room from TinyWeb app | encrypted; module allows `m.room.encryption` |
 | Kid policy | kid (in `kids`) tries a room invite outside the allowlist | blocked by `tinywebstack_family` module |
 | Dashboard | kid logs in at `/family/` | 403/SSO-denied (parents perm only); parent sees home |
-| Location | kid's OwnTracks app publishes to `https://owntracks.home.example.com/recorder/pub` (htpasswd issued by dashboard) | parent sees the trace on the map; kid does **not** get the web UI |
+| Location | **TinyWeb app** on kid publishes to `https://owntracks.home.example.com/recorder/pub` (credentials from enrollment) | parent sees the trace in app and on dashboard map; kid does **not** get the Recorder web UI |
 | CalDAV | `curl -u kid1 -X PROPFIND https://nextcloud.home.example.com/nextcloud/remote.php/dav/principals/users/kid1/` | `207`, calendar homes listed |
 | Mobilizon portal | `curl -sI https://mobilizon.home.example.com/.well-known/nodeinfo` | `200` JSON, no SSO redirect |
 | Cert hygiene | §5.4 greps | no `federation_verify_certificates: false`, `TWS_LAB_TLS_INSECURE=0` |
@@ -698,7 +695,7 @@ Test restore quarterly; an untested backup is not a backup.
 | Cross-household DM silently fails | federation allowlist missing, snippet's `ip_range_whitelist` left at lab `192.168.122.0/24`, or cert verification issue | §7 (both fixes), `journalctl -u synapse -e` on both nodes |
 | Mobilizon sync `Bad credentials` | admin email/password mismatch | admin is `${YUNOHOST_ADMIN_USER}@<main>` with `YUNOHOST_ADMIN_PASSWORD_<NODE>`; or export `MOBILIZON_ADMIN_PASSWORD` |
 | Kid sees the location web UI | `family-groups.sh` not re-run after manual app install | re-run it; check `yunohost user permission list` |
-| OwnTracks app gets 401 on publish | kid htpasswd not issued | dashboard OwnTracks page (uses `family-dashboard-privileged.sh owntracks-issue`), or issue via SSH |
+| Kid location publish 401 | Recorder credentials missing or revoked | re-enroll **TinyWeb app** or dashboard location setup (`family-dashboard-privileged.sh owntracks-issue`); *operator:* standalone OwnTracks app with same htpasswd |
 | Password too short errors | YunoHost ≥8-char policy | regenerate that key in `passwords.env` (delete key, re-run `ensure-node-secrets.sh`) |
 | `sudo yunohost domain cert renew` says "not issued by Let's Encrypt" | domain still on self-signed | you skipped §3 for that name |
 | Everything fine but federation dropped after cert expiry | LE renewal failed silently | `sudo yunohost domain cert status`; renew manually (`yunohost domain cert renew <d>`) |

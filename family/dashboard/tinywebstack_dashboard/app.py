@@ -179,7 +179,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         data = load_policy(policy_path)
         data = sync_kids_from_usernames(data, kids, server)
         set_parent_mxids(data, parents, server)
-        data.setdefault("reject_encryption", True)
+        data.setdefault("reject_encryption", False)
         data.setdefault("trusted_domains", data.get("trusted_domains") or [])
         return data
 

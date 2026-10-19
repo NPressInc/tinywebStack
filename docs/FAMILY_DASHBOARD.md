@@ -29,7 +29,7 @@ After install: `https://<main-domain>/family/` (proxied to `127.0.0.1:8765`).
 Parents see (plain language):
 
 - **Family members** — add/remove parents and children, reset passwords, see chat (Matrix) status
-- **Location phone setup** — QR code for OwnTracks on each child’s phone; map link for parents only
+- **Location phone setup** — enroll the **TinyWeb app** on each child’s phone (location publishes in-app); map link for parents only
 - **Household invite** — create or redeem one-time links ([FAMILY_INVITE.md](FAMILY_INVITE.md))
 - Per-child **contacts & quiet hours** (allowlists, bedtime rules)
 
@@ -65,13 +65,13 @@ To show “active / not signed in yet” from the Synapse Admin API, place a bea
 
 Dashboard SSO permissions are created on the **Synapse app** (e.g. `synapse.family_dashboard`, `synapse.family_public`), not `core_family.*`. Match `TWS_DASHBOARD_PERM` / `TWS_DASHBOARD_PUB_PERM` in `dashboard.env`.
 
-If the file is empty, the dashboard still works; chat status copy explains that the child should open Element once.
+If the file is empty, the dashboard still works; chat status copy explains that the child should sign in on the **TinyWeb app** once.
 
-## OwnTracks on a child’s phone
+## Location on a child’s phone
 
-Use **Family members → child → Location phone setup** to generate a **QR code** (HTTP mode). Parents open the map at the location URL; children do not get the web map tile (`family-groups.sh`).
+Use **Family members → child → Location phone setup** (or **Set up the TinyWeb app**) to enroll the **TinyWeb app**; background location publishes to the Recorder endpoint with credentials from enrollment. Parents open the map in the app or at the location URL; children do not get the web map tile (`family-groups.sh`).
 
-Manual fallback: [OwnTracks app](https://owntracks.org/) HTTP mode using credentials from `/etc/tinywebstack/owntracks-kids.json` (root-only; use dashboard QR instead).
+**Operator / advanced fallback only (not for families):** the standalone [OwnTracks app](https://owntracks.org/) in HTTP mode with credentials from `/etc/tinywebstack/owntracks-kids.json` (root-only) — use only when debugging Recorder publish outside the TinyWeb app.
 
 ## Tests
 

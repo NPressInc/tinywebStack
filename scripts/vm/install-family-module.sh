@@ -139,12 +139,68 @@ else
   "server_name": "${SERVER}",
   "parent_mxids": [],
   "trusted_domains": [],
-  "reject_encryption": true,
+  "reject_encryption": false,
   "kids": {}
 }
 EOF
     log "Created empty policy at ${POLICY_PATH}"
   fi
+  tws_state_shared_file "$POLICY_PATH"
+fi
+
+# Stage 1 E2EE: legacy installs had reject_encryption: true in policy JSON.
+migrate_policy_reject_encryption() {
+  local path="$1"
+  [[ -f "$path" ]] || return 0
+  local dry_flag="0"
+  dry_run_is_active && dry_flag="1"
+  "$VENV_PY" - "$path" "$dry_flag" <<'PY' || die "Could not migrate reject_encryption in ${path}"
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+dry = sys.argv[2] == "1"
+raw = json.loads(path.read_text(encoding="utf-8"))
+if not isinstance(raw, dict):
+    sys.exit(0)
+if raw.get("reject_encryption") is not True:
+    sys.exit(0)
+raw["reject_encryption"] = False
+if dry:
+    print(f"DRY_RUN: would set reject_encryption=false in {path}")
+    sys.exit(0)
+tmp = path.with_suffix(path.suffix + ".tmp")
+tmp.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+tmp.replace(path)
+print(f"Migrated reject_encryption to false in {path}")
+PY
+}
+
+if ! dry_run_is_active; then
+  VENV_PY="${PIP%/*}/python"
+  [[ -x "$VENV_PY" ]] || VENV_PY="python3"
+else
+  VENV_PY="python3"
+fi
+migrate_policy_reject_encryption "$POLICY_PATH"
+# The SQLite permission store (F1.3) keeps its own copy of reject_encryption in meta.
+if [[ -f "$PERMS_DB" ]]; then
+  if dry_run_is_active; then
+    log "DRY_RUN: would set reject_encryption=false in ${PERMS_DB} meta if true"
+  else
+    "$VENV_PY" - "$PERMS_DB" <<'PY' || die "Could not migrate reject_encryption in ${PERMS_DB}"
+import sys
+from tinywebstack_permissions.store import PermissionsDB
+
+db = PermissionsDB(sys.argv[1])
+if db.reject_encryption:
+    db.reject_encryption = False
+    print(f"Migrated reject_encryption to false in {sys.argv[1]}")
+PY
+  fi
+fi
+if ! dry_run_is_active && [[ -f "$POLICY_PATH" ]]; then
   tws_state_shared_file "$POLICY_PATH"
 fi
 
@@ -192,10 +248,9 @@ modules:
     config:
       policy_path: ${POLICY_PATH}
       permissions_db: ${PERMS_DB}
-      reject_encryption: true
       login_ticket_secret_file: ${LOGIN_TICKET_SECRET}
 
-encryption_enabled_by_default_for_room_type: \"off\"
+encryption_enabled_by_default_for_room_type: \"all\"
 "
 
 if dry_run_is_active; then

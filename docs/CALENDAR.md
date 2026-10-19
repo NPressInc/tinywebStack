@@ -1,6 +1,6 @@
 # Family calendars (Nextcloud Calendar)
 
-v1 uses **Nextcloud Calendar** on each home server with **CalDAV** clients on phones (DAVx5 on Android, Apple Calendar on iOS). The Nextcloud web UI is **not** part of the parent story — the **TinyWeb family dashboard** stays the only web UI families need day to day.
+v1 uses **Nextcloud Calendar** on each home server as the CalDAV backend. Families read and edit calendars in the **TinyWeb app** (Stage 1). The Nextcloud web UI is **not** part of the parent story — the **TinyWeb family dashboard** stays the only web UI families need day to day.
 
 Install flow (lab or production node):
 
@@ -12,7 +12,7 @@ Install flow (lab or production node):
 
 YunoHost **`visitors`** on `nextcloud.main` lets nginx pass traffic to Nextcloud for **Basic-auth CalDAV** (`/nextcloud/remote.php/dav`, `/.well-known/caldav`) without an SSOwat session cookie. That also means anyone who knows the URL can open **Nextcloud’s own login page** at `/nextcloud/login` (LDAP passwords still required; YunoHost/Nextcloud brute-force protection applies).
 
-We accept this trade-off for v1 phone clients. The **TinyWeb dashboard** remains the family-facing UI; the Nextcloud portal tile stays hidden. A tighter follow-up is to restrict `visitors` to DAV/well-known paths only if YunoHost’s per-URL permission model allows it, while keeping the full web UI behind SSO for browsers.
+We accept this trade-off so the TinyWeb app (and optional admin CalDAV clients) can sync without a portal SSO cookie. The **TinyWeb app** and dashboard remain the family-facing surfaces; the Nextcloud portal tile stays hidden. A tighter follow-up is to restrict `visitors` to DAV/well-known paths only if YunoHost’s per-URL permission model allows it, while keeping the full web UI behind SSO for browsers.
 
 CalDAV base URL (default path):
 
@@ -43,7 +43,7 @@ Group `family-<node>` is created automatically (e.g. `family-family-a` on the `f
 
 \*Nextcloud calendar ACLs are **calendar-level**, not per-event kid allowlists. Parents should use the **Parents** calendar for sensitive plans. Finer kid rules match the Matrix allowlist story and are **not enforced in Nextcloud v1** — see gaps below.
 
-†Invites between users on the **same** home server use CalDAV/iTIP (accept/decline in DAVx5 or iOS). Email (iMIP) delivery depends on server mail configuration and is **not** required for v1 lab tests.
+†Invites between users on the **same** home server use CalDAV/iTIP (accept/decline in the **TinyWeb app**). Email (iMIP) delivery depends on server mail configuration and is **not** required for v1 lab tests.
 
 ### Cross-household (linked families)
 
@@ -54,20 +54,28 @@ Group `family-<node>` is created automatically (e.g. `family-family-a` on the `f
 | Invite `@friend:other.family.test` to an event | **Follow-up** — requires federated Nextcloud calendar sharing or iMIP email between domains |
 | Two home servers (`family-a` / `family-b`) | Install calendar on both; use Matrix for coordination until federated calendar is productized |
 
-## Mobile setup
+## Mobile setup (families)
+
+1. Enroll the **TinyWeb app** on each phone ([TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md)); CalDAV credentials are issued at enrollment.
+2. Open the **Calendar** tab in the app; shared **Family**, **Personal**, and role calendars appear per the table above.
+3. Parents use **Family home → Phone calendars** on the dashboard for setup text and QR when helping a member enroll.
+
+## Advanced / admin fallback (CalDAV clients)
+
+For operators debugging Nextcloud without the app, or power users who explicitly want a native CalDAV client:
 
 ### Android (DAVx5)
 
 1. Install [DAVx5](https://www.davx5.com/).
 2. Add account → **Login with URL and user name**.
-3. Base URL: CalDAV root above; user: your YunoHost username; password: your family password (parents reset kid passwords from the dashboard).
+3. Base URL: CalDAV root above; user: your YunoHost username; password: app password from enrollment or the dashboard CalDAV page.
 4. Enable sync for **Family**, **Personal**, and other shared calendars offered.
 
-### iOS
+### iOS (Apple Calendar)
 
 1. Settings → Calendar → Accounts → Add Account → **Other** → **Add CalDAV Account**.
 2. Server: `nextcloud.YOUR.MAIN.DOMAIN`; use Advanced → Account URL ending in `/remote.php/dav/principals/users/USERNAME/` if needed.
-3. Username / password: YunoHost SSO credentials.
+3. Username / password: YunoHost credentials or per-device app password.
 
 ## Lab verification (spark)
 

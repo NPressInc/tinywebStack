@@ -82,7 +82,7 @@ def _legacy_policy_dict() -> dict:
         "server_name": SERVER,
         "parent_mxids": [PARENT],
         "trusted_domains": ["family-b.test"],
-        "reject_encryption": True,
+        "reject_encryption": False,
         "kids": {
             KID: {
                 "allowlist_mxids": [FRIEND],
@@ -96,7 +96,7 @@ def _legacy_policy_dict() -> dict:
 def _make_module(policy_file, db_file=None):
     from tinywebstack_family.module import FamilySpamCheckerModule
 
-    config = {"policy_path": str(policy_file), "reject_encryption": True}
+    config = {"policy_path": str(policy_file)}
     if db_file is not None:
         config["permissions_db"] = str(db_file)
     api = MockApi(members={})
@@ -264,7 +264,7 @@ def test_db_verdicts_match_legacy_json_verdicts(tmp_path, legacy):
     assert a["kid_join"] is NOT_SPAM
     assert a["adult_join"] is NOT_SPAM
     assert a["kid_message"] is NOT_SPAM
-    assert a["encryption"] == (False,)
+    assert a["encryption"] == (True,)
 
 
 def test_db_quiet_hours_blocks_kid(tmp_path, legacy):

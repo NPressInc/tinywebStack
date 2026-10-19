@@ -2,9 +2,9 @@
 
 tinywebStack uses **[Mobilizon](https://joinmobilizon.org/)** from the YunoHost catalog as the family **events** app: groups, invites, and RSVPs (roughly “Facebook Events” for self-hosted homes). The portal tile is labeled **Events** (TinyWeb stack, not YunoHost branding).
 
-**Product decision (2026):** Keep Mobilizon **with cross-family federation** on trusted homes. **Event pages, profiles, and ActivityPub objects are intentionally reachable without portal login** on `mobilizon.federation` URL paths — SSOwat cannot distinguish a browser from a federated peer. **Default new events to `PUBLIC`** (Mobilizon’s web UI default): federated copies on trusted homes need a visibility that actually replicates over ActivityPub; lab retest showed **`UNLISTED` did not reach linked families** while **`PUBLIC` did within seconds**. Parents who want less local listing can still pick other visibilities in Mobilizon when creating an event.
+**Product decision (2026):** Keep Mobilizon **with cross-family federation** on trusted homes. **Event pages, profiles, and ActivityPub objects are intentionally reachable without portal login** on `mobilizon.federation` URL paths — SSOwat cannot distinguish a browser from a federated peer. **Default new events to `PUBLIC`** (Mobilizon’s web UI default for operators): federated copies on trusted homes need a visibility that actually replicates over ActivityPub; lab retest showed **`UNLISTED` did not reach linked families** while **`PUBLIC` did within seconds**. Families create and RSVP in the **TinyWeb app**; advanced visibility tweaks may still use the Mobilizon web UI (admin/operator only).
 
-**Authentication:** YunoHost SSO opens the Mobilizon web UI, but Mobilizon performs a **second LDAP login** (same email/password as the YunoHost user). There is no OIDC/SSO token pass-through in the catalog app today. The family dashboard notes this next to **open events**. LDAP login is restricted to members of the **`events-users`** group (parents, federation-test, enabled kids, `twsowner`); toggled-off kids are removed from that group and cannot authenticate via `/api` even though federation URLs stay public.
+**Authentication:** The **TinyWeb app** uses Mobilizon **GraphQL** with tokens from enrollment (or password login at enroll time). The Mobilizon **web UI** (YunoHost SSO tile + second LDAP login) is for **installers and operators**, not the family day-to-day path. LDAP login is restricted to members of the **`events-users`** group (parents, federation-test, enabled kids, `twsowner`); toggled-off kids are removed from that group and cannot authenticate via `/api` even though federation URLs stay public.
 
 **Lab architecture:** one Mobilizon instance per family node at `mobilizon.<main-domain>` (see [test-nodes.md](test-nodes.md)). The catalog package supports **arm64** (spark VMs) and amd64.
 
@@ -12,7 +12,7 @@ tinywebStack uses **[Mobilizon](https://joinmobilizon.org/)** from the YunoHost 
 
 | Action | Parents | Kids (events enabled) | Kids (events disabled) | Federation-test group | Visitors / public |
 |--------|---------|------------------------|-------------------------|----------------------|-------------------|
-| Open Mobilizon UI (`mobilizon.main`) | Yes | Yes (per-user grant) | **No** (SSO redirect) | Yes (lab) | No |
+| Open Mobilizon web UI (`mobilizon.main`) — **admin/operator** | Yes | Yes (per-user grant) | **No** (SSO redirect) | Yes (lab) | No |
 | ActivityPub + public pages (`mobilizon.federation`) | — | — | — | — | **Yes** |
 | LDAP / GraphQL login (`events-users` + `/api`) | Yes | Yes | **No** | Yes | No* |
 | Create groups / org-wide admin | Yes (Mobilizon + **`twsowner`**) | No | No | — | No |
@@ -51,4 +51,4 @@ Mobilizon’s Elixir client uses **bundled** CA files, not only system trust. On
 
 ## Dashboard
 
-Parents use **Family home → open events** (`TWS_EVENTS_URL`). Expect one Mobilizon LDAP sign-in with the same credentials as YunoHost. Child **Chat rules → Events** updates policy and runs `family-events-perms.sh`.
+Families use the **Events** tab in the **TinyWeb app** (GraphQL). On the dashboard, parents use **Family home → open events** (`TWS_EVENTS_URL`) only when **debugging Mobilizon** (expect a second LDAP sign-in). Child **Chat rules → Events** updates policy and runs `family-events-perms.sh`.

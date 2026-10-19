@@ -4,10 +4,10 @@ This document breaks down the **family layer** described in [PLAN.md](../PLAN.md
 
 **Current lab state** (see [test-nodes.md](test-nodes.md), PRs #14–#25):
 
-- Two YunoHost nodes (`family-a`, `family-b`) with Synapse, Element, OwnTracks (default; `LOCATION_APP=traccar` for fallback), Nextcloud CalDAV, and Mobilizon events.
+- Two YunoHost nodes (`family-a`, `family-b`) with Synapse, OwnTracks Recorder (default; `LOCATION_APP=traccar` for fallback), Nextcloud CalDAV, and Mobilizon events. Element Web remains for **operator/lab** Matrix debugging; families use the **TinyWeb app**.
 - Matrix federation works **pairwise** with `federation_domain_whitelist`; `matrix.org` is rejected in e2e checks.
 - Test users (`alice`, `bob`, `parent`, `kid`) are created via `yunohost user create`.
-- **Built and shipped:** family groups (`parents` / `kids` / `federation-test`, `family-groups.sh`), kid provisioning via the family dashboard + privileged helper (`family-dashboard-privileged.sh`), the `tinywebstack_family` Synapse module (per-kid contact allowlists, 3PID-invite denial, quiet hours, E2EE rejection), location permissions (web UI parents-only), and the parent-facing dashboard at `https://<main>/family/` ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
+- **Built and shipped:** family groups (`parents` / `kids` / `federation-test`, `family-groups.sh`), kid provisioning via the family dashboard + privileged helper (`family-dashboard-privileged.sh`), the `tinywebstack_family` Synapse module (per-kid contact allowlists, 3PID-invite denial, quiet hours; E2EE allowed and on by default since Stage 1), location permissions (web UI parents-only), and the parent-facing dashboard at `https://<main>/family/` ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
 - Production install path documented in [production-setup.md](production-setup.md) (S5.2); remaining script gaps listed there under "Known gaps for v1.1".
 
 **Explicitly out of scope (v1):** Android ROM lockdown; centralized cross-family server. (Production TLS is now covered by [production-setup.md](production-setup.md) — the lab uses a private CA.)
@@ -61,8 +61,8 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 |----|---------|-------------------|------------------------|--------------|-------------------|------------|-------|-----|
 | F1.1 | **Canonical group model** | Parents manage who is in the household; kids get only kid-appropriate apps. | YunoHost groups + permission matrix | Convention + automation for `parents`, `kids`, optional `family-<slug>` | Shell script or small Python CLI: create groups, document naming; idempotent `yunohost user group create` | YunoHost postinstall | 1 | **Must** |
 | F1.2 | **Create kid account** | Parent adds a child without giving them admin rights. | `yunohost user create`; Synapse user via SSO | **Dashboard** “Add family member” (+ sudo helper) or lab script `create-family-test-users.sh` | F1.1 | 2 | **Must** |
-| F1.3 | **App permissions by role** | Kid sees Element + location; not Traccar admin or YunoHost admin. | `yunohost user permission update` per app | Map role → permission set (remove `all_users` where too broad; grant `kids` / `parents`) | Declarative YAML consumed by apply script | F1.1, apps installed | 3 | **Must** |
-| F1.4 | **Matrix identity alignment** | Kid logs into Element as `@kid:family.domain`. | Synapse `server_name` = main domain ([yunohost-family-apps.sh](../scripts/vm/yunohost-family-apps.sh)); SSO | Ensure LDAP/SSO user matches localpart; document password reset flow | YunoHost + Synapse app docs; optional admin API check script | F1.2 | 3 | **Must** |
+| F1.3 | **App permissions by role** | Kid uses TinyWeb app (chat, calendar, events, location publish); not Traccar admin or YunoHost admin. | `yunohost user permission update` per app | Map role → permission set (remove `all_users` where too broad; grant `kids` / `parents`) | Declarative YAML consumed by apply script | F1.1, apps installed | 3 | **Must** |
+| F1.4 | **Matrix identity alignment** | Kid chats as `@kid:family.domain` via the TinyWeb app. | Synapse `server_name` = main domain ([yunohost-family-apps.sh](../scripts/vm/yunohost-family-apps.sh)); SSO | Ensure LDAP/SSO user matches localpart; document password reset flow | YunoHost + Synapse app docs; optional admin API check script | F1.2 | 3 | **Must** |
 | F1.5 | **Parent admin surface (family dashboard)** | **Only** UI non-technical families need; optional YunoHost/Synapse/OwnTracks admin for power users. | YunoHost SSO + LDAP groups | Dashboard: members, passwords, Matrix status, kid allowlists, quiet hours, invites, OwnTracks QR | [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), `family-dashboard-privileged.sh` | F1.2–F1.3 | 6 | **Must** |
 | F1.6 | **Kid credential recovery** | Parent resets forgotten kid password. | `yunohost user update` | Audit log + parent-only command wrapper | Thin CLI calling YunoHost API | F1.2 | 7 | Later |
 
@@ -90,8 +90,8 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 | P3.3 | **Block 3PID invites** | Kid cannot invite via email/phone to bypass allowlist. | `user_may_send_3pid_invite` | Deny for kid role in module | Same module as P3.2 | P3.2 | 5 | **Must** |
 | P3.4 | **Quiet hours / bedtime** | No Matrix traffic late night (server-enforced). | No built-in schedule | Time-based checks in spam checker (timezone-aware, midnight wrap) | `quiet_hours` per kid in `/etc/tinywebstack/family-policy.json` | P3.2 | 5 | **Must** |
 | P3.5 | **Parent visibility (activity summary)** | Parent sees who kid messaged (metadata). | Synapse admin API / room membership | Read-only report script; respect E2EE (content not visible) | Cron + admin token → daily summary | F1.2 | 9 | Later |
-| P3.6 | **Keyword / content filter** | Block specific words in plaintext rooms. | `check_event_for_spam` | Module rules; v1 rooms are **not** E2EE by default | Optional; document limitation | P3.2 | 10 | Later |
-| P3.8 | **E2EE off by default** | Parents can moderate plaintext family rooms. | Synapse room defaults | `encryption_enabled_by_default_for_room_type: off`; reject `m.room.encryption` | `tinywebstack_family` third-party rules + config flag | P3.2 | 5 | **Must** |
+| P3.6 | **Keyword / content filter** | Block specific words in plaintext rooms. | `check_event_for_spam` | Module rules; only works in plaintext rooms, and rooms are **E2EE by default** since Stage 1 | Optional; effectively unavailable while E2EE is on | P3.2 | 10 | Later |
+| P3.8 | **E2EE on by default (reversed in Stage 1)** | Family chat content is private from the server. Allowlists and quiet hours still apply (membership and sender metadata). | Synapse room defaults | `encryption_enabled_by_default_for_room_type: all`; module allows `m.room.encryption` (`reject_encryption` is a legacy opt-in kill-switch, default false) | Parent-key oversight deferred; for now, parents read a kid's chats only on the kid's device | P3.2 | 5 | Done (Stage 1) |
 | P3.9 | **Parent key decrypt (deferred)** | Parent reads kid messages per permission (TinyWebC-style). | — | Crypto + client work | Record only; not in v1 | — | — | **Deferred** |
 | P3.7 | **Screen time on device** | Limit app usage on phone. | — | OS-level | Out of scope per PLAN | — | — | **Out of scope** |
 
@@ -103,7 +103,7 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 
 | ID | Feature | Parent / kid value | Stack already provides | Gap (custom) | Smallest approach | Depends on | Order | v1 |
 |----|---------|-------------------|------------------------|--------------|-------------------|------------|-------|-----|
-| G4.1 | **Kid publishes location (OwnTracks)** | Parent sees kid on map. | OwnTracks Recorder + mobile app (HTTP/MQTT) | Per-user credentials; kid uses app only | Default `LOCATION_APP=owntracks`; [prep-owntracks-apt.sh](../scripts/vm/prep-owntracks-apt.sh) | F1.2 | 4 | **Must** |
+| G4.1 | **Kid publishes location (OwnTracks)** | Parent sees kid on map. | OwnTracks Recorder HTTP publish endpoint | Per-user credentials; **TinyWeb app** background publish (Stage 1) | Default `LOCATION_APP=owntracks`; [prep-owntracks-apt.sh](../scripts/vm/prep-owntracks-apt.sh) | F1.2 | 4 | **Must** |
 | G4.2 | **Parent-only location web** | Parents see all kid traces; kids cannot browse map. | YunoHost app permissions | `family-groups.sh` grants `owntracks.main` to `parents` only | F1.3 | 5 | **Must** |
 | G4.3 | **Trusted adult (other household)** | Godparent sees location if parents approve. | OwnTracks / Traccar ACL | Extra viewer accounts in family config | Extend dashboard later | G4.2, L2.2 | 7 | Later |
 | G4.4 | **Traccar fallback** | Same lab without OwnTracks apt. | Traccar catalog app | `LOCATION_APP=traccar`; existing setup scripts | [yunohost-family-apps.sh](../scripts/vm/yunohost-family-apps.sh) | F1.3 | 4 | **Fallback** |
@@ -128,7 +128,7 @@ Configured via `modules:` in homeserver config. Two relevant extension points:
 ```text
 1. F1.1 → F1.2 → F1.3 → F1.4 → F1.5   (groups, users, permissions, dashboard)
 2. L2.1 (done) → L2.2 → L2.4 (invite)   (federation pair + dashboard invite flow)
-3. P3.1 → P3.2 → P3.3 → P3.4 → P3.8   (Synapse module, allowlists, quiet hours, E2EE off)
+3. P3.1 → P3.2 → P3.3 → P3.4 → P3.8   (Synapse module, allowlists, quiet hours, E2EE policy; now E2EE on)
 4. G4.1 → G4.5 → G4.2                 (OwnTracks default + parent-only web)
 5. S5.3 → S5.4 → S5.2                 (orchestrator + packaging + runbook)
 ```
@@ -142,10 +142,10 @@ Parallel work: **P3.*** (Synapse) and **G4.*** (OwnTracks) can proceed independe
 Components on each node:
 
 - **Policy store:** `/etc/tinywebstack/family-policy.json` — kid MXIDs, allowlists, quiet hours, trusted domains, parent MXIDs (written by the dashboard).
-- **Synapse:** `tinywebstack_family` module — spam checker + encryption rejection ([FAMILY_MODULE.md](FAMILY_MODULE.md)).
+- **Synapse:** `tinywebstack_family` module — spam checker (allowlists, quiet hours), E2EE allowed and on by default ([FAMILY_MODULE.md](FAMILY_MODULE.md)).
 - **Dashboard:** FastAPI app at `/family/` — parents group via SSO ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
 - **VM scripts:** `family-groups.sh`, `install-family-module.sh`, `install-family-dashboard.sh`, `family-init.sh`.
-- **Clients (v1):** **Element X** (and Element Android/iOS) for chat; **OwnTracks** app for location. Element Web may remain for admins; not the kid client. **Direction:** a single **TinyWeb** mobile app will subsume these in stages — see [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md); Element X + OwnTracks stay v1 until the app plan lands.
+- **Clients (families):** **TinyWeb app** (iOS/Android) + **parent dashboard** (`/family/`). Backends stay Synapse, OwnTracks Recorder, Nextcloud, Mobilizon. **Operator/lab only:** Element Web at `element.<domain>`, curl, or legacy third-party clients — see [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) and [PHILOSOPHY.md](PHILOSOPHY.md) §5c.
 - **Parent UX:** The dashboard is the **only** required web UI for families; backend admin panels are optional ([PHILOSOPHY.md](PHILOSOPHY.md) §5b).
 - **No centralized cloud** in v1.
 
@@ -155,11 +155,11 @@ Components on each node:
 
 William Floyd confirmed:
 
-1. **Kid Matrix clients:** Target **mobile apps** (Element X / Element Android/iOS), not Element Web as the kid client. **Updated direction:** one **TinyWeb** app (staged rollout in [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md)); Element X remains the v1 chat client until in-app Matrix ships.
+1. **Family clients:** **TinyWeb app** for kids and parents; **parent dashboard** for provisioning. Element Web / Element X are **operator testing** tools, not the family path ([TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) Stage 1 in-app chat).
 2. **Parent vs admin:** **Family dashboard** for parents; parent Matrix accounts are ordinary **non-admin** Synapse users so spam-checker rules apply. `twsowner` (YunoHost admin) stays separate.
-3. **E2EE:** **Off in v1** — unencrypted family rooms by default; Synapse config + module rejects `m.room.encryption`. **Deferred:** parent-key decrypt scheme (TinyWebC-style).
+3. **E2EE:** **On from Stage 1** (reverses v1 'off'). New rooms and DMs are encrypted (`encryption_enabled_by_default_for_room_type: all`), and the module no longer rejects `m.room.encryption`. Allowlists and quiet hours still work on membership and sender. **Deferred:** a parent-key decrypt scheme (TinyWebC-style); for now, parents read a kid's chats only on the kid's device.
 4. **Cross-household contact:** **Per-kid allowlist** is enough; no reciprocal approval between households.
-5. **Location:** **OwnTracks** (Recorder + app) is the default stack; **Traccar** is fallback only (`LOCATION_APP=traccar`). Kid location visible to **parents only** (web UI permissions).
+5. **Location:** **OwnTracks Recorder** on the box (kid publishes from the **TinyWeb app**); **Traccar** is fallback only (`LOCATION_APP=traccar`). Kid location visible to **parents only** (Recorder web UI permissions + app map).
 6. **OwnTracks install:** Fix unattended install on Debian 12 arm64/amd64 ([prep-owntracks-apt.sh](../scripts/vm/prep-owntracks-apt.sh)) — current signing key + `signed-by`, with `.deb` fallback.
 7. **Linking families:** **Invite flow** in dashboard (one-time code/link, mutual verification, federation allowlist update) replaces manual domain/fingerprint ceremony (PR2).
 8. **Quiet hours:** **Server-enforced** in v1 (per kid, timezone-aware, including midnight wrap).

@@ -1,6 +1,8 @@
 # TinyWeb mobile app plan
 
-**App code:** [`app/`](../app/) (Flutter + `tinyweb_core` Rust crate). **Chat is in-app from Stage 1** (no Element X hand-off).
+**App code:** [`app/`](../app/) (Flutter + `tinyweb_core` Rust crate). **Chat is in-app and end-to-end encrypted from Stage 1** (no Element X hand-off).
+
+**Principle:** Backends stay mature open-source apps (Synapse, OwnTracks Recorder, Nextcloud CalDAV, Mobilizon). The **family frontend is unified**: only the **TinyWeb app** and **parent dashboard** (`/family/`) are required or recommended for families — not Element X, the OwnTracks app, DAVx5, Nextcloud mobile apps, Mobilizon web, or Traccar web.
 
 One **TinyWeb** app (iOS + Android) that talks only to **the family’s own box** — no TinyWeb cloud, no third-party accounts. The existing **parent dashboard** (`/family/`, [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)) stays the admin and provisioning surface; the app is the everyday surface for parents and kids.
 
@@ -28,7 +30,7 @@ Branding follows [tinyweb.win](https://tinyweb.win) and vendored assets in `bran
 **Decision (2026-10-18): Flutter (Dart)**, with `matrix-rust-sdk` reached through a `flutter_rust_bridge` facade. Release builds come from CI. Approved by William after the bridge spike ([spikes/flutter-matrix-bridge/FINDINGS.md](../spikes/flutter-matrix-bridge/FINDINGS.md)).
 
 **Spike results (frb 2.13, matrix-sdk 0.19.1):**
-- Proven from a Dart test against lab Synapse (tws-family-b) and stock Synapse: login, normal sync, native sliding sync (MSC4186), room list, create, send, and receive through a Rust→Dart stream (70–225 ms). E2EE rooms work on stock Synapse; the family module rejects them by design.
+- Proven from a Dart test against lab Synapse (tws-family-b) and stock Synapse: login, normal sync, native sliding sync (MSC4186), room list, create, send, and receive through a Rust→Dart stream (70–225 ms). E2EE rooms work on stock Synapse, and the family module now allows them (Stage 1 is E2EE).
 - The size-optimized Rust `.so` adds about 12 MB uncompressed (about 6 MB download) per ABI.
 - A cold Rust build takes about 85 s, a warm one about 19 s. Codegen takes 30–44 s per API change.
 - **ARM64 build-host constraint:** spark (linux-arm64) can build debug APKs only, using an unofficial arm64 NDK and aapt2. Google ships no linux-arm64 NDK or aapt2, and Flutter ships no linux-arm64 Android `gen_snapshot`. **Release APKs are built on GitHub Actions ubuntu x86_64 runners and iOS on macOS runners** (`.github/workflows/app.yml`). Spark remains the dev and test box.
@@ -61,7 +63,7 @@ Native apps cannot use YunoHost’s **SSOwat cookie** portal flow. Today each ba
 | **Matrix (Synapse)** | Lab/scripts use **`m.login.password`** with YunoHost LDAP password ([`verify-federation-e2e.sh`](../scripts/spark/verify-federation-e2e.sh), [`synapse-admin-token.sh`](../scripts/lib/synapse-admin-token.sh)); Element may also use SSO in browser | App needs **access token + device id** stored on device. |
 | **Nextcloud CalDAV** | **HTTP Basic** with family password; `visitors` on `nextcloud.main` for DAV without SSO cookie ([CALENDAR.md](CALENDAR.md), [`davx5_login_hint()`](../family/dashboard/tinywebstack_dashboard/calendar_setup.py)) | Prefer **per-device app password** minted at enrollment (not shared family password). |
 | **Mobilizon** | Separate **LDAP login** via GraphQL `login` → `accessToken` / `refreshToken`; gated by LDAP group **`events-users`** ([EVENTS.md](EVENTS.md)) | App can call GraphQL with same username/password or enrolled tokens; SSO tile does not help the app. |
-| **OwnTracks Recorder** | Kid **publish**: HTTP POST to `/recorder/pub` with basic auth from `/etc/tinywebstack/owntracks-kids.json` ([`owntracks_setup.py`](../family/dashboard/tinywebstack_dashboard/owntracks_setup.py), nginx in [`install-family-dashboard.sh`](../scripts/vm/install-family-dashboard.sh)); **read**: Recorder web/API behind YunoHost **`owntracks.main`** (parents only — [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) G4.2) | App needs Recorder API credentials or a dashboard proxy for parent map; kids keep publishing (Stage 1: still OwnTracks app). |
+| **OwnTracks Recorder** | Kid **publish**: HTTP POST to `/recorder/pub` with basic auth from enrollment / `/etc/tinywebstack/owntracks-kids.json` ([`owntracks_setup.py`](../family/dashboard/tinywebstack_dashboard/owntracks_setup.py), nginx in [`install-family-dashboard.sh`](../scripts/vm/install-family-dashboard.sh)); **read**: Recorder web/API behind YunoHost **`owntracks.main`** (parents only — [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) G4.2) | **Stage 1:** in-app background publish (OwnTracks JSON); parents read Recorder API or dashboard proxy for map |
 
 ### Dashboard routes today (HTML vs JSON)
 
@@ -106,9 +108,9 @@ Single **provisioning** flow so families sign in once:
 | **Home** | Dashboard bearer + well-known | Status, shortcuts, quiet-hours banner from `GET /permissions/{self}` | Read-only |
 | **Calendar** | CalDAV on `TWS_CALDAV_ROOT` | Month/agenda; shared + personal calendars ([CALENDAR.md](CALENDAR.md)) | Read/write own events; accept/decline iTIP invites |
 | **Events** | Mobilizon **GraphQL** at `mobilizon.<domain>` | List/detail, RSVP; show **PUBLIC** federated events ([EVENTS.md](EVENTS.md)) | Read + RSVP; **create event parents-only** (optional kids in stage 1.1) |
-| **Location** | OwnTracks Recorder **HTTP API** (`/api/0/...`) for parents; publish `POST .../recorder/pub` | Parents: family map read-only; kids: no map | Parents read-only; kids still use **OwnTracks app** to publish |
+| **Location** | OwnTracks Recorder **HTTP API** (`/api/0/...`) for parents; publish `POST .../recorder/pub` | Parents: family map read-only; kids: no map | Parents read-only; kids **publish in-app** (background location, Stage 1) |
 | **Parent controls** | `GET/PUT /family/permissions/{user}`; federation JSON exists | Allowlists, quiet hours, events toggle — mirror dashboard kid edit | Parents: read/write via API; needs JSON for **members / invites** (proposed) |
-| **Chat** | `matrix-rust-sdk` (via `tinyweb_core`, frb) + Synapse | In-app room list, timeline, send, new DM; show `M_FORBIDDEN` from the module as friendly copy; never create encrypted rooms | Read/write (**in-app from Stage 1**) |
+| **Chat** | `matrix-rust-sdk` (via `tinyweb_core`, frb) + Synapse | In-app room list, timeline, send, new DM; show `M_FORBIDDEN` from the module as friendly copy; rooms are created **encrypted**; recovery key / key backup set up at enrollment | Read/write (**in-app from Stage 1**) |
 
 ---
 
@@ -118,7 +120,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Stage 1 — Shell app (“everything” navigation)
 
-**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, CalDAV calendar, Mobilizon events, parent location map, parent controls (permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Encryption stays off (the module rejects `m.room.encryption`, P3.8). Native simplified sliding sync was confirmed on lab Synapse by the spike.
+**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, CalDAV calendar, Mobilizon events, parent location map, **in-app background location publishing** (OwnTracks-format JSON to `/recorder/pub`), parent controls (permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Chat is **end-to-end encrypted**: sqlite crypto store, cross-signing and key backup, with a recovery key shown at enrollment so a new phone can read history. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Native simplified sliding sync was confirmed on lab Synapse by the spike.
 
 | Test | Pass criteria |
 |------|----------------|
@@ -126,7 +128,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | Kid enroll | Kid mode hides map and parent controls |
 | Calendar | Create event on `tws-family`; visible in app; kid sees shared calendar per [verify-calendar-e2e.sh](../scripts/spark/verify-calendar-e2e.sh) semantics |
 | Events | Parent RSVP on federated event; [verify-events-e2e.sh](../scripts/spark/verify-events-e2e.sh) still passes |
-| Location | Parent sees kid trace from Recorder; kid account cannot open map UI |
+| Location | Kid phone publishes via app (no OwnTracks app); parent sees trace from Recorder; kid account cannot open map UI |
 | Chat | Room list and timeline load after enrollment (password or code); a sent message reaches the other member |
 | Parent ↔ kid DM | Message delivered |
 | Allowlist | Kid DM to non-allowlisted MXID fails with user-visible “not allowed” (server `M_FORBIDDEN`) |
@@ -134,19 +136,18 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | Federation DM | Cross-family allowlisted DM per [verify-federation-e2e.sh](../scripts/spark/verify-federation-e2e.sh) |
 | Federation | Trusted-family events still appear; Matrix allowlist unchanged |
 
-### Stage 2 — Calls and background location
+### Stage 2 — Calls
 
-**Deliverables:** Voice/video via **Element Call + LiveKit SFU** on box (MatrixRTC); in-app background location publishing (replaces OwnTracks app).
+**Deliverables:** Voice/video via **Element Call + LiveKit SFU** on box (MatrixRTC).
 
 | Test | Pass criteria |
 |------|----------------|
 | Call | Parent and kid complete 1:1 call on LAN/lab TLS |
-| Location | Kid phone publishes without OwnTracks app; parent map updates |
 
 ### Later
 
 - Media (**Jellyfin**, **Immich**) from [PLAN.md](../PLAN.md).
-- Revisit **E2EE** vs parental moderation ([FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) P3.8).
+- **Parent-key oversight** for kids' encrypted rooms ([FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) P3.8, deferred).
 
 ---
 
@@ -216,7 +217,7 @@ Same binary; **mode from LDAP groups** at enrollment (`parents` vs `kids` — `T
 | **iOS push** | APNs **approved** (content-free payloads). Key and cert lifecycle still to handle. |
 | **Mobilizon PUBLIC default** | Federated event titles visible on public URLs — app UI should not surprise parents ([EVENTS.md](EVENTS.md)). |
 | **In-app chat scope** | Stage 1 chat is text only (no media, reactions, threads or calls). Room list and timeline come from a hand-written facade over `matrix-sdk`; move to `matrix-sdk-ui` (Timeline/RoomListService) as features grow. |
-| **E2EE** | Still **off** in v1 module; in-app chat must not enable encrypted rooms by default. |
+| **E2EE** | **On** from Stage 1. Risks: a lost recovery key means old messages are lost on a new phone; parents can't see content off the kid's device; server-side content filters (P3.6) can't work in encrypted rooms. Interactive SAS verification of other people is deferred. |
 | **Box addressing** | QR `https://<main-domain>`; confirm `/.well-known/tinywebstack-family.json` fields match Matrix client discovery (`matrix_server` in [`app.py`](../family/dashboard/tinywebstack_dashboard/app.py)). |
 | **OwnTracks Recorder API** | Exact read endpoints and auth for app proxy — confirm against Recorder version shipped on YunoHost. |
 | **Enrollment security** | Rate limits, lockout, and audit log for enroll and revoke. |
