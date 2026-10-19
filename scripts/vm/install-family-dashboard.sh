@@ -112,6 +112,7 @@ TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
 TWS_OWNTRACKS_HTPASSWD=/etc/tinywebstack/owntracks-recorder.htpasswd
 TWS_SYNAPSE_ADMIN_TOKEN_FILE=/etc/tinywebstack/synapse-admin-token
 TWS_PERMISSIONS_DB=/etc/tinywebstack/permissions.db
+TWS_APP_DEVICES_DB=/etc/tinywebstack/app-devices.db
 TW_NODES_CONF=${TW_NODES_CONF:-/opt/tinywebstack/config/nodes.conf}
 TWS_DASHBOARD_PERM=${DASH_PERM}
 TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}
@@ -153,9 +154,14 @@ else
   grep -q '^TWS_CALDAV_ROOT=' "$CSRF_FILE" \
     && sed -i "s|^TWS_CALDAV_ROOT=.*|TWS_CALDAV_ROOT=${CALDAV_ROOT}|" "$CSRF_FILE" \
     || printf 'TWS_CALDAV_ROOT=%s\n' "$CALDAV_ROOT" >>"$CSRF_FILE"
+  grep -q '^TWS_APP_DEVICES_DB=' "$CSRF_FILE" \
+    || printf 'TWS_APP_DEVICES_DB=/etc/tinywebstack/app-devices.db\n' >>"$CSRF_FILE"
 fi
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack
+touch /etc/tinywebstack/app-devices.db
+chown www-data:www-data /etc/tinywebstack/app-devices.db
+chmod 600 /etc/tinywebstack/app-devices.db
 touch /etc/tinywebstack/synapse-admin-token
 chown root:www-data /etc/tinywebstack/synapse-admin-token
 provision_synapse_admin_token "$MAIN_DOMAIN" /etc/tinywebstack/synapse-admin-token || true
@@ -250,6 +256,24 @@ location /family/api/invite/verify {
     proxy_pass http://127.0.0.1:8765/api/invite/verify;
     proxy_set_header Host \$host;
     proxy_set_header Remote-User "";
+    proxy_set_header YNH_USER "";
+}
+location /family/api/app/enroll {
+    proxy_pass http://127.0.0.1:8765/api/app/enroll;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Remote-User "";
+    proxy_set_header YNH_USER "";
+}
+location /family/api/ {
+    proxy_pass http://127.0.0.1:8765/api/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Remote-User "";
+    proxy_set_header YNH_USER "";
 }
 location /family/ {
     proxy_pass http://127.0.0.1:8765/;

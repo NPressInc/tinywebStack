@@ -59,6 +59,9 @@ Usage:
   family-dashboard-privileged.sh list-users
   family-dashboard-privileged.sh synapse-user-status LOCALPART SERVER_NAME
   family-dashboard-privileged.sh owntracks-issue USER MAIN_DOMAIN LOCATION_DOMAIN
+  family-dashboard-privileged.sh nextcloud-app-password USER NAME
+  family-dashboard-privileged.sh nextcloud-app-password-delete USER TOKEN_ID
+  family-dashboard-privileged.sh matrix-device-delete USER SERVER_NAME DEVICE_ID
 EOF
   exit 1
 }
@@ -88,6 +91,10 @@ read_secret() {
 
 valid_username() {
   [[ "$1" =~ ^[a-z0-9][a-z0-9_-]{1,30}$ ]]
+}
+
+valid_resource_name() {
+  [[ "$1" =~ ^[A-Za-z0-9._[:space:]-]{1,64}$ ]]
 }
 
 user_exists() {
@@ -317,6 +324,68 @@ p.chmod(0o640)
 PY
     chown root:www-data "$STORE"
     printf 'OK user=%s device=%s password=%s url=%s tid=%s\n' "$USER" "$DEV_ID" "$PASS" "$PUB_URL" "${USER:0:2}"
+    ;;
+
+  nextcloud-app-password)
+    [[ $# -eq 2 ]] || usage
+    USER=$1
+    NAME=$2
+    valid_username "$USER" || die "Invalid username"
+    valid_resource_name "$NAME" || die "Invalid token name"
+    # shellcheck source=scripts/lib/nextcloud-occ.sh
+    source "${TW_STACK_ROOT}/lib/nextcloud-occ.sh"
+    OCC="$(nextcloud_occ_path)" || die "Nextcloud occ not found"
+    NC_USER="$(nextcloud_occ_user "$OCC")"
+    OUT="$(sudo -u "$NC_USER" php "$OCC" user:auth-tokens:add -n --name="$NAME" "$USER" 2>&1)" || die "occ user:auth-tokens:add failed"
+    PASS="$(printf '%s\n' "$OUT" | awk '/^app password:$/{getline; print; exit}')"
+    [[ -n "$PASS" ]] || die "Could not parse app password from occ output"
+    LIST="$(sudo -u "$NC_USER" php "$OCC" user:auth-tokens:list "$USER" --output=json)"
+    TOKEN_ID="$(NAME="$NAME" LIST="$LIST" python3 <<'PY'
+import json, os, sys
+name = os.environ["NAME"]
+items = json.loads(os.environ["LIST"])
+ids = [int(i["id"]) for i in items if i.get("name") == name]
+if not ids:
+    sys.exit(1)
+print(max(ids))
+PY
+)" || die "Could not find new auth token id"
+    printf 'OK user=%s password=%s name=%s token_id=%s\n' "$USER" "$PASS" "$NAME" "$TOKEN_ID"
+    ;;
+
+  nextcloud-app-password-delete)
+    [[ $# -eq 2 ]] || usage
+    USER=$1
+    TOKEN_ID=$2
+    valid_username "$USER" || die "Invalid username"
+    [[ "$TOKEN_ID" =~ ^[0-9]+$ ]] || die "TOKEN_ID must be numeric"
+    # shellcheck source=scripts/lib/nextcloud-occ.sh
+    source "${TW_STACK_ROOT}/lib/nextcloud-occ.sh"
+    OCC="$(nextcloud_occ_path)" || die "Nextcloud occ not found"
+    NC_USER="$(nextcloud_occ_user "$OCC")"
+    sudo -u "$NC_USER" php "$OCC" user:auth-tokens:delete "$USER" "$TOKEN_ID" || die "occ user:auth-tokens:delete failed"
+    printf 'OK deleted=%s token_id=%s\n' "$USER" "$TOKEN_ID"
+    ;;
+
+  matrix-device-delete)
+    [[ $# -eq 3 ]] || usage
+    USER=$1
+    SERVER=$2
+    DEVICE_ID=$3
+    valid_username "$USER" || die "Invalid username"
+    valid_resource_name "$DEVICE_ID" || die "Invalid device id"
+    MXID="@${USER}:${SERVER}"
+    [[ -s "$SYNAPSE_TOKEN_FILE" ]] || die "Synapse admin token missing"
+    TOKEN="$(tr -d '\n' < "$SYNAPSE_TOKEN_FILE")"
+    HOST="$(matrix_public_host "$SERVER")"
+    ENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$MXID")"
+    DENC="$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=''))" "$DEVICE_ID")"
+    URL="https://${HOST}/_synapse/admin/v2/users/${ENC}/devices/${DENC}"
+    synapse_curl_opts
+    curl "${SYNAPSE_CURL_OPTS[@]}" -X DELETE \
+      -H "Authorization: Bearer ${TOKEN}" -H "Content-Type: application/json" \
+      "$URL" || die "Synapse device delete failed"
+    printf 'OK user=%s device=%s\n' "$USER" "$DEVICE_ID"
     ;;
 
   *)

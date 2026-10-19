@@ -12,12 +12,20 @@ def _family_permission_urls(main_domain: str | None) -> tuple[str, str, list[str
         return (
             f"{main_domain}/family",
             f"{main_domain}/family/api/invite/verify",
-            [f"{main_domain}/.well-known/tinywebstack-family.json"],
+            [
+                f"{main_domain}/.well-known/tinywebstack-family.json",
+                f"{main_domain}/family/api/app/enroll",
+                f"{main_domain}/family/api/",
+            ],
         )
     return (
         "/family",
         "/family/api/invite/verify",
-        ["/.well-known/tinywebstack-family.json"],
+        [
+            "/.well-known/tinywebstack-family.json",
+            "/family/api/app/enroll",
+            "/family/api/",
+        ],
     )
 
 

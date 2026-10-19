@@ -61,6 +61,13 @@ def run_helper(*args: str, stdin: str | None = None) -> str:
                 "TWS_DASHBOARD_MOCK_LIST_USERS",
                 '{"users": {}}',
             )
+        if args and args[0] == "nextcloud-app-password":
+            user, name = args[1], args[2]
+            return f"OK user={user} password=mock-nc-pass name={name} token_id=42"
+        if args and args[0] == "nextcloud-app-password-delete":
+            return f"OK deleted={args[1]} token_id={args[2]}"
+        if args and args[0] == "matrix-device-delete":
+            return f"OK mock {' '.join(args)}"
         return f"OK mock {' '.join(args)}"
     try:
         proc = subprocess.run(
@@ -110,3 +117,35 @@ def issue_owntracks(user: str, main_domain: str, location_domain: str) -> dict[s
             k, v = token.split("=", 1)
             parts[k] = v
     return parts
+
+
+_NAME_RE = re.compile(r"^[A-Za-z0-9._ -]{1,64}$")
+
+
+def _valid_resource_name(name: str) -> str:
+    n = name.strip()
+    if not _NAME_RE.match(n):
+        raise ValueError("Invalid name")
+    return n
+
+
+def nextcloud_app_password(user: str, name: str) -> dict[str, str]:
+    uname = validate_username(user)
+    n = _valid_resource_name(name)
+    line = run_helper("nextcloud-app-password", uname, n)
+    return parse_helper_line(line)
+
+
+def nextcloud_app_password_delete(user: str, token_id: str) -> None:
+    uname = validate_username(user)
+    tid = str(token_id).strip()
+    if not tid.isdigit():
+        raise ValueError("Invalid Nextcloud token id")
+    run_helper("nextcloud-app-password-delete", uname, tid)
+
+
+def matrix_device_delete(user: str, server_name: str, device_id: str) -> None:
+    uname = validate_username(user)
+    if not _NAME_RE.match(device_id):
+        raise ValueError("Invalid device id")
+    run_helper("matrix-device-delete", uname, server_name, device_id)

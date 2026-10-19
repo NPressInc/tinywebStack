@@ -73,27 +73,25 @@ Native apps cannot use YunoHost’s **SSOwat cookie** portal flow. Today each ba
 
 Env knobs: `TWS_SERVER_NAME`, `TWS_CALDAV_ROOT`, `TWS_EVENTS_URL`, `TWS_LOCATION_URL`, `TWS_OWNTRACKS_KIDS_FILE`, `TWS_PERMISSIONS_DB` ([`app.py`](../family/dashboard/tinywebstack_dashboard/app.py), [`install-family-dashboard.sh`](../scripts/vm/install-family-dashboard.sh)).
 
-### PROPOSED: app enrollment (not built)
+### App enrollment (Stage 1 — built)
 
 Single **provisioning** flow so families sign in once:
 
-1. **Discover box:** Scan QR encoding `https://<main-domain>` (and optionally fetch `/.well-known/tinywebstack-family.json` for `server_name`, `matrix_server`, `invite_verify_url`).
-2. **Enroll:** `POST /family/api/app/enroll` (name TBD) with:
-   - **Option A:** YunoHost username + password (TLS only; rate-limited), or  
-   - **Option B:** Parent-generated **one-time code** from dashboard (kid device), short TTL, shown as QR.
-3. **Server** (dashboard + `tws-family-dashboard-privileged` helper) mints a **one-time JSON bundle**:
-   - Matrix: access token (e.g. Synapse admin API “login as” or `m.login.password` + optional device name),
-   - Nextcloud: app password,
-   - OwnTracks: device credentials (same shape as [`issue_owntracks`](../family/dashboard/tinywebstack_dashboard/yunohost_actions.py)),
-   - Mobilizon: `accessToken` / `refreshToken`,
-   - Dashboard: **scoped bearer token** (hashed in SQLite, e.g. new table in `/etc/tinywebstack/` or alongside `permissions.db`).
-4. App stores secrets in **Keychain / Keystore**; never logs them.
+1. **Discover box:** Scan QR encoding `https://<main-domain>` (or read `/.well-known/tinywebstack-family.json` for `server_name`, `enroll_url`, `matrix_homeserver_url`, `caldav_root`, etc.).
+2. **Enroll:** `POST /family/api/app/enroll` (public; rate-limited) with JSON:
+   - **Password:** `{ "method": "password", "username", "password", "device_name", "platform": "android"|"ios"|"other" }` — Synapse `m.login.password` (+ optional Mobilizon GraphQL `login` when `TWS_EVENTS_URL` is set).
+   - **Code:** `{ "method": "code", "code", "device_name", "platform" }` — parent mints code via dashboard or `POST /family/api/app/codes` (`{"username"}` → `{code, expires_at, qr_payload}`).
+3. **Server** returns a **one-time JSON bundle** (`Cache-Control: no-store`): dashboard bearer `tws_…` (SHA-256 in `/etc/tinywebstack/app-devices.db`), CalDAV app password, OwnTracks (kids), Mobilizon tokens when password login succeeded, Matrix when password login succeeded.
+4. **Code enrollment limitation (Stage 1):** Matrix is **not** provisioned (`matrix.status: not_provisioned`); use Element X until Stage 2. Mobilizon returns `password_required`.
+5. App stores secrets in **Keychain / Keystore**; never logs them.
 
-**Lifecycle (proposed):**
+**Lifecycle (built):**
 
-- `GET/POST /family/api/app/devices` — parent lists enrolled devices.
-- `POST /family/api/app/devices/{id}/revoke` — wipe lost phone (invalidate dashboard token + optionally Matrix device / app passwords).
-- **Password reset** (`yunohost user update` / dashboard reset) **invalidates** all tokens for that user.
+- `GET /family/api/app/devices` — parents see all devices; others see own (no token hashes).
+- `POST /family/api/app/devices/{id}/revoke` — owner or parent; best-effort Matrix device + Nextcloud app-password delete via privileged helper.
+- `GET /family/api/app/me` — profile, quiet hours (kids), `events_enabled`.
+- `GET /family/api/members`, `GET /family/api/invites` — parents only.
+- **Password reset** on the dashboard **revokes** all app devices for that user.
 
 **Nginx / SSOwat:** New `/family/api/*` routes must accept `Authorization: Bearer <dashboard-token>` **without** SSO cookie, while browser `/family/` HTML stays SSO-only. Mirror pattern of public `/family/api/invite/verify` ([`install-family-dashboard.sh`](../scripts/vm/install-family-dashboard.sh) nginx snippets).
 
@@ -160,18 +158,21 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ## 6. Server-side changes (dashboard + nginx)
 
-### New JSON endpoints (proposed unless noted)
+### JSON endpoints
 
-| Endpoint | Purpose |
-|----------|---------|
-| `POST /family/api/app/enroll` | One-time credential bundle |
-| `GET /family/api/app/devices` | List enrolled devices (parent) |
-| `POST /family/api/app/devices/{id}/revoke` | Revoke device |
-| `GET /family/api/members` | JSON member list (today HTML `/members`) |
-| `POST /family/api/members` | Create member (wraps privileged helper) |
-| `POST /family/api/members/{user}/reset-password` | Parent reset |
-| `GET/POST /family/api/invite/*` | JSON invite create/redeem (parallel HTML) |
-| `GET /family/api/location/locations` | Parent-only Recorder proxy (optional; avoids exposing Recorder UI) |
+| Endpoint | Status | Purpose |
+|----------|--------|---------|
+| `POST /family/api/app/enroll` | **Built** | One-time credential bundle (public) |
+| `POST /family/api/app/codes` | **Built** | Parent: one-time enroll code + QR payload |
+| `GET /family/api/app/me` | **Built** | Self profile + quiet hours |
+| `GET /family/api/app/devices` | **Built** | List enrolled devices |
+| `POST /family/api/app/devices/{id}/revoke` | **Built** | Revoke device |
+| `GET /family/api/members` | **Built** | JSON member list |
+| `GET /family/api/invites` | **Built** | Pending cross-family invites (no secrets) |
+| `POST /family/api/members` | Proposed | Create member (wraps privileged helper) |
+| `POST /family/api/members/{user}/reset-password` | Proposed | Parent reset (HTML exists today) |
+| `GET/POST /family/api/invite/*` | Partial | `POST …/verify` built; create/redeem JSON TBD |
+| `GET /family/api/location/locations` | Proposed | Parent-only Recorder proxy |
 
 **Existing (keep):** `GET/PUT /family/permissions/{user}`, `/family/federation/domains`, public invite verify, well-known.
 

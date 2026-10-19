@@ -43,6 +43,8 @@ from tinywebstack_dashboard.owntracks_setup import (
     owntracks_otcp_link,
 )
 from tinywebstack_dashboard.policy_store import load_policy, save_policy, set_parent_mxids, sync_kids_from_usernames
+from tinywebstack_dashboard.app_api import create_app_api_router, revoke_user_devices
+from tinywebstack_dashboard.app_devices import list_devices_for_user
 from tinywebstack_dashboard.yunohost_actions import (
     create_member,
     delete_member,
@@ -218,6 +220,13 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     app.include_router(
         create_federation_router(cfg, state_path=federation_state_path, on_change=schedule_federation_sync)
     )
+    app.include_router(
+        create_app_api_router(
+            cfg,
+            matrix_server=matrix_server or cfg.server_name,
+            pending_invites_path=str(pending_path),
+        )
+    )
 
     def post_json(url: str, body: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
         data = json.dumps(body).encode("utf-8")
@@ -230,6 +239,12 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
+    def matrix_homeserver_public_url() -> str:
+        host = (matrix_server or cfg.server_name).strip()
+        if host.startswith("http://") or host.startswith("https://"):
+            return host.rstrip("/")
+        return f"https://{host}"
+
     @app.get("/.well-known/tinywebstack-family.json")
     async def well_known_family():
         return JSONResponse(
@@ -237,6 +252,14 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "server_name": cfg.server_name,
                 "matrix_server": matrix_server or cfg.server_name,
                 "invite_verify_url": "/family/api/invite/verify",
+                "app_api_version": 1,
+                "dashboard_base": "/family",
+                "enroll_url": "/family/api/app/enroll",
+                "matrix_homeserver_url": matrix_homeserver_public_url(),
+                "caldav_root": cfg.caldav_root,
+                "events_url": cfg.events_base_url,
+                "location_url": cfg.location_base_url,
+                "element_x_deeplink_base": "https://matrix.to/#/",
             }
         )
 
@@ -445,6 +468,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         if not role:
             raise HTTPException(status_code=404, detail="Not a family member")
         st = synapse_user_status(username, cfg.server_name)
+        devices = list_devices_for_user(username)
         return TEMPLATES.TemplateResponse(
             request,
             "member_detail.html",
@@ -455,6 +479,11 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "matrix_label": matrix_status_label(st),
                 "csrf": csrf_token(request),
                 "new_password": "",
+                "app_code": "",
+                "app_expires": "",
+                "app_qr_payload": "",
+                "app_qr_img_url": "",
+                "app_devices": devices,
             },
         )
 
@@ -470,8 +499,10 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Not a family member")
         pw = generate_password()
         reset_password(username, pw)
+        revoke_user_devices(username, cfg.server_name)
         role = member_role(username)
         st = synapse_user_status(username, cfg.server_name)
+        devices = list_devices_for_user(username)
         return TEMPLATES.TemplateResponse(
             request,
             "member_detail.html",
@@ -482,7 +513,109 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "matrix_label": matrix_status_label(st),
                 "csrf": csrf_token(request),
                 "new_password": pw,
+                "app_code": "",
+                "app_expires": "",
+                "app_qr_payload": "",
+                "app_qr_img_url": "",
+                "app_devices": devices,
             },
+        )
+
+    @app.post("/members/{username}/app-enroll-code", response_class=HTMLResponse)
+    async def member_app_enroll_code(
+        request: Request,
+        username: str,
+        user: str = Depends(current_user),
+        csrf: str = Form(...),
+    ):
+        verify_csrf(request, csrf)
+        if not member_role(username):
+            raise HTTPException(status_code=404, detail="Not a family member")
+        from tinywebstack_dashboard.app_devices import create_enroll_code
+
+        code, expires_at = create_enroll_code(username, user)
+        qr_payload = f"tinyweb://enroll?server={cfg.server_name}&code={code}"
+        from urllib.parse import quote
+
+        qr_img_url = (
+            dash_url(f"/members/{username}/app-qr.png", root_path)
+            + "?p="
+            + quote(qr_payload, safe="")
+        )
+        role = member_role(username)
+        st = synapse_user_status(username, cfg.server_name)
+        devices = list_devices_for_user(username)
+        return TEMPLATES.TemplateResponse(
+            request,
+            "member_detail.html",
+            {
+                "username": username,
+                "role": role,
+                "mxid": f"@{username}:{cfg.server_name}",
+                "matrix_label": matrix_status_label(st),
+                "csrf": csrf_token(request),
+                "new_password": "",
+                "app_code": code,
+                "app_expires": expires_at,
+                "app_qr_payload": qr_payload,
+                "app_qr_img_url": qr_img_url,
+                "app_devices": devices,
+            },
+        )
+
+    @app.get("/members/{username}/app-qr.png")
+    async def member_app_qr(
+        username: str,
+        p: str = "",
+        user: str = Depends(current_user),
+    ):
+        if not member_role(username):
+            raise HTTPException(status_code=404, detail="Not found")
+        if not p.startswith("tinyweb://"):
+            raise HTTPException(status_code=400, detail="Invalid payload")
+        import io
+
+        import qrcode
+
+        img = qrcode.make(p)
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    @app.post("/members/{username}/app-devices/{device_id}/revoke")
+    async def member_app_device_revoke(
+        request: Request,
+        username: str,
+        device_id: str,
+        user: str = Depends(current_user),
+        csrf: str = Form(...),
+    ):
+        verify_csrf(request, csrf)
+        if not member_role(username):
+            raise HTTPException(status_code=404, detail="Not a family member")
+        from tinywebstack_dashboard.app_devices import get_device, revoke_device
+        from tinywebstack_dashboard.yunohost_actions import (
+            matrix_device_delete,
+            nextcloud_app_password_delete,
+        )
+
+        dev = get_device(device_id)
+        if not dev or dev.username != username:
+            raise HTTPException(status_code=404, detail="Device not found")
+        revoke_device(device_id)
+        if dev.matrix_device_id:
+            try:
+                matrix_device_delete(username, cfg.server_name, dev.matrix_device_id)
+            except Exception:
+                pass
+        if dev.nextcloud_token_id:
+            try:
+                nextcloud_app_password_delete(username, dev.nextcloud_token_id)
+            except Exception:
+                pass
+        return RedirectResponse(
+            url=dash_url(f"/members/{username}", root_path),
+            status_code=303,
         )
 
     @app.post("/members/{username}/remove")

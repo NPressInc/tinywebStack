@@ -35,13 +35,24 @@ Parents see (plain language):
 
 Kids do **not** receive dashboard or OwnTracks web permissions (`family-groups.sh`).
 
+## TinyWeb mobile app (Stage 1 API)
+
+The dashboard exposes JSON under `/family/api/` for the **TinyWeb** iOS/Android app (bearer token `tws_…` after enrollment). Discovery fields are in `GET /.well-known/tinywebstack-family.json` (`app_api_version`, `enroll_url`, `matrix_homeserver_url`, `caldav_root`, …).
+
+- **Enrollment:** public `POST /family/api/app/enroll` (password or parent-issued one-time code). Codes are created on **Family members → person → Set up the TinyWeb app** (or `POST /family/api/app/codes` for parents).
+- **Device store:** `/etc/tinywebstack/app-devices.db` (`TWS_APP_DEVICES_DB`), mode `600`, `www-data`.
+- **Auth:** app routes accept `Authorization: Bearer tws_…`; browser parents still use SSO on HTML routes. Nginx clears `YNH_USER` on `/family/api/*` so clients cannot spoof SSO headers.
+- **Revoke:** member detail page or `POST /family/api/app/devices/{id}/revoke`. Password reset revokes all devices for that user.
+
+See [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) for request/response shapes and the Stage 1 Matrix limitation for code-based enrollment.
+
 ## Privileged helpers (node)
 
 Installed by `install-family-dashboard.sh`:
 
 | Path | Purpose |
 |------|---------|
-| `/usr/local/sbin/tws-family-dashboard-privileged` | YunoHost user create/delete/password, Synapse user status, OwnTracks kid credentials |
+| `/usr/local/sbin/tws-family-dashboard-privileged` | YunoHost user create/delete/password, Synapse user status, OwnTracks kid credentials, Nextcloud app passwords, Matrix device delete |
 | `/usr/local/sbin/tws-family-sync-federation` | Merge `trusted_domains` into Synapse allowlist |
 
 `www-data` may run these via `/etc/sudoers.d/tinywebstack-family-dashboard` (NOPASSWD).
