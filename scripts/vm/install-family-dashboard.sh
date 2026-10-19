@@ -158,6 +158,7 @@ else
   grep -q '^TWS_APP_DEVICES_DB=' "$CSRF_FILE" \
     || printf 'TWS_APP_DEVICES_DB=/etc/tinywebstack/app-devices.db\n' >>"$CSRF_FILE"
   grep -q '^TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=' "$CSRF_FILE" \
+    && sed -i 's|^TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=.*|TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=/etc/tinywebstack/matrix-login-ticket.secret|' "$CSRF_FILE" \
     || printf 'TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=/etc/tinywebstack/matrix-login-ticket.secret\n' >>"$CSRF_FILE"
 fi
 
