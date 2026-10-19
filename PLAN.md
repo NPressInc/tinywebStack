@@ -37,4 +37,4 @@ TinyWebC rebuilt things that already exist: a gossip protocol, a message store, 
 
 ## Next milestone: TinyWeb app
 
-The v1 client choice (Element X + OwnTracks + parent dashboard) is being replaced **in stages** by one **TinyWeb** mobile app that connects to every backend on the family box. Element X and OwnTracks remain the supported clients until those stages ship. See [docs/TINYWEB_APP_PLAN.md](docs/TINYWEB_APP_PLAN.md).
+The v1 client choice (Element X + OwnTracks + parent dashboard) is being replaced by one **TinyWeb** mobile app (`app/`, Flutter) that connects to every backend on the family box with one enrollment. **Chat is built into the app from Stage 1**, with no Element X hand-off, using matrix-rust-sdk through the `tinyweb_core` Rust bridge; encryption stays off. Kids keep publishing location with the OwnTracks app until background location lands in the app (Stage 2). Release builds come from CI (`.github/workflows/app.yml`). See [docs/TINYWEB_APP_PLAN.md](docs/TINYWEB_APP_PLAN.md).
