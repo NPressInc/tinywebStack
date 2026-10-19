@@ -44,7 +44,10 @@ AppSession _parentSession() {
 FamilyApiClient _fakeApi() {
   return FamilyApiClient(
     client: MockClient((request) async {
-      if (request.url.path.endsWith('/members')) {
+      if (request.url.path.endsWith('/invites')) {
+        return http.Response(jsonEncode([]), 200);
+      }
+      if (request.url.path.endsWith('/members') && request.method == 'GET') {
         return http.Response(
           jsonEncode([
             {
@@ -52,6 +55,7 @@ FamilyApiClient _fakeApi() {
               'role': 'kid',
               'mxid': '@kid1:family.example',
               'display_name': 'Kid One',
+              'device_count': 0,
             },
           ]),
           200,

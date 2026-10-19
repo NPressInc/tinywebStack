@@ -397,12 +397,19 @@ class FamilyMember {
     required this.mxid,
     required this.role,
     this.displayName,
+    this.deviceCount = 0,
+    this.matrixLabel,
   });
 
   final String username;
   final String mxid;
   final String role;
   final String? displayName;
+  final int deviceCount;
+  final String? matrixLabel;
+
+  String get displayLabel =>
+      displayName?.isNotEmpty == true ? displayName! : username;
 
   factory FamilyMember.fromJson(Map<String, dynamic> json) {
     return FamilyMember(
@@ -410,6 +417,146 @@ class FamilyMember {
       mxid: json['mxid'] as String? ?? json['matrix_id'] as String? ?? '',
       role: json['role'] as String? ?? 'kid',
       displayName: json['display_name'] as String? ?? json['name'] as String?,
+      deviceCount: json['device_count'] as int? ?? 0,
+      matrixLabel: json['matrix_label'] as String?,
+    );
+  }
+}
+
+class MemberCreateResult {
+  MemberCreateResult({
+    required this.username,
+    required this.role,
+    required this.password,
+    this.enrollCode,
+    this.enrollExpiresAt,
+    this.enrollQrPayload,
+  });
+
+  final String username;
+  final String role;
+  final String password;
+  final String? enrollCode;
+  final String? enrollExpiresAt;
+  final String? enrollQrPayload;
+
+  factory MemberCreateResult.fromJson(Map<String, dynamic> json) {
+    return MemberCreateResult(
+      username: json['username'] as String? ?? '',
+      role: json['role'] as String? ?? 'kid',
+      password: json['password'] as String? ?? '',
+      enrollCode: json['enroll_code'] as String?,
+      enrollExpiresAt: json['enroll_expires_at'] as String?,
+      enrollQrPayload: json['enroll_qr_payload'] as String?,
+    );
+  }
+}
+
+class MemberPasswordReset {
+  MemberPasswordReset({required this.username, required this.password});
+
+  final String username;
+  final String password;
+
+  factory MemberPasswordReset.fromJson(Map<String, dynamic> json) {
+    return MemberPasswordReset(
+      username: json['username'] as String? ?? '',
+      password: json['password'] as String? ?? '',
+    );
+  }
+}
+
+class EnrollCodeResult {
+  EnrollCodeResult({
+    required this.code,
+    required this.qrPayload,
+    this.expiresAt,
+  });
+
+  final String code;
+  final String? expiresAt;
+  final String qrPayload;
+
+  factory EnrollCodeResult.fromJson(Map<String, dynamic> json) {
+    return EnrollCodeResult(
+      code: json['code'] as String? ?? '',
+      expiresAt: json['expires_at'] as String?,
+      qrPayload: json['qr_payload'] as String? ?? '',
+    );
+  }
+}
+
+class AppDeviceRow {
+  AppDeviceRow({
+    required this.id,
+    required this.username,
+    required this.role,
+    required this.deviceName,
+    required this.platform,
+    this.createdAt,
+    this.lastSeenAt,
+  });
+
+  final String id;
+  final String username;
+  final String role;
+  final String deviceName;
+  final String platform;
+  final String? createdAt;
+  final String? lastSeenAt;
+
+  factory AppDeviceRow.fromJson(Map<String, dynamic> json) {
+    return AppDeviceRow(
+      id: json['id'] as String? ?? '',
+      username: json['username'] as String? ?? '',
+      role: json['role'] as String? ?? '',
+      deviceName: json['device_name'] as String? ?? '',
+      platform: json['platform'] as String? ?? '',
+      createdAt: json['created_at'] as String?,
+      lastSeenAt: json['last_seen_at'] as String?,
+    );
+  }
+}
+
+class FamilyInviteRow {
+  FamilyInviteRow({
+    required this.nonce,
+    this.createdBy,
+    this.issuer,
+    this.redeemerDomain,
+  });
+
+  final String nonce;
+  final String? createdBy;
+  final String? issuer;
+  final String? redeemerDomain;
+
+  factory FamilyInviteRow.fromJson(Map<String, dynamic> json) {
+    return FamilyInviteRow(
+      nonce: json['nonce'] as String? ?? '',
+      createdBy: json['created_by'] as String?,
+      issuer: json['issuer'] as String?,
+      redeemerDomain: json['redeemer_domain'] as String?,
+    );
+  }
+}
+
+class HouseholdInviteCreateResult {
+  HouseholdInviteCreateResult({
+    required this.token,
+    required this.nonce,
+    required this.inviteUrl,
+  });
+
+  final String token;
+  final String nonce;
+  final String inviteUrl;
+
+  factory HouseholdInviteCreateResult.fromJson(Map<String, dynamic> json) {
+    return HouseholdInviteCreateResult(
+      token: json['token'] as String? ?? '',
+      nonce: json['nonce'] as String? ?? '',
+      inviteUrl: json['invite_url'] as String? ?? '',
     );
   }
 }

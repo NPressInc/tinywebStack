@@ -111,7 +111,7 @@ Single **provisioning** flow so families sign in once:
 | **Calendar** | CalDAV on `TWS_CALDAV_ROOT` | Month/agenda; shared + personal calendars ([CALENDAR.md](CALENDAR.md)) | **Built** — read/write events; accept/decline iTIP invites |
 | **Events** | Mobilizon **GraphQL** at `mobilizon.<domain>` | List/detail, RSVP; show **PUBLIC** federated events ([EVENTS.md](EVENTS.md)) | **Built** — read + RSVP; **create event parents-only** (Mobilizon tokens from password enrollment) |
 | **Location** | OwnTracks Recorder **HTTP API** (`/api/0/...`) for parents; publish `POST .../recorder/pub` | Parents: family map in-app (read-only); kids: no map | Parents read-only; kids **publish in-app** (background, OwnTracks-format JSON — no OwnTracks app) |
-| **Parent controls** | `GET/PUT /family/permissions/{user}`; `GET /family/api/federation` | Allowlists, quiet hours, events toggle — mirror dashboard kid edit | **Built** in app (Family tab); members list via `GET /family/api/members` |
+| **Parent controls** | `GET/PUT /family/permissions/{user}`; `GET /family/api/federation`; members & invites JSON | Allowlists, quiet hours, events toggle; members, passwords, enroll codes, devices, household invites | **Built** in app (Family tab) |
 | **Chat** | `matrix-rust-sdk` (via `tinyweb_core`, frb) + Synapse | In-app room list, timeline, send, new DM; show `M_FORBIDDEN` from the module as friendly copy; rooms are created **encrypted**; recovery key / key backup set up at enrollment | Read/write (**in-app from Stage 1**) |
 
 ---
@@ -166,9 +166,10 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | `POST /family/api/app/devices/{id}/revoke` | **Built** | Revoke device |
 | `GET /family/api/members` | **Built** | JSON member list |
 | `GET /family/api/invites` | **Built** | Pending cross-family invites (no secrets) |
-| `POST /family/api/members` | Proposed | Create member (wraps privileged helper) |
-| `POST /family/api/members/{user}/reset-password` | Proposed | Parent reset (HTML exists today) |
-| `GET/POST /family/api/invite/*` | Partial | `POST …/verify` built; create/redeem JSON TBD |
+| `POST /family/api/members` | **Built** | Create member (app + JSON API) |
+| `POST /family/api/members/{user}/reset-password` | **Built** | Parent reset; revokes app devices |
+| `POST/DELETE /family/api/invites` | **Built** | Household invite create/delete (app) |
+| `GET/POST /family/api/invite/*` | Partial | `POST …/verify` built; redeem JSON TBD |
 | `GET /family/api/locations` | **Built** | Parent-only: latest position per kid (Recorder `/api/0/last` via `TWS_OWNTRACKS_API_URL`) |
 | `GET /family/api/locations/{username}/track` | **Built** | Parent-only track history (`hours` query, max 2000 points) |
 
