@@ -23,7 +23,14 @@ Branding follows [tinyweb.win](https://tinyweb.win) and vendored assets in `bran
 
 ## 2. Recommended client stack
 
-**Recommendation: Flutter (Dart)** for a single UI codebase on iOS and Android.
+**Decision (2026-10-18): Flutter (Dart)**, with `matrix-rust-sdk` reached through a `flutter_rust_bridge` facade. Release builds come from CI. Approved by William after the bridge spike ([spikes/flutter-matrix-bridge/FINDINGS.md](../spikes/flutter-matrix-bridge/FINDINGS.md)).
+
+**Spike results (frb 2.13, matrix-sdk 0.19.1):**
+- Proven from a Dart test against lab Synapse (tws-family-b) and stock Synapse: login, normal sync, native sliding sync (MSC4186), room list, create, send, and receive through a Rust→Dart stream (70–225 ms). E2EE rooms work on stock Synapse; the family module rejects them by design.
+- The size-optimized Rust `.so` adds about 12 MB uncompressed (about 6 MB download) per ABI.
+- A cold Rust build takes about 85 s, a warm one about 19 s. Codegen takes 30–44 s per API change.
+- **ARM64 build-host constraint:** spark (linux-arm64) can build debug APKs only, using an unofficial arm64 NDK and aapt2. Google ships no linux-arm64 NDK or aapt2, and Flutter ships no linux-arm64 Android `gen_snapshot`. **Release APKs are built on GitHub Actions ubuntu x86_64 runners and iOS on macOS runners** (`.github/workflows/app.yml`). Spark remains the dev and test box.
+- KMP was rejected: the official Kotlin and Swift bindings are separate Android-only and Swift-only artifacts, not KMP.
 
 | Option | Pros | Cons |
 |--------|------|------|
@@ -31,7 +38,7 @@ Branding follows [tinyweb.win](https://tinyweb.win) and vendored assets in `bran
 | **React Native** | Large ecosystem. (Element X itself is native Swift/Kotlin, so there is no RN Matrix client to reuse.) | Heavy native bridging for `matrix-rust-sdk`; two platform toolchains for anything non-JS. |
 | **Kotlin Multiplatform (KMP)** | **First-class** `matrix-rust-sdk` Kotlin bindings (same path Element X uses via UniFFI). | iOS UI still separate unless Compose Multiplatform (less mature on iOS); two UI codepaths or immature MP. |
 
-**Matrix:** Use **`matrix-rust-sdk`** via official FFI (UniFFI → Kotlin/Swift, as Element X does). On Flutter, wrap with **`flutter_rust_bridge`** or generated UniFFI bindings in a thin Rust crate — **Stage 2 spike** must prove sync/send/receive against lab Synapse. **Fallback:** KMP shared core + native shells if bridging cost is too high.
+**Matrix:** Use **`matrix-rust-sdk`** via official FFI (UniFFI → Kotlin/Swift, as Element X does). On Flutter, wrap with **`flutter_rust_bridge`** or generated UniFFI bindings in a thin Rust crate — The spike has **proven** sync, send and receive against lab Synapse (above). Keep the Dart-facing API small, and pin `matrix-sdk` and `flutter_rust_bridge` exactly.
 
 **CalDAV:** Plain HTTP client (`PROPFIND`, `REPORT`, `PUT`, `DELETE`) against Nextcloud’s CalDAV root (`TWS_CALDAV_ROOT`, e.g. `https://nextcloud.<domain>/nextcloud/remote.php/dav` — [CALENDAR.md](CALENDAR.md), [`calendar_setup.py`](../family/dashboard/tinywebstack_dashboard/calendar_setup.py)).
 
@@ -126,7 +133,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Stage 2 — In-app Matrix chat
 
-**Deliverables:** `matrix-rust-sdk` in app; sliding sync (verify Synapse version on YunoHost 12 supports native simplified sliding sync — **confirm during spike**); no E2EE (server rejects encryption — [FAMILY_MODULE.md](FAMILY_MODULE.md)).
+**Deliverables:** `matrix-rust-sdk` in app; sliding sync (native simplified sliding sync **confirmed** on lab Synapse by the spike); no E2EE (server rejects encryption — [FAMILY_MODULE.md](FAMILY_MODULE.md)).
 
 | Test | Pass criteria |
 |------|----------------|
@@ -208,9 +215,10 @@ Same binary; **mode from LDAP groups** at enrollment (`parents` vs `kids` — `T
 
 | Topic | Notes |
 |-------|--------|
-| **Flutter ↔ matrix-rust-sdk** | Bridge engineering cost; Stage 2 spike; KMP fallback. |
-| **App store publishing** | Who owns Apple/Google developer accounts; **F-Droid** for de-Googled Android. |
-| **iOS push** | APNs cert lifecycle and cost. |
+| **Flutter ↔ matrix-rust-sdk** | **Resolved by spike** (Flutter chosen). Remaining cost: owning the facade as matrix-sdk 0.x changes its API. Pin versions and update deliberately. |
+| **Release builds** | Spark is ARM64, so it can't build release Android artifacts. CI on x86_64 and macOS runners is the release path. |
+| **App store publishing** | William owns the **Apple** developer account. **Google Play** ownership and **F-Droid** are still open. |
+| **iOS push** | APNs **approved** (content-free payloads). Key and cert lifecycle still to handle. |
 | **Mobilizon PUBLIC default** | Federated event titles visible on public URLs — app UI should not surprise parents ([EVENTS.md](EVENTS.md)). |
 | **Stage 1 Element X hand-off** | UX friction vs single app promise; temporary. |
 | **E2EE** | Still **off** in v1 module; in-app chat must not enable encrypted rooms by default. |
