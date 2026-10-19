@@ -39,12 +39,12 @@ Kids do **not** receive dashboard or OwnTracks web permissions (`family-groups.s
 
 The dashboard exposes JSON under `/family/api/` for the **TinyWeb** iOS/Android app (bearer token `tws_…` after enrollment). Discovery fields are in `GET /.well-known/tinywebstack-family.json` (`app_api_version`, `enroll_url`, `matrix_homeserver_url`, `caldav_root`, …).
 
-- **Enrollment:** public `POST /family/api/app/enroll` (password or parent-issued one-time code). Codes are created on **Family members → person → Set up the TinyWeb app** (or `POST /family/api/app/codes` for parents).
+- **Enrollment:** public `POST /family/api/app/enroll` (password or parent-issued one-time code). Codes are created on **Family members → person → Set up the TinyWeb app** (or `POST /family/api/app/codes` for parents). **Code enrollment** also provisions Matrix when `TWS_MATRIX_LOGIN_TICKET_SECRET_FILE` is set (same file as Synapse module `login_ticket_secret_file`): the dashboard mints a one-time login ticket and completes `org.tinywebstack.login_ticket` against Synapse server-side; the app gets `matrix.access_token` and `matrix.device_id` like password enrollment. If the secret is missing or login fails, `matrix.status` is `unavailable` but enrollment still succeeds.
 - **Device store:** `/etc/tinywebstack/app-devices.db` (`TWS_APP_DEVICES_DB`), mode `600`, `www-data`.
 - **Auth:** app routes accept `Authorization: Bearer tws_…`; browser parents still use SSO on HTML routes. Nginx clears `YNH_USER` on `/family/api/*` so clients cannot spoof SSO headers.
 - **Revoke:** member detail page or `POST /family/api/app/devices/{id}/revoke`. Password reset revokes all devices for that user.
 
-See [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) for request/response shapes and the Stage 1 Matrix limitation for code-based enrollment.
+See [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) for request/response shapes.
 
 ## Privileged helpers (node)
 

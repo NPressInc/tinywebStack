@@ -149,6 +149,42 @@ EOF
 fi
 
 CONF_D="${TWS_SYNAPSE_CONF_D:-/etc/matrix-synapse/conf.d}"
+LOGIN_TICKET_SECRET="${TWS_LOGIN_TICKET_SECRET:-${TWS_SYNAPSE_LOGIN_TICKET_SECRET:-/etc/matrix-synapse/tinywebstack-login-ticket.secret}}"
+
+synapse_runtime_user() {
+  if getent passwd matrix-synapse >/dev/null 2>&1; then
+    printf '%s\n' matrix-synapse
+  elif getent passwd synapse >/dev/null 2>&1; then
+    printf '%s\n' synapse
+  else
+    printf '%s\n' matrix-synapse
+  fi
+}
+
+ensure_login_ticket_secret() {
+  if [[ -f "$LOGIN_TICKET_SECRET" ]]; then
+    return 0
+  fi
+  if dry_run_is_active; then
+    log "DRY_RUN: would create ${LOGIN_TICKET_SECRET} (32-byte secret, mode 640)"
+    return 0
+  fi
+  local syn_user tmp
+  syn_user="$(synapse_runtime_user)"
+  mkdir -p "$(dirname "$LOGIN_TICKET_SECRET")"
+  tmp="$(mktemp)"
+  openssl rand 32 >"$tmp"
+  if [[ "$(id -u)" -eq 0 ]] && getent passwd "$syn_user" >/dev/null 2>&1 && getent group www-data >/dev/null 2>&1; then
+    install -m 640 -o "$syn_user" -g www-data "$tmp" "$LOGIN_TICKET_SECRET"
+  else
+    install -m 640 "$tmp" "$LOGIN_TICKET_SECRET"
+  fi
+  rm -f "$tmp"
+  log "Created Matrix login ticket secret at ${LOGIN_TICKET_SECRET}"
+}
+
+ensure_login_ticket_secret
+
 SNIPPET="${CONF_D}/tinywebstack-family.yaml"
 SNIPPET_CONTENT="# Managed by tinywebStack install-family-module.sh
 modules:
@@ -157,6 +193,7 @@ modules:
       policy_path: ${POLICY_PATH}
       permissions_db: ${PERMS_DB}
       reject_encryption: true
+      login_ticket_secret_file: ${LOGIN_TICKET_SECRET}
 
 encryption_enabled_by_default_for_room_type: \"off\"
 "

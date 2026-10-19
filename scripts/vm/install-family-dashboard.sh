@@ -113,6 +113,7 @@ TWS_OWNTRACKS_HTPASSWD=/etc/tinywebstack/owntracks-recorder.htpasswd
 TWS_SYNAPSE_ADMIN_TOKEN_FILE=/etc/tinywebstack/synapse-admin-token
 TWS_PERMISSIONS_DB=/etc/tinywebstack/permissions.db
 TWS_APP_DEVICES_DB=/etc/tinywebstack/app-devices.db
+TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=/etc/matrix-synapse/tinywebstack-login-ticket.secret
 TW_NODES_CONF=${TW_NODES_CONF:-/opt/tinywebstack/config/nodes.conf}
 TWS_DASHBOARD_PERM=${DASH_PERM}
 TWS_DASHBOARD_PUB_PERM=${DASH_PUB_PERM}
@@ -156,6 +157,8 @@ else
     || printf 'TWS_CALDAV_ROOT=%s\n' "$CALDAV_ROOT" >>"$CSRF_FILE"
   grep -q '^TWS_APP_DEVICES_DB=' "$CSRF_FILE" \
     || printf 'TWS_APP_DEVICES_DB=/etc/tinywebstack/app-devices.db\n' >>"$CSRF_FILE"
+  grep -q '^TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=' "$CSRF_FILE" \
+    || printf 'TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=/etc/matrix-synapse/tinywebstack-login-ticket.secret\n' >>"$CSRF_FILE"
 fi
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack

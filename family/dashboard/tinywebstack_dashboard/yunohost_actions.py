@@ -63,7 +63,9 @@ def run_helper(*args: str, stdin: str | None = None) -> str:
             )
         if args and args[0] == "nextcloud-app-password":
             user, name = args[1], args[2]
-            return f"OK user={user} password=mock-nc-pass name={name} token_id=42"
+            # Helper stdout splits on whitespace; name may be truncated in the line.
+            short_name = name.split()[0] if name else name
+            return f"OK user={user} password=mock-nc-pass name={short_name} token_id=42"
         if args and args[0] == "nextcloud-app-password-delete":
             return f"OK deleted={args[1]} token_id={args[2]}"
         if args and args[0] == "matrix-device-delete":
@@ -133,7 +135,9 @@ def nextcloud_app_password(user: str, name: str) -> dict[str, str]:
     uname = validate_username(user)
     n = _valid_resource_name(name)
     line = run_helper("nextcloud-app-password", uname, n)
-    return parse_helper_line(line)
+    parts = parse_helper_line(line)
+    parts["name"] = n
+    return parts
 
 
 def nextcloud_app_password_delete(user: str, token_id: str) -> None:

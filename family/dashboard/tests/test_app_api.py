@@ -10,6 +10,7 @@ from tinywebstack_dashboard.app import DashboardConfig, create_app
 from tinywebstack_dashboard.app_devices import (
     create_device,
     create_enroll_code,
+    get_device,
     init_db,
     mint_device_token,
     record_enroll_failure,
@@ -72,6 +73,21 @@ def app_env(tmp_path, monkeypatch):
         json.dumps({"parents": ["parent1"], "kids": ["kid1"]}),
     )
     monkeypatch.setenv("TWS_DASHBOARD_MOCK_YUNOHOST", "1")
+    ot_store = tmp_path / "owntracks-kids.json"
+    ot_store.write_text(
+        json.dumps(
+            {
+                "kid1": {
+                    "device_id": "kid1-phone",
+                    "username": "kid1",
+                    "password": "stored-ot-pass",
+                    "publish_url": "https://loc.example/recorder/pub",
+                    "tracker_id": "k1",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
     cfg = DashboardConfig(
         policy_path=str(policy),
         server_name="family-a.test",
@@ -80,6 +96,7 @@ def app_env(tmp_path, monkeypatch):
         location_domain="loc.example",
         events_base_url="https://events.example/",
         caldav_root="https://nc.example/dav",
+        owntracks_store_path=str(ot_store),
     )
     app = create_app(cfg)
     client = TestClient(app)
@@ -152,7 +169,7 @@ def test_enroll_by_code_single_use_and_expiry(app_env, monkeypatch):
     assert r.status_code == 200
     assert r.headers.get("cache-control") == "no-store"
     assert "dashboard" in r.json()
-    assert r.json()["matrix"]["status"] == "not_provisioned"
+    assert r.json()["matrix"]["status"] == "unavailable"
     r2 = client.post("/api/app/enroll", json=payload)
     assert r2.status_code == 401
     assert r2.json()["error"] == "invalid_credentials"
@@ -248,6 +265,52 @@ def test_enroll_rate_limit_skips_ip_bucket_for_unknown(app_env):
         record_enroll_failure("unknown", user)
 
 
+def test_enroll_by_code_matrix_ticket_login(app_env, monkeypatch, tmp_path):
+    client, _, _ = app_env
+    secret_file = tmp_path / "ticket.secret"
+    secret_file.write_bytes(b"\x11" * 32)
+    monkeypatch.setenv("TWS_MATRIX_LOGIN_TICKET_SECRET_FILE", str(secret_file))
+    captured = []
+
+    def fake_urlopen(req, timeout=0, context=None):
+        captured.append(json.loads(req.data.decode("utf-8")))
+        class Resp:
+            def read(self):
+                return json.dumps(
+                    {
+                        "access_token": "mx_code_tok",
+                        "device_id": "DEVCODE",
+                        "user_id": "@kid1:family-a.test",
+                    }
+                ).encode()
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                pass
+
+        return Resp()
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    code = _enroll_code(client)
+    r = client.post(
+        "/api/app/enroll",
+        json={
+            "method": "code",
+            "code": code,
+            "device_name": "Phone",
+            "platform": "android",
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["matrix"]["status"] == "ok"
+    assert r.json()["matrix"]["device_id"] == "DEVCODE"
+    assert captured[0]["type"] == "org.tinywebstack.login_ticket"
+    assert captured[0]["identifier"]["user"] == "kid1"
+    assert "ticket" in captured[0]
+
+
 def test_enroll_password_matrix_mock(app_env, monkeypatch):
     client, _, _ = app_env
 
@@ -288,6 +351,15 @@ def test_enroll_password_matrix_mock(app_env, monkeypatch):
 
 def test_enroll_forbidden_non_family(app_env, monkeypatch):
     client, _, _ = app_env
+    deleted = []
+
+    def fake_matrix_delete(user, server_name, device_id):
+        deleted.append((user, server_name, device_id))
+
+    monkeypatch.setattr(
+        "tinywebstack_dashboard.app_api.matrix_device_delete",
+        fake_matrix_delete,
+    )
 
     def fake_urlopen(req, timeout=0, context=None):
         class Resp:
@@ -320,6 +392,142 @@ def test_enroll_forbidden_non_family(app_env, monkeypatch):
         },
     )
     assert r.status_code == 403
+    assert deleted == [("stranger", "family-a.test", "DEVX")]
+
+
+def test_enroll_password_unknown_user_401_and_rate_limit(app_env, monkeypatch):
+    import urllib.error
+
+    client, _, _ = app_env
+    ip = "203.0.113.50"
+
+    def fake_urlopen(req, timeout=0, context=None):
+        raise urllib.error.HTTPError(req.full_url, 403, "Forbidden", {}, None)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    payload = {
+        "method": "password",
+        "username": "nobody",
+        "password": "wrong",
+        "device_name": "Tab",
+        "platform": "android",
+    }
+    for _ in range(5):
+        r = client.post("/api/app/enroll", json=payload, headers={"X-Real-IP": ip})
+        assert r.status_code == 401
+        assert r.json()["error"] == "invalid_credentials"
+    r6 = client.post("/api/app/enroll", json=payload, headers={"X-Real-IP": ip})
+    assert r6.status_code == 429
+
+
+def test_enroll_kid_returns_stored_owntracks_without_issue(app_env, monkeypatch):
+    client, _, _ = app_env
+    calls = []
+
+    def track_issue(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("issue_owntracks should not be called")
+
+    monkeypatch.setattr("tinywebstack_dashboard.app_api.issue_owntracks", track_issue)
+    code = _enroll_code(client)
+    r = client.post(
+        "/api/app/enroll",
+        json={
+            "method": "code",
+            "code": code,
+            "device_name": "Phone",
+            "platform": "android",
+        },
+    )
+    assert r.status_code == 200
+    ot = r.json()["owntracks"]
+    assert ot["device"] == "kid1-phone"
+    assert ot["url"] == "https://loc.example/recorder/pub"
+    assert ot["tid"] == "k1"
+    assert calls == []
+
+
+def test_enroll_kid_issues_owntracks_when_missing(app_env, monkeypatch, tmp_path):
+    client, _, _ = app_env
+    empty_store = tmp_path / "empty-ot.json"
+    empty_store.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(
+        "tinywebstack_dashboard.app_api.load_stored_credentials",
+        lambda _path, user: None,
+    )
+    issued = []
+
+    def fake_issue(user, main_domain, location_domain):
+        issued.append((user, main_domain, location_domain))
+        return {
+            "url": "https://loc.example/new",
+            "user": user,
+            "device": f"{user}-phone",
+            "password": "new-ot",
+            "tid": "ab",
+        }
+
+    monkeypatch.setattr("tinywebstack_dashboard.app_api.issue_owntracks", fake_issue)
+    code = _enroll_code(client)
+    r = client.post(
+        "/api/app/enroll",
+        json={
+            "method": "code",
+            "code": code,
+            "device_name": "Phone",
+            "platform": "android",
+        },
+    )
+    assert r.status_code == 200
+    assert len(issued) == 1
+    assert issued[0][0] == "kid1"
+    assert r.json()["owntracks"]["device"] == "kid1-phone"
+
+
+def test_revoke_does_not_touch_owntracks(app_env, monkeypatch):
+    client, _, _ = app_env
+    calls = []
+
+    def track_issue(*args, **kwargs):
+        calls.append(args)
+        raise AssertionError("issue_owntracks should not be called on revoke")
+
+    monkeypatch.setattr("tinywebstack_dashboard.app_api.issue_owntracks", track_issue)
+    code = _enroll_code(client)
+    en = client.post(
+        "/api/app/enroll",
+        json={
+            "method": "code",
+            "code": code,
+            "device_name": "KidPhone",
+            "platform": "ios",
+        },
+    )
+    token = en.json()["dashboard"]["token"]
+    rev = client.post(
+        f"/api/app/devices/{en.json()['device_id']}/revoke",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert rev.status_code == 200
+    assert calls == []
+
+
+def test_enroll_stores_full_nextcloud_token_name(app_env):
+    client, _, _ = app_env
+    code = _enroll_code(client)
+    device_name = "My Pixel 9"
+    r = client.post(
+        "/api/app/enroll",
+        json={
+            "method": "code",
+            "code": code,
+            "device_name": device_name,
+            "platform": "android",
+        },
+    )
+    assert r.status_code == 200
+    dev = get_device(r.json()["device_id"])
+    assert dev.nextcloud_token_name == f"TinyWeb {device_name}"
 
 
 def test_bearer_me_and_revoke(app_env):

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from tinywebstack_family.login_ticket import verify_ticket
 from tinywebstack_family.policy import FamilyPolicy, PolicyStore
 
 
@@ -32,6 +35,27 @@ def _make_policy_store(policy_path: str, config: dict) -> Any:
         return PolicyStore(policy_path)
 
 log = logging.getLogger(__name__)
+
+
+def _load_login_ticket_secret(config: dict) -> Optional[bytes]:
+    inline = config.get("login_ticket_secret")
+    if inline is not None:
+        if isinstance(inline, (bytes, bytearray)):
+            raw = bytes(inline)
+        else:
+            text = str(inline).strip()
+            raw = bytes.fromhex(text) if len(text) == 64 else text.encode("utf-8")
+        return raw if raw else None
+    path = config.get("login_ticket_secret_file")
+    if not path:
+        return None
+    try:
+        data = Path(path).read_bytes()
+    except OSError as exc:
+        log.warning("Could not read login_ticket_secret_file %s: %s", path, exc)
+        return None
+    data = data.strip(b"\n\r")
+    return data if data else None
 
 try:
     from synapse.module_api import NOT_SPAM
@@ -70,9 +94,43 @@ class FamilySpamCheckerModule:
                 check_event_allowed=self.check_event_allowed,
             )
 
+        login_secret = _load_login_ticket_secret(config)
+        self._login_ticket_secret: Optional[bytes] = login_secret
+        if login_secret is not None:
+            api.register_password_auth_provider_callbacks(
+                auth_checkers={
+                    ("org.tinywebstack.login_ticket", ("ticket",)): self._check_login_ticket,
+                }
+            )
+
     @staticmethod
     def parse_config(config: dict) -> dict:
         return config
+
+    @staticmethod
+    def _username_localpart(username: str) -> str:
+        if username.startswith("@") and ":" in username:
+            return username.split(":", 1)[0][1:]
+        return username
+
+    async def _check_login_ticket(
+        self,
+        username: str,
+        login_type: str,
+        login_dict: dict,
+    ) -> Optional[Tuple[str, None]]:
+        secret = self._login_ticket_secret
+        if secret is None:
+            return None
+        ticket = login_dict.get("ticket")
+        if not isinstance(ticket, str) or not ticket:
+            return None
+        localpart = verify_ticket(secret, ticket, int(time.time()))
+        if localpart is None:
+            return None
+        if localpart != self._username_localpart(username):
+            return None
+        return (self.api.get_qualified_user_id(localpart), None)
 
     def _deny(self, msg: str) -> DenyResult:
         log.info("Family policy deny: %s", msg)

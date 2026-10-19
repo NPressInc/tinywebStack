@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -36,6 +38,7 @@ from tinywebstack_dashboard.auth import (
 )
 from tinywebstack_dashboard.invite_store import load_pending
 from tinywebstack_dashboard.members import list_members
+from tinywebstack_dashboard.owntracks_setup import load_stored_credentials
 from tinywebstack_dashboard.peer_verify import _ssl_context
 from tinywebstack_dashboard.yunohost_actions import (
     issue_owntracks,
@@ -43,6 +46,7 @@ from tinywebstack_dashboard.yunohost_actions import (
     nextcloud_app_password,
     nextcloud_app_password_delete,
 )
+from tinywebstack_family.login_ticket import make_ticket
 from tinywebstack_family.policy import QuietHours
 
 Platform = Literal["android", "ios", "other"]
@@ -105,6 +109,59 @@ def _mobilizon_login(events_base: str, username: str, server_name: str, password
         except (urllib.error.URLError, OSError, json.JSONDecodeError, urllib.error.HTTPError):
             continue
     return {"status": "unavailable"}
+
+
+def _load_matrix_login_ticket_secret() -> Optional[bytes]:
+    path = os.environ.get("TWS_MATRIX_LOGIN_TICKET_SECRET_FILE", "").strip()
+    if not path:
+        return None
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return None
+    data = data.strip(b"\n\r")
+    return data if data else None
+
+
+def _matrix_login_ticket_login(
+    homeserver_url: str,
+    username: str,
+    device_name: str,
+) -> Dict[str, Any]:
+    secret = _load_matrix_login_ticket_secret()
+    if not secret:
+        return {"status": "unavailable"}
+    ticket = make_ticket(secret, username, int(time.time()))
+    url = f"{homeserver_url.rstrip('/')}/_matrix/client/v3/login"
+    body = {
+        "type": "org.tinywebstack.login_ticket",
+        "identifier": {"type": "m.id.user", "user": username},
+        "ticket": ticket,
+        "initial_device_display_name": f"TinyWeb {device_name}",
+    }
+    data = json.dumps(body).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=data,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=25, context=_ssl_context()) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError, json.JSONDecodeError):
+        return {"status": "unavailable"}
+    access_token = payload.get("access_token")
+    device_id = payload.get("device_id")
+    if not access_token or not device_id:
+        return {"status": "unavailable"}
+    return {
+        "status": "ok",
+        "access_token": access_token,
+        "device_id": device_id,
+        "user_id": payload.get("user_id"),
+        "homeserver": homeserver_url.rstrip("/"),
+    }
 
 
 def _matrix_password_login(
@@ -260,23 +317,26 @@ def create_app_api_router(
                 return _no_store({"error": "invalid_credentials"}, status=401)
             username = resolved
             clear_enroll_failures(ip, username)
+            role = member_role(username)
+            if not role:
+                raise HTTPException(status_code=403, detail="Not a family member")
+            matrix_section = _matrix_login_ticket_login(
+                homeserver_url(),
+                username,
+                body.device_name,
+            )
+            matrix_device_id = (
+                matrix_section.get("device_id")
+                if matrix_section.get("status") == "ok"
+                else None
+            )
+            mobilizon_section = {"status": "password_required"}
         else:
             if not username or not body.password:
                 record_enroll_failure(ip, username or "unknown")
                 return _no_store({"error": "invalid_credentials"}, status=401)
             if enroll_rate_limited(ip, username):
                 raise HTTPException(status_code=429, detail="Too many attempts")
-
-        role = member_role(username)
-        if not role:
-            raise HTTPException(status_code=403, detail="Not a family member")
-
-        mxid = f"@{username}:{cfg.server_name}"
-        matrix_section: Dict[str, Any]
-        mobilizon_section: Dict[str, Any]
-        matrix_device_id: Optional[str] = None
-
-        if method == "password":
             matrix_section = _matrix_password_login(
                 homeserver_url(),
                 username,
@@ -288,17 +348,21 @@ def create_app_api_router(
                 record_enroll_failure(ip, username)
                 return _no_store({"error": "invalid_credentials"}, status=401)
             matrix_device_id = matrix_section.get("device_id")
+            role = member_role(username)
+            if not role:
+                if matrix_device_id:
+                    try:
+                        matrix_device_delete(username, cfg.server_name, matrix_device_id)
+                    except Exception:
+                        pass
+                raise HTTPException(status_code=403, detail="Not a family member")
             clear_enroll_failures(ip, username)
             events_url = cfg.events_base_url or os.environ.get("TWS_EVENTS_URL", "")
             mobilizon_section = _mobilizon_login(
                 events_url, username, cfg.server_name, body.password or ""
             )
-        else:
-            matrix_section = {
-                "status": "not_provisioned",
-                "reason": "code enrollment gets Matrix in Stage 2; use Element X",
-            }
-            mobilizon_section = {"status": "password_required"}
+
+        mxid = f"@{username}:{cfg.server_name}"
 
         nc_name = f"TinyWeb {body.device_name}"[:64]
         nc_token_name: Optional[str] = None
@@ -321,17 +385,27 @@ def create_app_api_router(
                 if cfg.location_base_url
                 else cfg.server_name
             )
-            try:
-                ot = issue_owntracks(username, cfg.server_name, loc_domain)
+            stored_ot = load_stored_credentials(cfg.owntracks_store_path, username)
+            if stored_ot:
                 owntracks_section: Dict[str, Any] = {
-                    "url": ot.get("url", ""),
-                    "username": ot.get("user", username),
-                    "device": ot.get("device", ""),
-                    "password": ot.get("password", ""),
-                    "tid": ot.get("tid", ""),
+                    "url": stored_ot.get("publish_url", ""),
+                    "username": stored_ot.get("username", username),
+                    "device": stored_ot.get("device_id", ""),
+                    "password": stored_ot.get("password", ""),
+                    "tid": stored_ot.get("tracker_id", ""),
                 }
-            except Exception:
-                owntracks_section = {"status": "unavailable"}
+            else:
+                try:
+                    ot = issue_owntracks(username, cfg.server_name, loc_domain)
+                    owntracks_section = {
+                        "url": ot.get("url", ""),
+                        "username": ot.get("user", username),
+                        "device": ot.get("device", ""),
+                        "password": ot.get("password", ""),
+                        "tid": ot.get("tid", ""),
+                    }
+                except Exception:
+                    owntracks_section = {"status": "unavailable"}
         else:
             owntracks_section = {"status": "not_needed"}
 
