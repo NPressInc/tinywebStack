@@ -75,7 +75,7 @@ Native apps cannot use YunoHost’s **SSOwat cookie** portal flow. Today each ba
 | `POST /api/invite/verify` | JSON | **Public** (also `https://<domain>/family/api/invite/verify`) |
 | `GET /.well-known/tinywebstack-family.json` | JSON | **Public** (proxied at site root) |
 
-Env knobs: `TWS_SERVER_NAME`, `TWS_CALDAV_ROOT`, `TWS_EVENTS_URL`, `TWS_LOCATION_URL`, `TWS_OWNTRACKS_KIDS_FILE`, `TWS_PERMISSIONS_DB` ([`app.py`](../family/dashboard/tinywebstack_dashboard/app.py), [`install-family-dashboard.sh`](../scripts/vm/install-family-dashboard.sh)).
+Env knobs: `TWS_SERVER_NAME`, `TWS_CALDAV_ROOT`, `TWS_EVENTS_URL`, `TWS_LOCATION_URL`, `TWS_OWNTRACKS_KIDS_FILE`, `TWS_OWNTRACKS_API_URL` (Recorder HTTP API on localhost, default `http://127.0.0.1:25959`), `TWS_PERMISSIONS_DB` ([`app.py`](../family/dashboard/tinywebstack_dashboard/app.py), [`install-family-dashboard.sh`](../scripts/vm/install-family-dashboard.sh)).
 
 ### App enrollment (Stage 1 — built)
 
@@ -86,6 +86,7 @@ Single **provisioning** flow so families sign in once:
    - **Password:** `{ "method": "password", "username", "password", "device_name", "platform": "android"|"ios"|"other" }` — Synapse `m.login.password` (+ optional Mobilizon GraphQL `login` when `TWS_EVENTS_URL` is set).
    - **Code:** `{ "method": "code", "code", "device_name", "platform" }` — parent mints code via dashboard or `POST /family/api/app/codes` (`{"username"}` → `{code, expires_at, qr_payload}`).
 3. **Server** returns a **one-time JSON bundle** (`Cache-Control: no-store`): dashboard bearer `tws_…` (SHA-256 in `/etc/tinywebstack/app-devices.db`), CalDAV app password, OwnTracks (kids), Mobilizon tokens when password login succeeded, Matrix when password login succeeded.
+   - **`owntracks` (kids):** `{ "url", "username", "device", "password", "tid", "publish": true, "mode": "http" }` — same stored credentials on every (re-)enroll; the app POSTs OwnTracks JSON to `url` with HTTP basic auth. **`owntracks` (parents):** `{ "status": "not_needed" }` (parents view the map; they do not publish by default).
 4. **Code enrollment** also provisions a real Matrix device. The dashboard mints a 60-second HMAC ticket and logs in server-side through the family module's `org.tinywebstack.login_ticket` login type; the ticket never leaves the box ([FAMILY_MODULE.md](FAMILY_MODULE.md)). Mobilizon returns `password_required` for code enrollment.
 5. App stores secrets in **Keychain / Keystore**; never logs them.
 
@@ -167,7 +168,8 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | `POST /family/api/members` | Proposed | Create member (wraps privileged helper) |
 | `POST /family/api/members/{user}/reset-password` | Proposed | Parent reset (HTML exists today) |
 | `GET/POST /family/api/invite/*` | Partial | `POST …/verify` built; create/redeem JSON TBD |
-| `GET /family/api/location/locations` | Proposed | Parent-only Recorder proxy |
+| `GET /family/api/locations` | **Built** | Parent-only: latest position per kid (Recorder `/api/0/last` via `TWS_OWNTRACKS_API_URL`) |
+| `GET /family/api/locations/{username}/track` | **Built** | Parent-only track history (`hours` query, max 2000 points) |
 
 **Existing (keep):** `GET/PUT /family/permissions/{user}`, `/family/federation/domains`, public invite verify, well-known.
 

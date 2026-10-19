@@ -88,6 +88,50 @@ if [[ -f "$LAB_CA" ]]; then
   CA_LINE="TWS_CA_BUNDLE=/etc/tinywebstack/lab-ca.pem"
 fi
 
+detect_owntracks_api_url() {
+  local host="127.0.0.1"
+  local port="8083"
+  # OTR_PORT is the MQTT port; the HTTP API uses OTR_HTTPHOST / OTR_HTTPPORT.
+  # owntracks_ynh keeps them in /var/www/owntracks/.env (YunoHost app setting `port`).
+  local f k v
+  for f in /etc/default/ot-recorder /var/www/owntracks/.env; do
+    [[ -f "$f" ]] || continue
+    while IFS='=' read -r k v; do
+      v="${v%\"}"; v="${v#\"}"
+      case "$k" in
+        OTR_HTTPHOST) [[ -n "$v" ]] && host="$v" ;;
+        OTR_HTTPPORT) [[ -n "$v" && "$v" != "0" ]] && port="$v" ;;
+      esac
+    done < <(grep -E '^OTR_HTTP(HOST|PORT)=' "$f" 2>/dev/null || true)
+  done
+  if command -v yunohost >/dev/null 2>&1; then
+    v="$(yunohost app setting owntracks port 2>/dev/null || true)"
+    [[ "$v" =~ ^[0-9]+$ && "$v" != "0" ]] && port="$v"
+  fi
+  if command -v pgrep >/dev/null 2>&1 && pgrep -x ot-recorder >/dev/null 2>&1; then
+    local line args
+    line="$(ps -o args= -C ot-recorder 2>/dev/null | head -1 || true)"
+    args="${line#*ot-recorder }"
+    if [[ "$args" == "$line" ]]; then
+      args="$line"
+    fi
+    local tok
+    for tok in $args; do
+      case "$tok" in
+        --http-host=*)
+          host="${tok#--http-host=}"
+          ;;
+        --http-port=*)
+          port="${tok#--http-port=}"
+          ;;
+      esac
+    done
+  fi
+  printf 'http://%s:%s' "$host" "$port"
+}
+
+OWNTRACKS_API_URL="$(detect_owntracks_api_url)"
+
 write_dashboard_env() {
   local csrf=$1 invite=$2
   cat >"$CSRF_FILE" <<EOF
@@ -108,6 +152,7 @@ TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"
 TWS_CALDAV_ROOT=${CALDAV_ROOT}
 TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"
 TWS_OWNTRACKS_PUBLISH_URL=https://${LOC_D}/recorder/pub
+TWS_OWNTRACKS_API_URL=${OWNTRACKS_API_URL}
 TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
 TWS_OWNTRACKS_HTPASSWD=/etc/tinywebstack/owntracks-recorder.htpasswd
 TWS_SYNAPSE_ADMIN_TOKEN_FILE=/etc/tinywebstack/synapse-admin-token
@@ -131,6 +176,9 @@ if [[ ! -f "$CSRF_FILE" ]]; then
 else
   grep -q '^TWS_MATRIX_SERVER=' "$CSRF_FILE" && sed -i "s|^TWS_MATRIX_SERVER=.*|TWS_MATRIX_SERVER=${MATRIX_HOST}|" "$CSRF_FILE" || printf 'TWS_MATRIX_SERVER=%s\n' "$MATRIX_HOST" >>"$CSRF_FILE"
   grep -q '^TWS_OWNTRACKS_PUBLISH_URL=' "$CSRF_FILE" || printf 'TWS_OWNTRACKS_PUBLISH_URL=https://%s/recorder/pub\n' "$LOC_D" >>"$CSRF_FILE"
+  grep -q '^TWS_OWNTRACKS_API_URL=' "$CSRF_FILE" \
+    && sed -i "s|^TWS_OWNTRACKS_API_URL=.*|TWS_OWNTRACKS_API_URL=${OWNTRACKS_API_URL}|" "$CSRF_FILE" \
+    || printf 'TWS_OWNTRACKS_API_URL=%s\n' "$OWNTRACKS_API_URL" >>"$CSRF_FILE"
   grep -q '^TWS_YUNOHOST_PRIV_HELPER=' "$CSRF_FILE" \
     && sed -i 's|^TWS_YUNOHOST_PRIV_HELPER=.*|TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"|' "$CSRF_FILE" \
     || printf '%s\n' 'TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"' >>"$CSRF_FILE"

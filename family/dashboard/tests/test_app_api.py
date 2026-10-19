@@ -419,6 +419,44 @@ def test_enroll_password_unknown_user_401_and_rate_limit(app_env, monkeypatch):
     assert r6.status_code == 429
 
 
+def test_enroll_password_synapse_throttle_is_429_not_failure(app_env, monkeypatch):
+    import io
+    import urllib.error
+
+    client, _, _ = app_env
+    ip = "203.0.113.51"
+
+    def fake_urlopen(req, timeout=0, context=None):
+        body = io.BytesIO(b'{"errcode":"M_LIMIT_EXCEEDED","retry_after_ms":7000}')
+        raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, body)
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    payload = {"method": "password", "username": "alice", "password": "x", "device_name": "T", "platform": "ios"}
+    for _ in range(7):
+        r = client.post("/api/app/enroll", json=payload, headers={"X-Real-IP": ip})
+        assert r.status_code == 429
+        assert r.json()["error"] == "rate_limited"
+        assert r.headers["Retry-After"] == "7"
+
+
+def test_enroll_kid_owntracks_publish_http_mode(app_env):
+    client, _, _ = app_env
+    code = _enroll_code(client)
+    r = client.post(
+        "/api/app/enroll",
+        json={
+            "method": "code",
+            "code": code,
+            "device_name": "Phone",
+            "platform": "android",
+        },
+    )
+    assert r.status_code == 200
+    ot = r.json()["owntracks"]
+    assert ot["publish"] is True
+    assert ot["mode"] == "http"
+
+
 def test_enroll_kid_returns_stored_owntracks_without_issue(app_env, monkeypatch):
     client, _, _ = app_env
     calls = []
@@ -647,6 +685,110 @@ def test_members_and_invites_parent_only(app_env):
     assert inv.status_code == 200
     assert len(inv.json()) == 1
     assert "token" not in json.dumps(inv.json()).lower()
+
+
+def _parent_token(client):
+    t = mint_device_token()
+    create_device(
+        username="parent1",
+        role="parent",
+        device_name="P",
+        platform="ios",
+        token=t,
+    )
+    return t
+
+
+def test_locations_parent_kids_only(app_env, monkeypatch):
+    client, _, _ = app_env
+    token = _parent_token(client)
+
+    def fake_last():
+        return (
+            [
+                {
+                    "username": "kid1",
+                    "device": "kid1-phone",
+                    "lat": 40.0,
+                    "lon": -105.0,
+                    "acc": 12,
+                    "batt": 80,
+                    "tst": 1_700_000_000,
+                    "tid": "k1",
+                    "_type": "location",
+                },
+                {
+                    "username": "stranger",
+                    "device": "x",
+                    "lat": 1.0,
+                    "lon": 2.0,
+                    "tst": 1_700_000_001,
+                    "_type": "location",
+                },
+            ],
+            True,
+        )
+
+    monkeypatch.setattr("tinywebstack_dashboard.app_api.fetch_all_last", fake_last)
+    r = client.get("/api/locations", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    kids = r.json()["kids"]
+    assert len(kids) == 1
+    assert kids[0]["username"] == "kid1"
+    assert kids[0]["lat"] == 40.0
+    assert "status" not in r.json()
+
+
+def test_locations_kid_forbidden(app_env):
+    client, _, _ = app_env
+    t_kid = mint_device_token()
+    create_device(username="kid1", role="kid", device_name="k", platform="android", token=t_kid)
+    assert (
+        client.get("/api/locations", headers={"Authorization": f"Bearer {t_kid}"}).status_code
+        == 403
+    )
+
+
+def test_locations_unauthenticated_401(app_env):
+    client, _, _ = app_env
+    assert client.get("/api/locations").status_code == 401
+
+
+def test_locations_recorder_unavailable(app_env, monkeypatch):
+    client, _, _ = app_env
+    token = _parent_token(client)
+    monkeypatch.setattr(
+        "tinywebstack_dashboard.app_api.fetch_all_last",
+        lambda: (None, False),
+    )
+    r = client.get("/api/locations", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    assert r.json() == {"kids": [], "status": "unavailable"}
+
+
+def test_locations_track_capped(app_env, monkeypatch):
+    client, _, _ = app_env
+    token = _parent_token(client)
+
+    def fake_track(user, device, hours):
+        points = [
+            {
+                "lat": float(i),
+                "lon": 0.0,
+                "tst": i,
+                "_type": "location",
+            }
+            for i in range(2500)
+        ]
+        return points, True
+
+    monkeypatch.setattr("tinywebstack_dashboard.app_api.fetch_track", fake_track)
+    r = client.get(
+        "/api/locations/kid1/track?hours=24",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert len(r.json()["points"]) == 2000
 
 
 def test_quiet_hours_active_inactive(app_env, monkeypatch):
