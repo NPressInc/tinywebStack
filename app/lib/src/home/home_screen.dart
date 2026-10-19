@@ -76,6 +76,8 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 12),
               _LocationSharingCard(service: session.locationService),
             ],
+            const SizedBox(height: 12),
+            _NotificationsToggle(session: session),
             const SizedBox(height: 20),
             _HomeTile(
               icon: Icons.chat_bubble_outline,
@@ -109,6 +111,57 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
+}
+
+class _NotificationsToggle extends StatefulWidget {
+  const _NotificationsToggle({required this.session});
+
+  final AppSession session;
+
+  @override
+  State<_NotificationsToggle> createState() => _NotificationsToggleState();
+}
+
+class _NotificationsToggleState extends State<_NotificationsToggle> {
+  bool _enabled = true;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final on = await widget.session.credentialStore.areNotificationsEnabled();
+    if (mounted) {
+      setState(() {
+        _enabled = on;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _onChanged(bool value) async {
+    setState(() {
+      _enabled = value;
+      _loading = true;
+    });
+    await widget.session.pushService.setNotificationsEnabled(value);
+    if (mounted) {
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SwitchListTile(
+      title: const Text('Notifications'),
+      subtitle: const Text('Wake for new messages; text loaded on device only'),
+      value: _enabled,
+      onChanged: _loading ? null : _onChanged,
+    );
+  }
 }
 
 class _LocationSharingCard extends StatelessWidget {

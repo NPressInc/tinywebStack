@@ -36,6 +36,7 @@ INSTALL_STEPS=(
   "7 family-permissions-seed and family-federation-state-seed"
   "8 mobilizon-admin-password"
   "9 family-sync-federation and family-events-perms"
+  "9b push (ntfy + Sygnal)"
   "10 self-check"
 )
 
@@ -482,6 +483,17 @@ step_mobilizon_password() {
   step_done 8
 }
 
+step_push_install() {
+  step_banner "9b" "push (ntfy + Sygnal)"
+  if [[ "${TWS_PUSH_ENABLE:-1}" == "0" ]]; then
+    install_log "TWS_PUSH_ENABLE=0 — skipping install-push.sh"
+    step_done "9b"
+    return 0
+  fi
+  run_vm_with_install_env install-push.sh "$TWS_DOMAIN"
+  step_done "9b"
+}
+
 step_federation_sync() {
   step_banner 9 "family-sync-federation and family-events-perms"
   local ec=0
@@ -660,6 +672,30 @@ step_selfcheck() {
   results+=("$line")
   [[ "$line" == FAIL* ]] && fail=1
 
+  if [[ "${TWS_PUSH_ENABLE:-1}" != "0" ]]; then
+    line="$(selfcheck_require_unit tinywebstack-ntfy || true)"
+    results+=("$line")
+    [[ "$line" == FAIL* ]] && fail=1
+    line="$(selfcheck_require_unit tinywebstack-sygnal || true)"
+    results+=("$line")
+    [[ "$line" == FAIL* ]] && fail=1
+    local push_d
+    push_d="push.${TWS_DOMAIN}"
+    if [[ -f "/etc/nginx/conf.d/${push_d}.d/tinywebstack-push.conf" ]]; then
+      results+=("PASS	push nginx snippet present")
+    else
+      results+=("FAIL	push nginx snippet missing for ${push_d}")
+      fail=1
+    fi
+    if [[ -f "${TWS_ETC_DIR}/synapse/conf.d/tinywebstack-push.yaml" ]] \
+      || [[ -f "/etc/matrix-synapse/conf.d/tinywebstack-push.yaml" ]]; then
+      results+=("PASS	synapse push ip_range_whitelist snippet present")
+    else
+      results+=("FAIL	synapse push ip_range_whitelist snippet missing")
+      fail=1
+    fi
+  fi
+
   if [[ "$LOCATION_APP" == "owntracks" ]]; then
     line="$(selfcheck_require_first_unit owntracks ot-recorder || true)"
     results+=("$line")
@@ -831,6 +867,7 @@ main() {
   step_family_seeds
   step_mobilizon_password
   step_federation_sync
+  step_push_install
   step_selfcheck
   if ((_xt)); then set -x; fi
   install_log "tinywebStack install finished for ${TWS_DOMAIN}"

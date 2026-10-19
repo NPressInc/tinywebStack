@@ -297,6 +297,8 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "caldav_root": cfg.caldav_root,
                 "events_url": cfg.events_base_url,
                 "location_url": cfg.location_base_url,
+                "push_enabled": os.environ.get("TWS_PUSH_ENABLE", "1").strip()
+                not in ("0", "false", "no", "off"),
             }
         )
 

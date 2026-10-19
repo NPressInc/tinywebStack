@@ -1,0 +1,4 @@
+# Managed by tinywebStack install-push.sh
+# Allow Synapse HTTP pushers to reach local ntfy/Sygnal only (no broad private ranges).
+ip_range_whitelist:
+  - "127.0.0.1"

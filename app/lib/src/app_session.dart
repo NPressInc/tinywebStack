@@ -4,6 +4,7 @@ import 'api/discovery.dart';
 import 'api/family_api.dart';
 import 'api/models.dart';
 import 'location/location_service.dart';
+import 'push/push_service.dart';
 import 'storage/credential_store.dart';
 
 enum AppRoute { loading, enroll, secureChats, locationExplainer, home }
@@ -14,15 +15,19 @@ class AppSession extends ChangeNotifier {
     DiscoveryClient? discovery,
     FamilyApiClient? familyApi,
     LocationService? locationService,
+    PushService? pushService,
   })  : _store = store ?? SecureCredentialStore(),
         _discovery = discovery ?? DiscoveryClient(),
         _familyApi = familyApi ?? FamilyApiClient(),
-        locationService = locationService ?? LocationService();
+        locationService = locationService ?? LocationService() {
+    this.pushService = pushService ?? PushService(store: _store);
+  }
 
   final CredentialStore _store;
   final DiscoveryClient _discovery;
   final FamilyApiClient _familyApi;
   final LocationService locationService;
+  late final PushService pushService;
 
   AppRoute route = AppRoute.loading;
   EnrollmentBundle? enrollment;
@@ -121,6 +126,7 @@ class AppSession extends ChangeNotifier {
   }
 
   Future<void> removeDevice() async {
+    await pushService.unregisterPusher();
     await locationService.stop();
     await _store.clear();
     enrollment = null;
@@ -169,6 +175,10 @@ class AppSession extends ChangeNotifier {
       profile = await _familyApi.fetchMe(bundle);
       route = AppRoute.home;
       await _startKidLocationSharingIfNeeded();
+      final enroll = enrollment;
+      if (enroll != null) {
+        await pushService.syncFromEnrollment(enroll);
+      }
     } on EnrollException catch (e) {
       if (clearOnUnauthorized &&
           e.kind == EnrollErrorKind.invalidCredentials) {

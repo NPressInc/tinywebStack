@@ -36,8 +36,9 @@ or server you run the scripts from. Node ids must match
 | Location (default) | `owntracks.home.example.com` | OwnTracks Recorder backend; kid publish via **TinyWeb app**; set `LOCATION_APP=traccar` for catalog fallback (`traccar.` host) |
 | Nextcloud CalDAV | `nextcloud.home.example.com` | CalDAV backend; families use calendar in the **TinyWeb app** ([CALENDAR.md](CALENDAR.md)) |
 | Mobilizon events | `mobilizon.home.example.com` | SSO/LDAP ([EVENTS.md](EVENTS.md)) |
+| Push (ntfy + Sygnal) | `push.home.example.com` | Matrix push gateways; content-free payloads ([PUSH.md](PUSH.md)) |
 
-All six names **must** resolve to the node (see §1.2).
+All service hostnames **must** resolve to the node (see §1.2), including `push.<main>` when push is enabled.
 
 ### Where the code lives on the node
 

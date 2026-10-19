@@ -866,6 +866,53 @@ impl MatrixSession {
             .collect())
     }
 
+    pub async fn set_http_pusher(
+        &self,
+        app_id: String,
+        pushkey: String,
+        gateway_url: String,
+        lang: Option<String>,
+    ) -> anyhow::Result<()> {
+        use matrix_sdk::ruma::api::client::push::{Pusher, PusherIds, PusherInit, PusherKind};
+        use matrix_sdk::ruma::api::client::push::set_pusher::v3;
+        use matrix_sdk::ruma::push::{HttpPusherData, PushFormat};
+
+        let mut http_data = HttpPusherData::new(gateway_url);
+        http_data.format = Some(PushFormat::EventIdOnly);
+        let device_name = self
+            .client
+            .device_id()
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "TinyWeb device".to_owned());
+        let pusher = Pusher::from(PusherInit {
+            ids: PusherIds::new(pushkey, app_id),
+            kind: PusherKind::Http(http_data),
+            app_display_name: "TinyWeb".to_owned(),
+            device_display_name: device_name,
+            profile_tag: None,
+            lang: lang.unwrap_or_else(|| "en".to_owned()),
+        });
+        self.client
+            .send(v3::Request::post(pusher))
+            .await
+            .context("set_http_pusher")?;
+        Ok(())
+    }
+
+    pub async fn delete_http_pusher(
+        &self,
+        app_id: String,
+        pushkey: String,
+    ) -> anyhow::Result<()> {
+        use matrix_sdk::ruma::api::client::push::{PusherIds, set_pusher::v3};
+
+        self.client
+            .send(v3::Request::delete(PusherIds::new(pushkey, app_id)))
+            .await
+            .context("delete_http_pusher")?;
+        Ok(())
+    }
+
     pub async fn user_identity_verified(&self, user_id: String) -> anyhow::Result<bool> {
         let uid = UserId::parse(&user_id).context("parse user_id")?;
         let identity = self
