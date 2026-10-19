@@ -80,11 +80,14 @@ Stage 1 chat uses Matrix **Megolm** (`m.megolm.v1.aes-sha2`). The Rust `tinyweb_
 
 ## Verified
 
-- `flutter test` — unit/widget tests (host; Matrix UI tests use `FakeChatService`, no native lib)
+Last checked on spark (linux-arm64), 2026-10-18:
+
+- `flutter test` — 27 unit/widget tests passed (Matrix UI uses `FakeChatService`, no native lib)
 - `flutter analyze` — no issues
-- `cargo build --release` in `rust/` — OK
-- `flutter build apk --debug --target-platform android-arm64` — OK (~73 s warm)
-- Lab `lab_test/chat_bridge_test.dart` and `e2ee_bridge_test.dart` with `TW_HS` / `TW_CA_FILE` / `TW_LIB` / `TW_TEST_PASSWORD`
+- `cargo build --release` in `rust/` — OK (~90 s)
+- `flutter build apk --debug --target-platform android-arm64` — OK (~78 s warm)
+- Lab `lab_test/e2ee_bridge_test.dart` (parent/kid, `TW_HS` / `TW_CA_FILE` / `TW_LIB` / `TW_TEST_PASSWORD`) — passed twice in a row (~1m37s each): encrypted DM, A→B and B→A decrypt, raw event `m.room.encrypted` with no plaintext, new-device `recover` + key backup read
+- Lab `lab_test/chat_bridge_test.dart` — same env vars as above (not re-run in this session)
 
 ## CI release builds (`.github/workflows/app.yml`)
 
