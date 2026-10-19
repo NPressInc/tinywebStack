@@ -1,0 +1,50 @@
+=== Run 1: lab tws-family-b (TinyWeb Synapse, family module rejects m.room.encryption by design — P3.8) ===
+Building Rust library (release)…
+   Compiling libsqlite3-sys v0.38.2
+   Compiling matrix-sdk v0.19.1
+   Compiling rusqlite v0.40.2
+   Compiling matrix-sdk-sqlite v0.19.1
+   Compiling rust_lib_tw_matrix_spike v0.1.0 (/home/william/Documents/codingProj/tinywebStack/spikes/flutter-matrix-bridge/rust)
+    Finished `release` profile [optimized] target(s) in 1m 19s
+00:00 +0: loading /home/william/Documents/codingProj/tinywebStack/spikes/flutter-matrix-bridge/test/matrix_bridge_test.dart
+00:00 +0: matrix bridge e2e against Synapse
+login_ms: 761
+first_sync_ms: 397
+rooms_after_sync: A=21 B=8
+sliding_sync: MSC4186 native sliding sync: supported; basic room-list sync_once: OK
+--- case: unencrypted (encrypted=false) ---
+created room: !xstpIaLUewKGM4FzK1M73LKytq2xEZjFCo9isa08dqE
+send_to_receive_ms (unencrypted ping): 140 (encrypted=false)
+send_to_receive_ms (unencrypted pong): 70 (encrypted=false)
+Shell: Fail to post message to Dart. (If happen during Flutter hot restart, this may not be a problem.)
+Shell: Fail to post message to Dart. (If happen during Flutter hot restart, this may not be a problem.)
+--- case: encrypted (encrypted=true) ---
+ENCRYPTED_ROOM_CASE: failed (E2EE may need more time or server keys): AnyhowException(create_room
+
+Caused by:
+    the server returned an error: [403 / M_FORBIDDEN] This event is not allowed in this context)
+
+00:06 +1: All tests passed!
+
+=== Run 2: stock Synapse 1.163.0 in docker on spark (http://localhost:18008), E2EE allowed ===
+Building Rust library (release)…
+    Finished `release` profile [optimized] target(s) in 0.13s
+00:00 +0: loading /home/william/Documents/codingProj/tinywebStack/spikes/flutter-matrix-bridge/test/matrix_bridge_test.dart
+00:00 +0: matrix bridge e2e against Synapse
+login_ms: 864
+first_sync_ms: 224
+rooms_after_sync: A=4 B=4
+sliding_sync: MSC4186 native sliding sync: supported; basic room-list sync_once: OK
+--- case: unencrypted (encrypted=false) ---
+created room: !sa5PvFzo7MovpC7oTLG7mzdmivW5a7TQi58Yuzh3j94
+send_to_receive_ms (unencrypted ping): 137 (encrypted=false)
+send_to_receive_ms (unencrypted pong): 70 (encrypted=false)
+Shell: Fail to post message to Dart. (If happen during Flutter hot restart, this may not be a problem.)
+Shell: Fail to post message to Dart. (If happen during Flutter hot restart, this may not be a problem.)
+--- case: encrypted (encrypted=true) ---
+created room: !mMIYWnyQnemF2SDdYCM4C6XYOsM9YR5mSYWlgFXtaco
+send_to_receive_ms (encrypted ping): 206 (encrypted=true)
+send_to_receive_ms (encrypted pong): 90 (encrypted=true)
+Shell: Fail to post message to Dart. (If happen during Flutter hot restart, this may not be a problem.)
+Shell: Fail to post message to Dart. (If happen during Flutter hot restart, this may not be a problem.)
+00:06 +1: All tests passed!

@@ -1,0 +1,19 @@
+[package]
+name = "rust_lib_tw_matrix_spike"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "staticlib"]
+
+[dependencies]
+flutter_rust_bridge = "=2.13.0"
+# Default features: e2e-encryption, automatic-room-key-forwarding, sqlite, rustls-aws-lc-rs (reqwest/rustls).
+matrix-sdk = { version = "0.19.1", default-features = true, features = ["bundled-sqlite"] } # bundled-sqlite: Android has no system libsqlite3 to link
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tracing = "0.1"
+url = "2"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
