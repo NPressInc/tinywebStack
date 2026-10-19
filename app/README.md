@@ -67,3 +67,21 @@ Lab family boxes use a **private CA**. Install the lab CA on a physical device f
 - `cargo build --release` in `rust/` — OK
 - `flutter build apk --debug --target-platform android-arm64` — OK (~73 s warm)
 - Lab `integration_test_host/chat_bridge_test.dart` with `TW_HS` / `TW_CA_FILE` / `TW_LIB` / `TW_TEST_PASSWORD` — `chat bridge e2e against Synapse` passed (~5 s; source lives under `integration_test_host/`)
+
+## CI release builds (`.github/workflows/app.yml`)
+
+On every PR or push that touches `app/`, CI runs `flutter analyze` and `flutter test`. It then builds:
+- **Android** on ubuntu x86_64: split-per-ABI release APKs plus an AAB, uploaded as the `tinyweb-android` artifact.
+- **iOS** on macOS: an **unsigned** IPA, uploaded as the `tinyweb-ios-unsigned` artifact.
+
+Rust (`tinyweb_core`) is compiled by cargokit inside each build.
+
+**Secrets William needs to add** (GitHub → Settings → Secrets and variables → Actions):
+
+| Secret | Purpose |
+|---|---|
+| `ANDROID_KEYSTORE_BASE64` | `base64 -w0 upload-keystore.jks` (create with `keytool -genkey -v -keystore upload-keystore.jks -keyalg RSA -keysize 2048 -validity 10000 -alias upload`). Keep the keystore safe offline; losing it locks the Play listing. |
+| `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` | The values used above. |
+| `APPLE_TEAM_ID`, `IOS_DIST_CERT_P12_BASE64`, `IOS_DIST_CERT_PASSWORD`, `IOS_PROVISIONING_PROFILE_BASE64`, `APP_STORE_CONNECT_API_KEY_ID` / `_ISSUER_ID` / `_P8_BASE64` | iOS signing and TestFlight upload, from William's Apple developer account (bundle id `win.tinyweb.tinyweb`). Not used yet; the iOS signing step lands once these exist. |
+
+Without the Android secrets, release builds are signed with the debug key, which is fine for sideload testing but not for Play. Google Play account ownership is still to be decided; F-Droid is open.
