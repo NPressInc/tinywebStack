@@ -5,6 +5,7 @@ import '../app_session.dart';
 import '../chat/chat_list_screen.dart';
 import '../chat/chat_service.dart';
 import '../home/home_screen.dart';
+import '../calendar/calendar_screen.dart';
 import '../location/locations_screen.dart';
 
 class MainShell extends StatefulWidget {
@@ -95,13 +96,19 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   bool get _isParent => widget.session.profile?.role == 'parent';
 
+  int _chatTabIndex() => _isParent ? 3 : 2;
+
+  int _calendarTabIndex() => _isParent ? 1 : 1;
+
   @override
   Widget build(BuildContext context) {
     final pages = <Widget>[
       HomeScreen(
         session: widget.session,
-        onOpenChat: () => _selectTab(_isParent ? 2 : 1),
+        onOpenChat: () => _selectTab(_chatTabIndex()),
+        onOpenCalendar: () => _selectTab(_calendarTabIndex()),
       ),
+      CalendarScreen(session: widget.session),
       if (_isParent) LocationsScreen(session: widget.session),
       ChatListScreen(session: widget.session, chat: _chat),
     ];
@@ -111,6 +118,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         icon: Icon(Icons.home_outlined),
         selectedIcon: Icon(Icons.home),
         label: 'Home',
+      ),
+      const NavigationDestination(
+        icon: Icon(Icons.calendar_month_outlined),
+        selectedIcon: Icon(Icons.calendar_month),
+        label: 'Calendar',
       ),
       if (_isParent)
         const NavigationDestination(
