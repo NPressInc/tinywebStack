@@ -3,22 +3,26 @@ import 'package:flutter/foundation.dart';
 import 'api/discovery.dart';
 import 'api/family_api.dart';
 import 'api/models.dart';
+import 'location/location_service.dart';
 import 'storage/credential_store.dart';
 
-enum AppRoute { loading, enroll, secureChats, home }
+enum AppRoute { loading, enroll, secureChats, locationExplainer, home }
 
 class AppSession extends ChangeNotifier {
   AppSession({
     CredentialStore? store,
     DiscoveryClient? discovery,
     FamilyApiClient? familyApi,
+    LocationService? locationService,
   })  : _store = store ?? SecureCredentialStore(),
         _discovery = discovery ?? DiscoveryClient(),
-        _familyApi = familyApi ?? FamilyApiClient();
+        _familyApi = familyApi ?? FamilyApiClient(),
+        locationService = locationService ?? LocationService();
 
   final CredentialStore _store;
   final DiscoveryClient _discovery;
   final FamilyApiClient _familyApi;
+  final LocationService locationService;
 
   AppRoute route = AppRoute.loading;
   EnrollmentBundle? enrollment;
@@ -36,6 +40,7 @@ class AppSession extends ChangeNotifier {
     enrollBannerMessage = null;
     pendingEnrollPassword = null;
     enrollment = await _store.read();
+    _syncLocationCredentials();
     if (enrollment == null) {
       route = AppRoute.enroll;
       notifyListeners();
@@ -43,6 +48,11 @@ class AppSession extends ChangeNotifier {
     }
     if (await _needsE2eeSetup()) {
       route = AppRoute.secureChats;
+      notifyListeners();
+      return;
+    }
+    if (await _needsLocationExplainer()) {
+      route = AppRoute.locationExplainer;
       notifyListeners();
       return;
     }
@@ -64,10 +74,13 @@ class AppSession extends ChangeNotifier {
     await _store.ensureMatrixStorePassphrase();
     await _store.write(bundle);
     enrollment = bundle;
+    _syncLocationCredentials();
     pendingEnrollPassword = enrollPassword;
     enrollBannerMessage = null;
     if (bundle.matrixEnrollment.isOk) {
       route = AppRoute.secureChats;
+    } else if (await _needsLocationExplainer()) {
+      route = AppRoute.locationExplainer;
     } else {
       await _refreshMe(clearOnUnauthorized: false);
     }
@@ -77,7 +90,30 @@ class AppSession extends ChangeNotifier {
   Future<void> finishE2eeSetup({bool skipped = false}) async {
     await _store.setMatrixE2eeSetupComplete(skipped: skipped);
     pendingEnrollPassword = null;
+    if (await _needsLocationExplainer()) {
+      route = AppRoute.locationExplainer;
+      notifyListeners();
+      return;
+    }
     await _refreshMe(clearOnUnauthorized: false);
+  }
+
+  Future<void> acknowledgeLocationSharing() async {
+    await _store.setLocationSharingAcknowledged();
+    await _startKidLocationSharingIfNeeded();
+    await _refreshMe(clearOnUnauthorized: false);
+  }
+
+  Future<bool> _needsLocationExplainer() async {
+    final bundle = enrollment;
+    if (bundle == null || !bundle.isKid) {
+      return false;
+    }
+    final creds = bundle.owntracksCredentials;
+    if (creds == null) {
+      return false;
+    }
+    return !(await _store.hasAcknowledgedLocationSharing());
   }
 
   Future<void> refreshProfile() async {
@@ -85,6 +121,7 @@ class AppSession extends ChangeNotifier {
   }
 
   Future<void> removeDevice() async {
+    await locationService.stop();
     await _store.clear();
     enrollment = null;
     profile = null;
@@ -131,6 +168,7 @@ class AppSession extends ChangeNotifier {
     try {
       profile = await _familyApi.fetchMe(bundle);
       route = AppRoute.home;
+      await _startKidLocationSharingIfNeeded();
     } on EnrollException catch (e) {
       if (clearOnUnauthorized &&
           e.kind == EnrollErrorKind.invalidCredentials) {
@@ -145,5 +183,26 @@ class AppSession extends ChangeNotifier {
       }
     }
     notifyListeners();
+  }
+
+  void _syncLocationCredentials() {
+    locationService.updateCredentials(enrollment?.owntracksCredentials);
+  }
+
+  Future<void> _startKidLocationSharingIfNeeded() async {
+    final bundle = enrollment;
+    if (bundle == null || !bundle.isKid) {
+      return;
+    }
+    if (bundle.owntracksCredentials == null) {
+      return;
+    }
+    if (!(await _store.hasAcknowledgedLocationSharing())) {
+      return;
+    }
+    _syncLocationCredentials();
+    if (!locationService.isRunning) {
+      await locationService.start();
+    }
   }
 }

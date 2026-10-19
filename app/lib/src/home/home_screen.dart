@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../app_session.dart';
 import '../brand.dart';
+import '../location/location_service.dart';
 import '../widgets/quiet_hours_banner.dart';
 
 class HomeScreen extends StatelessWidget {
@@ -65,6 +66,10 @@ class HomeScreen extends StatelessWidget {
               const SizedBox(height: 12),
               QuietHoursBanner(profile: profile, isKid: isKid),
             ],
+            if (isKid && session.enrollment?.owntracksCredentials != null) ...[
+              const SizedBox(height: 12),
+              _LocationSharingCard(service: session.locationService),
+            ],
             const SizedBox(height: 20),
             _HomeTile(
               icon: Icons.chat_bubble_outline,
@@ -85,20 +90,13 @@ class HomeScreen extends StatelessWidget {
                 subtitle: 'Coming soon',
                 onTap: () => _showComingSoon(context, 'Events'),
               ),
-            if (isParent) ...[
-              _HomeTile(
-                icon: Icons.map_outlined,
-                title: 'Family map',
-                subtitle: 'Coming soon',
-                onTap: () => _showComingSoon(context, 'Family map'),
-              ),
+            if (isParent)
               _HomeTile(
                 icon: Icons.family_restroom_outlined,
                 title: 'Family controls',
                 subtitle: 'Coming soon',
                 onTap: () => _showComingSoon(context, 'Family controls'),
               ),
-            ],
           ],
         ),
       ),
@@ -108,6 +106,36 @@ class HomeScreen extends StatelessWidget {
   void _showComingSoon(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('$feature — coming soon')),
+    );
+  }
+}
+
+class _LocationSharingCard extends StatelessWidget {
+  const _LocationSharingCard({required this.service});
+
+  final LocationService service;
+
+  @override
+  Widget build(BuildContext context) {
+    final last = service.lastSentAt;
+    final error = service.statusDetail;
+    String subtitle;
+    if (error != null && error.isNotEmpty) {
+      subtitle = error;
+    } else if (last != null) {
+      subtitle = 'Last sent ${MaterialLocalizations.of(context).formatShortTime(last)}';
+    } else if (service.status == LocationSharingStatus.running) {
+      subtitle = 'Sharing in the background';
+    } else {
+      subtitle = 'Starting location sharing…';
+    }
+    return Card(
+      color: TinyWebColors.bgSoft,
+      child: ListTile(
+        leading: const Icon(Icons.location_on, color: TinyWebColors.blueDeep),
+        title: const Text('Location sharing'),
+        subtitle: Text(subtitle),
+      ),
     );
   }
 }

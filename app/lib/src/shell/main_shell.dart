@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../api/models.dart';
 import '../app_session.dart';
 import '../chat/chat_list_screen.dart';
 import '../chat/chat_service.dart';
 import '../home/home_screen.dart';
+import '../location/locations_screen.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({
@@ -29,6 +29,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    widget.session.locationService.addListener(_onLocationChanged);
     if (widget.chatService != null) {
       _chat = widget.chatService!;
     } else {
@@ -61,10 +62,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    widget.session.locationService.removeListener(_onLocationChanged);
     if (_ownsChat) {
       _chat.dispose();
     }
     super.dispose();
+  }
+
+  void _onLocationChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -84,14 +92,36 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     setState(() => _tabIndex = index);
   }
 
+  bool get _isParent => widget.session.profile?.role == 'parent';
+
   @override
   Widget build(BuildContext context) {
-    final pages = [
+    final pages = <Widget>[
       HomeScreen(
         session: widget.session,
-        onOpenChat: () => _selectTab(1),
+        onOpenChat: () => _selectTab(_isParent ? 2 : 1),
       ),
+      if (_isParent) LocationsScreen(session: widget.session),
       ChatListScreen(session: widget.session, chat: _chat),
+    ];
+
+    final destinations = <NavigationDestination>[
+      const NavigationDestination(
+        icon: Icon(Icons.home_outlined),
+        selectedIcon: Icon(Icons.home),
+        label: 'Home',
+      ),
+      if (_isParent)
+        const NavigationDestination(
+          icon: Icon(Icons.location_on_outlined),
+          selectedIcon: Icon(Icons.location_on),
+          label: 'Locations',
+        ),
+      const NavigationDestination(
+        icon: Icon(Icons.chat_bubble_outline),
+        selectedIcon: Icon(Icons.chat_bubble),
+        label: 'Chat',
+      ),
     ];
 
     return Scaffold(
@@ -99,18 +129,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tabIndex,
         onDestinationSelected: _selectTab,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.chat_bubble_outline),
-            selectedIcon: Icon(Icons.chat_bubble),
-            label: 'Chat',
-          ),
-        ],
+        destinations: destinations,
       ),
     );
   }

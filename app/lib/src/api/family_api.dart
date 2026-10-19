@@ -89,6 +89,48 @@ class FamilyApiClient {
     _throwForStatus(response);
   }
 
+  Future<LocationsResponse> fetchLocations(EnrollmentBundle bundle) async {
+    final url = _apiUrl(bundle, '/locations');
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return LocationsResponse.fromJson(json);
+    }
+    _throwForStatus(response);
+  }
+
+  Future<KidTrackResponse> fetchKidTrack(
+    EnrollmentBundle bundle,
+    String username, {
+    int hours = 24,
+  }) async {
+    final path = '/locations/${Uri.encodeComponent(username)}/track?hours=$hours';
+    final url = _apiUrl(bundle, path);
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return KidTrackResponse.fromJson(json);
+    }
+    _throwForStatus(response);
+  }
+
+  String _apiUrl(EnrollmentBundle bundle, String suffix) {
+    final base = bundle.serverOrigin.endsWith('/')
+        ? bundle.serverOrigin.substring(0, bundle.serverOrigin.length - 1)
+        : bundle.serverOrigin;
+    final path = bundle.apiBase.startsWith('/')
+        ? bundle.apiBase
+        : '/${bundle.apiBase}';
+    final tail = suffix.startsWith('/') ? suffix : '/$suffix';
+    return '$base$path$tail';
+  }
+
   Future<AppMeProfile> fetchMe(EnrollmentBundle bundle) async {
     final url = bundle.meUrl(bundle.serverOrigin);
     final response = await _client.get(

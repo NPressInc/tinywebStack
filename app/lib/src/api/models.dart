@@ -90,6 +90,62 @@ extension EnrollmentBundleMatrix on EnrollmentBundle {
   }
 }
 
+class OwnTracksCredentials {
+  OwnTracksCredentials({
+    required this.url,
+    required this.username,
+    required this.device,
+    required this.password,
+    required this.tid,
+    this.publish = true,
+    this.mode = 'http',
+  });
+
+  final String url;
+  final String username;
+  final String device;
+  final String password;
+  final String tid;
+  final bool publish;
+  final String mode;
+
+  bool get shouldPublish => publish && mode == 'http' && url.isNotEmpty;
+
+  factory OwnTracksCredentials.fromJson(Map<String, dynamic> json) {
+    return OwnTracksCredentials(
+      url: json['url'] as String? ?? '',
+      username: json['username'] as String? ?? '',
+      device: json['device'] as String? ?? '',
+      password: json['password'] as String? ?? '',
+      tid: json['tid'] as String? ?? '',
+      publish: json['publish'] as bool? ?? false,
+      mode: json['mode'] as String? ?? 'http',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'url': url,
+        'username': username,
+        'device': device,
+        'password': password,
+        'tid': tid,
+        'publish': publish,
+        'mode': mode,
+      };
+
+  static OwnTracksCredentials? fromEnrollment(EnrollmentBundle bundle) {
+    final raw = bundle.rawJson?['owntracks'];
+    if (raw is! Map<String, dynamic>) {
+      return null;
+    }
+    if (raw['status'] == 'not_needed' || raw['status'] == 'unavailable') {
+      return null;
+    }
+    final creds = OwnTracksCredentials.fromJson(raw);
+    return creds.shouldPublish ? creds : null;
+  }
+}
+
 class EnrollmentBundle {
   EnrollmentBundle({
     required this.deviceId,
@@ -172,9 +228,23 @@ class EnrollmentBundle {
       matrixHomeserverUrl: matrix?['homeserver'] as String? ??
           matrix?['homeserver_url'] as String? ??
           discovery.matrixHomeserverUrl,
-      rawJson: json,
+      rawJson: _storedRawJson(json),
     );
   }
+
+  static Map<String, dynamic>? _storedRawJson(Map<String, dynamic> json) {
+    final raw = <String, dynamic>{};
+    if (json['matrix'] != null) {
+      raw['matrix'] = json['matrix'];
+    }
+    if (json['owntracks'] != null) {
+      raw['owntracks'] = json['owntracks'];
+    }
+    return raw.isEmpty ? null : raw;
+  }
+
+  OwnTracksCredentials? get owntracksCredentials =>
+      OwnTracksCredentials.fromEnrollment(this);
 }
 
 class QuietHoursInfo {
@@ -229,6 +299,114 @@ class FamilyMember {
       mxid: json['mxid'] as String? ?? json['matrix_id'] as String? ?? '',
       role: json['role'] as String? ?? 'kid',
       displayName: json['display_name'] as String? ?? json['name'] as String?,
+    );
+  }
+}
+
+class KidLocationSnapshot {
+  KidLocationSnapshot({
+    required this.username,
+    required this.displayName,
+    this.tid,
+    this.lat,
+    this.lon,
+    this.acc,
+    this.batt,
+    this.tst,
+    this.ageSeconds,
+  });
+
+  final String username;
+  final String displayName;
+  final String? tid;
+  final double? lat;
+  final double? lon;
+  final double? acc;
+  final int? batt;
+  final int? tst;
+  final int? ageSeconds;
+
+  factory KidLocationSnapshot.fromJson(Map<String, dynamic> json) {
+    return KidLocationSnapshot(
+      username: json['username'] as String? ?? '',
+      displayName: json['display_name'] as String? ?? json['username'] as String? ?? '',
+      tid: json['tid'] as String?,
+      lat: (json['lat'] as num?)?.toDouble(),
+      lon: (json['lon'] as num?)?.toDouble(),
+      acc: (json['acc'] as num?)?.toDouble(),
+      batt: json['batt'] as int?,
+      tst: json['tst'] as int?,
+      ageSeconds: json['age_seconds'] as int?,
+    );
+  }
+}
+
+class LocationsResponse {
+  LocationsResponse({required this.kids, this.status});
+
+  final List<KidLocationSnapshot> kids;
+  final String? status;
+
+  factory LocationsResponse.fromJson(Map<String, dynamic> json) {
+    final list = json['kids'] as List<dynamic>? ?? [];
+    return LocationsResponse(
+      kids: list
+          .map((e) => KidLocationSnapshot.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      status: json['status'] as String?,
+    );
+  }
+}
+
+class TrackPoint {
+  TrackPoint({this.lat, this.lon, this.acc, this.batt, this.tst, this.tid});
+
+  final double? lat;
+  final double? lon;
+  final double? acc;
+  final int? batt;
+  final int? tst;
+  final String? tid;
+
+  factory TrackPoint.fromJson(Map<String, dynamic> json) {
+    return TrackPoint(
+      lat: (json['lat'] as num?)?.toDouble(),
+      lon: (json['lon'] as num?)?.toDouble(),
+      acc: (json['acc'] as num?)?.toDouble(),
+      batt: json['batt'] as int?,
+      tst: json['tst'] is int
+          ? json['tst'] as int
+          : (json['tst'] as num?)?.toInt(),
+      tid: json['tid'] as String?,
+    );
+  }
+}
+
+class KidTrackResponse {
+  KidTrackResponse({
+    required this.username,
+    required this.displayName,
+    required this.hours,
+    required this.points,
+    this.status,
+  });
+
+  final String username;
+  final String displayName;
+  final int hours;
+  final List<TrackPoint> points;
+  final String? status;
+
+  factory KidTrackResponse.fromJson(Map<String, dynamic> json) {
+    final list = json['points'] as List<dynamic>? ?? [];
+    return KidTrackResponse(
+      username: json['username'] as String? ?? '',
+      displayName: json['display_name'] as String? ?? '',
+      hours: json['hours'] as int? ?? 24,
+      points: list
+          .map((e) => TrackPoint.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      status: json['status'] as String?,
     );
   }
 }
