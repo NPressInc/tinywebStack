@@ -7,7 +7,7 @@ This document breaks down the **family layer** described in [PLAN.md](../PLAN.md
 - Two YunoHost nodes (`family-a`, `family-b`) with Synapse, Element, OwnTracks (default; `LOCATION_APP=traccar` for fallback), Nextcloud CalDAV, and Mobilizon events.
 - Matrix federation works **pairwise** with `federation_domain_whitelist`; `matrix.org` is rejected in e2e checks.
 - Test users (`alice`, `bob`, `parent`, `kid`) are created via `yunohost user create`.
-- **Built and shipped:** family groups (`parents` / `kids` / `federation-test`, `family-groups.sh`), kid provisioning via the family dashboard + privileged helper (`family-dashboard-privileged.sh`), the `tinywebstack_family` Synapse module (per-kid contact allowlists, 3PID-invite denial, quiet hours, E2EE rejection), location permissions (web UI parents-only), and the parent-facing dashboard at `https://<main>/family/` ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
+- **Built and shipped:** family groups (`parents` / `kids` / `federation-test`, `family-groups.sh`), kid provisioning via the family dashboard + privileged helper (`family-dashboard-privileged.sh`), the `tinywebstack_family` Synapse module (per-kid contact allowlists, 3PID-invite denial, quiet hours; E2EE allowed and on by default since Stage 1), location permissions (web UI parents-only), and the parent-facing dashboard at `https://<main>/family/` ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
 - Production install path documented in [production-setup.md](production-setup.md) (S5.2); remaining script gaps listed there under "Known gaps for v1.1".
 
 **Explicitly out of scope (v1):** Android ROM lockdown; centralized cross-family server. (Production TLS is now covered by [production-setup.md](production-setup.md) — the lab uses a private CA.)
