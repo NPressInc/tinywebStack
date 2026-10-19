@@ -94,3 +94,46 @@ def require_parent(username: Optional[str], cfg: DashboardConfig) -> None:
         raise HTTPException(status_code=401, detail="SSO login required")
     if not user_in_group(username, cfg.parents_group, cfg.yunohost_cli):
         raise HTTPException(status_code=403, detail="Parents group membership required")
+
+
+@dataclass
+class ApiAuth:
+    username: str
+    via_bearer: bool
+
+
+def _bearer_token(headers: dict) -> Optional[str]:
+    auth = headers.get("Authorization") or headers.get("authorization") or ""
+    if not auth.startswith("Bearer "):
+        return None
+    token = auth[7:].strip()
+    if token.startswith("tws_"):
+        return token
+    return None
+
+
+def api_user(request, cfg: DashboardConfig) -> ApiAuth:
+    """SSO (YNH_USER) or valid TinyWeb device bearer token."""
+    from fastapi import HTTPException
+
+    from tinywebstack_dashboard.app_devices import get_device, verify_token
+
+    headers = dict(request.headers)
+    token = _bearer_token(headers)
+    if token:
+        device_id = verify_token(token)
+        if not device_id:
+            raise HTTPException(status_code=401, detail="Invalid or revoked token")
+        dev = get_device(device_id)
+        if not dev or dev.revoked_at:
+            raise HTTPException(status_code=401, detail="Invalid or revoked token")
+        return ApiAuth(username=dev.username, via_bearer=True)
+    user = username_from_headers(headers)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return ApiAuth(username=user, via_bearer=False)
+
+
+def require_parent_user(auth: ApiAuth, cfg: DashboardConfig) -> str:
+    require_parent(auth.username, cfg)
+    return auth.username

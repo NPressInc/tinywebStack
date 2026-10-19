@@ -7,6 +7,7 @@ def test_install_family_dashboard_updates_caldav_root_on_existing_env() -> None:
     text = (ROOT / "scripts" / "vm" / "install-family-dashboard.sh").read_text(encoding="utf-8")
     assert "TWS_CALDAV_ROOT=" in text
     assert 'grep -q \'^TWS_CALDAV_ROOT=\'' in text
+    assert "TWS_MATRIX_LOGIN_TICKET_SECRET_FILE=" in text
 
 
 def test_family_groups_keeps_nextcloud_visitors() -> None:

@@ -83,6 +83,7 @@ PYTHONPATH="$d/../lib/site-packages${{PYTHONPATH:+:$PYTHONPATH}}" \\
 
 
 def _base_env(node: Path, tmp_path: Path) -> dict[str, str]:
+    login_ticket_secret = tmp_path / "matrix-synapse" / "tinywebstack-login-ticket.secret"
     return {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "HOME": str(tmp_path),
@@ -93,6 +94,7 @@ def _base_env(node: Path, tmp_path: Path) -> dict[str, str]:
         "TWS_FAMILY_MODULE_VENV": str(node / "synapse-venv"),
         "TWS_POLICY_PATH": str(tmp_path / "etc" / "family-policy.json"),
         "TWS_SYNAPSE_CONF_D": str(tmp_path / "conf.d"),
+        "TWS_LOGIN_TICKET_SECRET": str(login_ticket_secret),
         "FAKE_PIP_LOG": str(tmp_path / "fake-pip.log"),
     }
 
@@ -228,9 +230,11 @@ def test_installer_writes_expected_snippet(node: Path, tmp_path: Path) -> None:
     assert "encryption_enabled_by_default_for_room_type" in snippet
     assert f"policy_path: {env['TWS_POLICY_PATH']}" in snippet
     assert "permissions_db:" in snippet
+    assert "login_ticket_secret_file:" in snippet
     import yaml
 
     data = yaml.safe_load(snippet)
     assert data["modules"][0]["module"] == (
         "tinywebstack_family.module.FamilySpamCheckerModule"
     )
+    assert data["modules"][0]["config"]["login_ticket_secret_file"]
