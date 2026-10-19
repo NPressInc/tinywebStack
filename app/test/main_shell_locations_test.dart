@@ -36,7 +36,7 @@ AppSession _session(String role) {
 }
 
 void main() {
-  testWidgets('parent sees Locations tab', (tester) async {
+  testWidgets('parent sees Events and Locations tabs', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: MainShell(
@@ -44,6 +44,13 @@ void main() {
           chatService: UnconfiguredChatService(),
         ),
       ),
+    );
+    expect(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Events'),
+      ),
+      findsOneWidget,
     );
     expect(find.text('Locations'), findsOneWidget);
     expect(
@@ -53,6 +60,26 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('kid with events disabled does not see Events tab', (tester) async {
+    final session = _session('kid');
+    session.profile = AppMeProfile(
+      username: 'u',
+      role: 'kid',
+      mxid: '@u:family.example',
+      quietHours: QuietHoursInfo(configured: false, active: false),
+      eventsEnabled: false,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: MainShell(
+          session: session,
+          chatService: UnconfiguredChatService(),
+        ),
+      ),
+    );
+    expect(find.text('Events'), findsNothing);
   });
 
   testWidgets('kid does not see Locations tab', (tester) async {

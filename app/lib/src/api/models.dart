@@ -135,6 +135,66 @@ extension EnrollmentBundleCalDav on EnrollmentBundle {
   CalDavCredentials? get caldavCredentials => CalDavCredentials.fromEnrollment(this);
 }
 
+class MobilizonCredentials {
+  MobilizonCredentials({
+    required this.apiUrl,
+    required this.accessToken,
+    this.refreshToken,
+  });
+
+  final String apiUrl;
+  final String accessToken;
+  final String? refreshToken;
+
+  bool get isConfigured => apiUrl.isNotEmpty && accessToken.isNotEmpty;
+
+  factory MobilizonCredentials.fromJson(Map<String, dynamic> json) {
+    return MobilizonCredentials(
+      apiUrl: json['api_url'] as String? ?? '',
+      accessToken: json['access_token'] as String? ?? '',
+      refreshToken: json['refresh_token'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'api_url': apiUrl,
+        'access_token': accessToken,
+        if (refreshToken != null) 'refresh_token': refreshToken,
+      };
+
+  static MobilizonCredentials? fromEnrollment(EnrollmentBundle bundle) {
+    final raw = bundle.rawJson?['mobilizon'];
+    if (raw is! Map<String, dynamic>) {
+      return null;
+    }
+    final status = raw['status'] as String?;
+    if (status == 'unavailable' ||
+        status == 'password_required' ||
+        status == 'not_needed') {
+      return null;
+    }
+    if (status != 'ok') {
+      return null;
+    }
+    var apiUrl = raw['api_url'] as String? ?? '';
+    final eventsBase = raw['events_url'] as String? ?? bundle.discovery.eventsUrl;
+    if (apiUrl.isEmpty && eventsBase != null && eventsBase.isNotEmpty) {
+      apiUrl = '${eventsBase.replaceAll(RegExp(r'/+$'), '')}/api';
+    }
+    final creds = MobilizonCredentials(
+      apiUrl: apiUrl,
+      accessToken: raw['access_token'] as String? ?? '',
+      refreshToken: raw['refresh_token'] as String?,
+    );
+    return creds.isConfigured ? creds : null;
+  }
+}
+
+extension EnrollmentBundleMobilizon on EnrollmentBundle {
+  MobilizonCredentials? get mobilizonCredentials =>
+      MobilizonCredentials.fromEnrollment(this);
+}
+
 class OwnTracksCredentials {
   OwnTracksCredentials({
     required this.url,
@@ -287,6 +347,9 @@ class EnrollmentBundle {
     }
     if (json['caldav'] != null) {
       raw['caldav'] = json['caldav'];
+    }
+    if (json['mobilizon'] != null) {
+      raw['mobilizon'] = json['mobilizon'];
     }
     return raw.isEmpty ? null : raw;
   }
