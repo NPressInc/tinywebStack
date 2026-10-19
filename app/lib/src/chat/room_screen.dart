@@ -190,8 +190,13 @@ class _MessageBubble extends StatelessWidget {
         '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
 
     final align = message.isOwn ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final color = message.isOwn ? TinyWebColors.blueDeep : Colors.white;
-    final textColor = message.isOwn ? Colors.white : TinyWebColors.text;
+    final utd = message.utd;
+    final color = utd
+        ? Colors.grey.shade200
+        : (message.isOwn ? TinyWebColors.blueDeep : Colors.white);
+    final textColor = utd
+        ? Colors.grey.shade700
+        : (message.isOwn ? Colors.white : TinyWebColors.text);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -221,7 +226,24 @@ class _MessageBubble extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(message.body, style: TextStyle(color: textColor)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (utd) ...[
+                      Icon(Icons.lock_outline, size: 14, color: textColor),
+                      const SizedBox(width: 6),
+                    ],
+                    Flexible(
+                      child: Text(
+                        message.body,
+                        style: TextStyle(
+                          color: textColor,
+                          fontStyle: utd ? FontStyle.italic : FontStyle.normal,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 4),
                 Text(
                   timeLabel,

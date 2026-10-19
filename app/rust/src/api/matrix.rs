@@ -12,11 +12,13 @@ use crate::frb_generated::StreamSink;
 use matrix_sdk::{
     authentication::matrix::MatrixSession as AuthMatrixSession,
     config::SyncSettings,
+    encryption::CrossSigningResetAuthType,
     deserialized_responses::{EncryptionInfo, TimelineEvent, TimelineEventKind},
+    encryption::recovery::{RecoveryError, RecoveryState},
     room::MessagesOptions,
     ruma::{
+        api::client::{room::create_room, uiaa},
         api::error::ErrorKind,
-        api::client::room::create_room,
         assign,
         events::room::{
             encryption::RoomEncryptionEventContent,
@@ -68,6 +70,23 @@ pub struct TimelineMessage {
     pub body: String,
     pub ts_ms: i64,
     pub is_own: bool,
+    pub utd: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct EncryptionStatus {
+    pub cross_signing_ready: bool,
+    pub backup_enabled: bool,
+    pub recovery_state: String,
+    pub device_verified: bool,
+}
+
+#[derive(Clone, Debug)]
+pub struct OwnDeviceInfo {
+    pub device_id: String,
+    pub display_name: Option<String>,
+    pub verified: bool,
+    pub is_current: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -86,6 +105,7 @@ pub struct IncomingMessage {
     pub was_encrypted: bool,
     pub ts_ms: i64,
     pub is_own: bool,
+    pub utd: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -117,16 +137,22 @@ fn mxid_from_username(username: &str, server_name: &str) -> String {
     }
 }
 
+fn encryption_initial_state() -> Raw<matrix_sdk::ruma::events::AnyInitialStateEvent> {
+    InitialStateEvent::with_empty_state_key(RoomEncryptionEventContent::with_recommended_defaults())
+        .to_raw_any()
+}
+
 async fn build_client(
     homeserver_url: &str,
     store_dir: &str,
+    store_passphrase: Option<String>,
     ca_cert_pem: Option<String>,
 ) -> anyhow::Result<Client> {
     std::fs::create_dir_all(store_dir).context("create store_dir")?;
 
     let mut builder = Client::builder()
         .homeserver_url(homeserver_url)
-        .sqlite_store(Path::new(store_dir), None);
+        .sqlite_store(Path::new(store_dir), store_passphrase.as_deref());
 
     if let Some(pem) = ca_cert_pem {
         let cert = Certificate::from_pem(pem.as_bytes())
@@ -196,9 +222,10 @@ fn parse_timeline_message(
             event_id,
             sender,
             sender_display_name: None,
-            body: "Encrypted message (not supported)".to_owned(),
+            body: "Unable to decrypt this message".to_owned(),
             ts_ms,
             is_own,
+            utd: true,
         });
     }
 
@@ -222,6 +249,7 @@ fn parse_timeline_message(
                     body,
                     ts_ms,
                     is_own: sender == *own_user_id,
+                    utd: false,
                 })
             }
             _ => None,
@@ -253,12 +281,14 @@ pub async fn restore_session(
     device_id: String,
     access_token: String,
     store_dir: String,
+    store_passphrase: Option<String>,
     ca_cert_pem: Option<String>,
 ) -> anyhow::Result<MatrixSession> {
     let user_id = UserId::parse(&user_id).context("parse user_id")?;
     let device_id: OwnedDeviceId = device_id.into();
 
-    let client = build_client(&homeserver_url, &store_dir, ca_cert_pem).await?;
+    let client =
+        build_client(&homeserver_url, &store_dir, store_passphrase, ca_cert_pem).await?;
 
     let session = AuthMatrixSession {
         meta: SessionMeta {
@@ -285,13 +315,15 @@ pub async fn login(
     username: String,
     password: String,
     store_dir: String,
+    store_passphrase: Option<String>,
     ca_cert_pem: Option<String>,
     device_name: String,
 ) -> anyhow::Result<MatrixSession> {
     let server_name = server_name_from_homeserver(&homeserver_url)?;
     let mxid = mxid_from_username(&username, &server_name);
 
-    let client = build_client(&homeserver_url, &store_dir, ca_cert_pem).await?;
+    let client =
+        build_client(&homeserver_url, &store_dir, store_passphrase, ca_cert_pem).await?;
 
     client
         .matrix_auth()
@@ -428,15 +460,22 @@ impl MatrixSession {
 
     pub async fn create_direct_chat(&self, user_id: String) -> anyhow::Result<String> {
         let uid = UserId::parse(&user_id).context("parse user_id")?;
-        if let Some(room) = self.client.get_dm_room(&uid) {
-            return Ok(room.room_id().to_string());
+        for room in self.client.get_dm_rooms(&uid) {
+            let encrypted = room
+                .latest_encryption_state()
+                .await
+                .map(|s| s.is_encrypted())
+                .unwrap_or(false);
+            if encrypted {
+                return Ok(room.room_id().to_string());
+            }
         }
 
         let request = assign!(create_room::v3::Request::new(), {
             invite: vec![uid.to_owned()],
             is_direct: true,
-            preset: Some(create_room::v3::RoomPreset::PrivateChat),
-            initial_state: vec![] as Vec<Raw<matrix_sdk::ruma::events::AnyInitialStateEvent>>,
+            preset: Some(create_room::v3::RoomPreset::TrustedPrivateChat),
+            initial_state: vec![encryption_initial_state()],
         });
         let room = self.client.create_room(request).await.context("create_direct_chat")?;
         Ok(room.room_id().to_string())
@@ -482,6 +521,9 @@ impl MatrixSession {
     pub async fn join_room(&self, room_id: String) -> anyhow::Result<()> {
         let id = RoomId::parse(&room_id).context("parse room_id")?;
         if let Some(room) = self.client.get_room(&id) {
+            if room.state() == RoomState::Joined {
+                return Ok(());
+            }
             room.join().await.context("join via invited room")?;
             return Ok(());
         }
@@ -527,15 +569,11 @@ impl MatrixSession {
                         return;
                     };
                     let was_encrypted = encryption_info.is_some();
-                    let body = if was_encrypted {
-                        "Encrypted message (not supported)".to_owned()
-                    } else {
-                        match &original.content.msgtype {
-                            MessageType::Text(text) => text.body.clone(),
-                            MessageType::Notice(n) => n.body.clone(),
-                            MessageType::Emote(e) => format!("*{}*", e.body),
-                            _ => return,
-                        }
+                    let body = match &original.content.msgtype {
+                        MessageType::Text(text) => text.body.clone(),
+                        MessageType::Notice(n) => n.body.clone(),
+                        MessageType::Emote(e) => format!("*{}*", e.body),
+                        _ => return,
                     };
                     let sender = original.sender.clone();
                     let display = member_display_name(&room, &sender).await;
@@ -550,6 +588,7 @@ impl MatrixSession {
                         was_encrypted,
                         ts_ms,
                         is_own,
+                        utd: false,
                     };
                     let _ = sink.add(SyncEvent::Message(msg));
                 }
@@ -659,6 +698,219 @@ impl MatrixSession {
             .context("logout")?;
         Ok(())
     }
+
+    pub async fn encryption_status(&self) -> anyhow::Result<EncryptionStatus> {
+        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        let _ = self.client.sync_once(SyncSettings::default()).await;
+
+        let recovery = self.client.encryption().recovery();
+        let state = recovery.state();
+        let recovery_state = recovery_state_label(state);
+
+        let backup_enabled = self.client.encryption().backups().are_enabled().await;
+        let cross_signing_ready = self
+            .client
+            .encryption()
+            .cross_signing_status()
+            .await
+            .map(|s| s.is_complete())
+            .unwrap_or(false);
+        let device_verified = self
+            .client
+            .encryption()
+            .get_own_device()
+            .await
+            .ok()
+            .flatten()
+            .map(|d| d.is_verified())
+            .unwrap_or(false);
+
+        Ok(EncryptionStatus {
+            cross_signing_ready,
+            backup_enabled,
+            recovery_state,
+            device_verified,
+        })
+    }
+
+    pub async fn reset_recovery(&self, password: Option<String>) -> anyhow::Result<String> {
+        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        let pwd = password
+            .as_deref()
+            .ok_or_else(|| anyhow!("password required for reset_recovery"))?;
+
+        let recovery = self.client.encryption().recovery();
+        if let Some(handle) = recovery.reset_identity().await.context("reset_identity")? {
+            match handle.auth_type() {
+                CrossSigningResetAuthType::Uiaa(uiaa) => {
+                    let user_id = self
+                        .client
+                        .user_id()
+                        .ok_or_else(|| anyhow!("not logged in"))?;
+                    let mut password_auth =
+                        uiaa::Password::new(user_id.to_owned().into(), pwd.to_owned());
+                    password_auth.session = uiaa.session.clone();
+                    handle
+                        .reset(Some(uiaa::AuthData::Password(password_auth)))
+                        .await
+                        .context("identity reset with password")?;
+                }
+                CrossSigningResetAuthType::OAuth(_) => {
+                    return Err(anyhow!(
+                        "identity reset requires OAuth approval; lab accounts need password UIA"
+                    ));
+                }
+            }
+        }
+
+        match recovery.enable().await {
+            Ok(key) => Ok(key),
+            Err(e) => Err(anyhow!(e)),
+        }
+    }
+
+    pub async fn flush_key_backup(&self) -> anyhow::Result<()> {
+        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        let backups = self.client.encryption().backups();
+        let wait = backups.wait_for_steady_state();
+        match tokio::time::timeout(Duration::from_secs(300), wait).await {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(anyhow!(e)).context("flush_key_backup"),
+            Err(_) => {
+                warn!("flush_key_backup timed out after 300s; backup may still be uploading");
+                Ok(())
+            }
+        }
+    }
+
+    pub async fn download_room_key_backup(&self, room_id: String) -> anyhow::Result<()> {
+        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        self.client
+            .encryption()
+            .backups()
+            .download_room_keys_for_room(&id)
+            .await
+            .context("download_room_key_backup")?;
+        Ok(())
+    }
+
+    pub async fn setup_recovery(&self, password: Option<String>) -> anyhow::Result<String> {
+        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        bootstrap_cross_signing(&self.client, password.as_deref()).await?;
+
+        let recovery = self.client.encryption().recovery();
+        if recovery.state() == RecoveryState::Enabled {
+            return Err(anyhow!("recovery already enabled on this device"));
+        }
+
+        let enable = recovery.enable().wait_for_backups_to_upload();
+        match enable.await {
+            Ok(key) => Ok(key),
+            Err(RecoveryError::BackupExistsOnServer) => Err(anyhow!(
+                "needs_recovery_key: a recovery key already exists on this account"
+            )),
+            Err(e) => Err(anyhow!(e)),
+        }
+    }
+
+    pub async fn recover(&self, recovery_key: String) -> anyhow::Result<()> {
+        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        self.client
+            .encryption()
+            .recovery()
+            .recover_and_fix_backup(&recovery_key)
+            .await
+            .context("recover")?;
+        Ok(())
+    }
+
+    pub async fn list_own_devices(&self) -> anyhow::Result<Vec<OwnDeviceInfo>> {
+        let own_user = self
+            .client
+            .user_id()
+            .ok_or_else(|| anyhow!("not logged in"))?;
+        let current_id = self
+            .client
+            .encryption()
+            .get_own_device()
+            .await
+            .ok()
+            .flatten()
+            .map(|d| d.device_id().to_string());
+
+        let response = self.client.devices().await.context("list devices")?;
+        let crypto_devices = self
+            .client
+            .encryption()
+            .get_user_devices(own_user)
+            .await
+            .context("crypto devices")?;
+
+        Ok(response
+            .devices
+            .iter()
+            .map(|d| {
+                let device_id = d.device_id.to_string();
+                let verified = crypto_devices
+                    .get(&d.device_id)
+                    .map(|dev| dev.is_verified())
+                    .unwrap_or(false);
+                OwnDeviceInfo {
+                    device_id: device_id.clone(),
+                    display_name: d.display_name.clone(),
+                    verified,
+                    is_current: current_id.as_deref() == Some(device_id.as_str()),
+                }
+            })
+            .collect())
+    }
+
+    pub async fn user_identity_verified(&self, user_id: String) -> anyhow::Result<bool> {
+        let uid = UserId::parse(&user_id).context("parse user_id")?;
+        let identity = self
+            .client
+            .encryption()
+            .get_user_identity(&uid)
+            .await
+            .context("get_user_identity")?;
+        Ok(identity.map(|i| i.is_verified()).unwrap_or(false))
+    }
+}
+
+fn recovery_state_label(state: RecoveryState) -> String {
+    match state {
+        RecoveryState::Enabled => "enabled".to_owned(),
+        RecoveryState::Disabled => "disabled".to_owned(),
+        RecoveryState::Incomplete => "incomplete".to_owned(),
+        RecoveryState::Unknown => "unknown".to_owned(),
+    }
+}
+
+async fn bootstrap_cross_signing(client: &Client, password: Option<&str>) -> anyhow::Result<()> {
+    let encryption = client.encryption();
+    if let Err(e) = encryption.bootstrap_cross_signing(None).await {
+        if let Some(uiaa_response) = e.as_uiaa_response() {
+            let pwd = password.ok_or_else(|| {
+                anyhow!(
+                    "needs_recovery_key: cross-signing already exists; provide account password or recovery key"
+                )
+            })?;
+            let user_id = client
+                .user_id()
+                .ok_or_else(|| anyhow!("not logged in"))?;
+            let mut password_auth =
+                uiaa::Password::new(user_id.to_owned().into(), pwd.to_owned());
+            password_auth.session = uiaa_response.session.clone();
+            encryption
+                .bootstrap_cross_signing(Some(uiaa::AuthData::Password(password_auth)))
+                .await
+                .context("bootstrap_cross_signing with password")?;
+        } else {
+            return Err(anyhow!(e));
+        }
+    }
+    Ok(())
 }
 
 async fn direct_room_display_name(room: &Room, own_user: &UserId) -> String {

@@ -5,7 +5,7 @@ import 'api/family_api.dart';
 import 'api/models.dart';
 import 'storage/credential_store.dart';
 
-enum AppRoute { loading, enroll, home }
+enum AppRoute { loading, enroll, secureChats, home }
 
 class AppSession extends ChangeNotifier {
   AppSession({
@@ -25,23 +25,58 @@ class AppSession extends ChangeNotifier {
   AppMeProfile? profile;
   String? enrollBannerMessage;
 
+  /// Matrix account password from password enrollment only; used once for recovery setup.
+  String? pendingEnrollPassword;
+
+  CredentialStore get credentialStore => _store;
+
   bool get isLoading => route == AppRoute.loading;
 
   Future<void> bootstrap() async {
     enrollBannerMessage = null;
+    pendingEnrollPassword = null;
     enrollment = await _store.read();
     if (enrollment == null) {
       route = AppRoute.enroll;
       notifyListeners();
       return;
     }
+    if (await _needsE2eeSetup()) {
+      route = AppRoute.secureChats;
+      notifyListeners();
+      return;
+    }
     await _refreshMe(clearOnUnauthorized: true);
   }
 
-  Future<void> completeEnrollment(EnrollmentBundle bundle) async {
+  Future<bool> _needsE2eeSetup() async {
+    final bundle = enrollment;
+    if (bundle == null || !bundle.matrixEnrollment.isOk) {
+      return false;
+    }
+    return !(await _store.isMatrixE2eeSetupComplete());
+  }
+
+  Future<void> completeEnrollment(
+    EnrollmentBundle bundle, {
+    String? enrollPassword,
+  }) async {
+    await _store.ensureMatrixStorePassphrase();
     await _store.write(bundle);
     enrollment = bundle;
+    pendingEnrollPassword = enrollPassword;
     enrollBannerMessage = null;
+    if (bundle.matrixEnrollment.isOk) {
+      route = AppRoute.secureChats;
+    } else {
+      await _refreshMe(clearOnUnauthorized: false);
+    }
+    notifyListeners();
+  }
+
+  Future<void> finishE2eeSetup({bool skipped = false}) async {
+    await _store.setMatrixE2eeSetupComplete(skipped: skipped);
+    pendingEnrollPassword = null;
     await _refreshMe(clearOnUnauthorized: false);
   }
 
@@ -53,6 +88,7 @@ class AppSession extends ChangeNotifier {
     await _store.clear();
     enrollment = null;
     profile = null;
+    pendingEnrollPassword = null;
     route = AppRoute.enroll;
     notifyListeners();
   }

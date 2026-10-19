@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'src/app_session.dart';
 import 'src/brand.dart';
 import 'src/enroll/enroll_screen.dart';
+import 'src/enroll/secure_recovery_screen.dart';
 import 'src/shell/main_shell.dart';
 
 class TinyWebApp extends StatefulWidget {
@@ -52,6 +53,8 @@ class _TinyWebAppState extends State<TinyWebApp> {
           session: _session,
           bannerMessage: _session.enrollBannerMessage,
         );
+      case AppRoute.secureChats:
+        return SecureRecoveryScreen(session: _session);
       case AppRoute.home:
         return MainShell(session: _session);
     }

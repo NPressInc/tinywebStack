@@ -51,6 +51,29 @@ void main() {
 
     await session.completeEnrollment(bundle);
     expect(session.route, AppRoute.home);
+
+    final matrixBundle = EnrollmentBundle(
+      deviceId: 'd',
+      username: 'kid1',
+      role: 'kid',
+      mxid: '@kid1:family.example',
+      serverName: 'family.example',
+      dashboardToken: 'tok',
+      apiBase: '/family/api',
+      serverOrigin: 'https://family.example',
+      discovery: _discovery(),
+      rawJson: {
+        'matrix': {
+          'status': 'ok',
+          'access_token': 't',
+          'device_id': 'dev',
+          'user_id': '@kid1:family.example',
+          'homeserver': 'https://matrix.example',
+        },
+      },
+    );
+    await session.completeEnrollment(matrixBundle);
+    expect(session.route, AppRoute.secureChats);
     expect((await store.read())?.username, 'kid1');
   });
 

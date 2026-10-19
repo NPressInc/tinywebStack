@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/family_api.dart';
 import '../app_session.dart';
 import '../brand.dart';
+import '../enroll/secure_recovery_screen.dart';
 import 'chat_service.dart';
 import 'room_screen.dart';
 
@@ -21,12 +22,23 @@ class ChatListScreen extends StatefulWidget {
 }
 
 class _ChatListScreenState extends State<ChatListScreen> {
+  bool _recoverySkipped = false;
+
   @override
   void initState() {
     super.initState();
     widget.chat.roomsListenable.addListener(_onRoomsChanged);
     if (widget.chat.isConfigured) {
       widget.chat.refreshRooms();
+    }
+    _loadRecoveryFlag();
+  }
+
+  Future<void> _loadRecoveryFlag() async {
+    final skipped =
+        await widget.session.credentialStore.isMatrixRecoverySkipped();
+    if (mounted) {
+      setState(() => _recoverySkipped = skipped);
     }
   }
 
@@ -66,7 +78,34 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         ],
       ),
-      body: RefreshIndicator(
+      body: Column(
+        children: [
+          if (_recoverySkipped)
+            MaterialBanner(
+              content: const Text(
+                'Enter recovery key to read older messages on this device.',
+              ),
+              leading: const Icon(Icons.lock_outline),
+              actions: [
+                TextButton(
+                  onPressed: () async {
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute<void>(
+                        builder: (ctx) =>
+                            SecureRecoveryScreen(session: widget.session),
+                      ),
+                    );
+                    await _loadRecoveryFlag();
+                    if (widget.chat.isConfigured) {
+                      await widget.chat.refreshRooms();
+                    }
+                  },
+                  child: const Text('Enter key'),
+                ),
+              ],
+            ),
+          Expanded(
+            child: RefreshIndicator(
         onRefresh: widget.chat.refreshRooms,
         child: rooms.isEmpty
             ? ListView(
@@ -80,6 +119,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 itemBuilder: (context, index) {
                   final room = rooms[index];
                   return ListTile(
+                    leading: room.encrypted
+                        ? const Icon(Icons.lock, size: 20)
+                        : null,
                     title: Text(room.title),
                     subtitle: Text(
                       room.lastMessage ?? 'No messages yet',
@@ -116,6 +158,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   );
                 },
               ),
+            ),
+          ),
+        ],
       ),
     );
   }

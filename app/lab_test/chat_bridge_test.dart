@@ -1,7 +1,9 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,11 +48,14 @@ void main() {
     final storeA = await Directory.systemTemp.createTemp('tw_chat_a_');
     final storeB = await Directory.systemTemp.createTemp('tw_chat_b_');
 
+    final passA = _randomPassphrase();
+    final passB = _randomPassphrase();
     final sessionA = await login(
       homeserverUrl: homeserver,
       username: userA,
       password: password,
       storeDir: storeA.path,
+      storePassphrase: passA,
       caCertPem: caPem,
       deviceName: 'tw_chat_bridge_test_a',
     );
@@ -59,21 +64,38 @@ void main() {
       username: userB,
       password: password,
       storeDir: storeB.path,
+      storePassphrase: passB,
       caCertPem: caPem,
       deviceName: 'tw_chat_bridge_test_b',
     );
 
     await sessionA.syncOnce();
     await sessionB.syncOnce();
+    // Encrypted DMs need the SDK crypto stack ready before send/receive.
+    await sessionA.encryptionStatus();
+    await sessionB.encryptionStatus();
 
     final streamB = sessionB.startSync();
     await Future<void>.delayed(const Duration(seconds: 2));
 
     final roomId = await sessionA.createDirectChat(userId: mxidB);
+    await sessionB.joinRoom(roomId: roomId);
+    await sessionA.syncOnce();
+    await sessionB.syncOnce();
+    await Future<void>.delayed(const Duration(seconds: 2));
+
+    final roomsB = await sessionB.listRooms();
+    expect(
+      roomsB.any((r) => r.roomId == roomId),
+      isTrue,
+      reason: 'B should see the DM after join/sync',
+    );
+
     final pingBody = 'ping ${DateTime.now().toIso8601String()}';
     await sessionA.sendText(roomId: roomId, body: pingBody);
 
-    await _waitForBody(streamB, pingBody);
+    final incoming = await _waitForBody(streamB, pingBody);
+    expect(incoming.utd, isFalse);
 
     final timeline = await sessionA.roomTimeline(roomId: roomId, limit: 20);
     expect(
@@ -90,6 +112,11 @@ void main() {
     await storeA.delete(recursive: true);
     await storeB.delete(recursive: true);
   }, timeout: const Timeout(Duration(minutes: 5)));
+}
+
+String _randomPassphrase() {
+  final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+  return base64Encode(bytes);
 }
 
 String _mxid(String username, Uri homeserver) {
@@ -111,5 +138,5 @@ Future<IncomingMessage> _waitForBody(
       .where((m) => m != null && m.body == body)
       .map((m) => m!)
       .first
-      .timeout(const Duration(seconds: 60));
+      .timeout(const Duration(seconds: 90));
 }

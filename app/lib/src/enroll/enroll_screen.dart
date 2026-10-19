@@ -111,7 +111,11 @@ class _EnrollScreenState extends State<EnrollScreen> {
         );
       }
 
-      await widget.session.completeEnrollment(bundle);
+      await widget.session.completeEnrollment(
+        bundle,
+        enrollPassword:
+            _mode == _EnrollMode.password ? _passwordController.text : null,
+      );
     } on EnrollException catch (e) {
       setState(() => _error = _messageFor(e));
     } catch (_) {

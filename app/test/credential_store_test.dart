@@ -35,4 +35,12 @@ void main() {
     await store.clear();
     expect(await store.read(), isNull);
   });
+
+  test('matrix store passphrase is generated once', () async {
+    final store = InMemoryCredentialStore();
+    final p1 = await store.ensureMatrixStorePassphrase();
+    final p2 = await store.ensureMatrixStorePassphrase();
+    expect(p1, p2);
+    expect(p1.length, greaterThan(20));
+  });
 }

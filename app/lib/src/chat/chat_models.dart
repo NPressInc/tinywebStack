@@ -6,6 +6,7 @@ class ChatRoom {
     this.lastTsMs,
     this.unread = 0,
     this.isDirect = false,
+    this.encrypted = false,
   });
 
   final String roomId;
@@ -14,6 +15,7 @@ class ChatRoom {
   final int? lastTsMs;
   final int unread;
   final bool isDirect;
+  final bool encrypted;
 }
 
 class ChatMessage {
@@ -24,6 +26,7 @@ class ChatMessage {
     this.senderDisplayName,
     required this.tsMs,
     required this.isOwn,
+    this.utd = false,
   });
 
   final String eventId;
@@ -32,6 +35,7 @@ class ChatMessage {
   final String? senderDisplayName;
   final int tsMs;
   final bool isOwn;
+  final bool utd;
 
   String get senderLabel => senderDisplayName ?? senderId;
 }

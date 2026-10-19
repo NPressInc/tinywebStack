@@ -9,7 +9,8 @@ Stage 1 shell: enroll against your family box, home shortcuts, and **in-app Matr
 - Secure storage of the enrollment bundle (Keychain / Keystore)
 - Home: greeting, quiet-hours banner, tiles (Calendar / Events / map / controls show “Coming soon”)
 - Bottom nav: **Home | Chat** — family Matrix chat in-app (no Element X)
-- Chat: room list, timelines, send, new DM, live sync when the app is foregrounded
+- Chat: **end-to-end encrypted** room list, timelines, send, new DM, live sync when the app is foregrounded
+- Recovery key setup after enroll (or when upgrading an older install)
 
 ## Development (spark / linux-arm64)
 
@@ -35,8 +36,13 @@ export TW_CA_FILE=$HOME/.tinywebstack-secrets/lab-ca/lab-ca.crt.pem
 export TW_TEST_PASSWORD=...   # lab password from your secrets store
 export TW_LIB=$PWD/rust/target/release/libtinyweb_core.so
 cd app
-flutter test integration_test_host/chat_bridge_test.dart
+flutter test lab_test/chat_bridge_test.dart
+flutter test lab_test/e2ee_bridge_test.dart
+# Or both (serial — see lab_test/dart_test.yaml):
+flutter test lab_test/
 ```
+
+Lab tests in `lab_test/` run **one at a time** (`dart_test.yaml` sets `concurrency: 1`) because they use the same lab accounts and `e2ee_bridge_test` resets cross-signing identity.
 
 ### Debug APK on spark
 
@@ -57,16 +63,34 @@ Lab family boxes use a **private CA**. Install the lab CA on a physical device f
 - `lib/` — Dart UI and HTTP clients
 - `lib/src/chat/` — in-app chat UI and `ChatService`
 - `rust/` — `tinyweb_core` Matrix facade (frb 2.13.0, cargokit)
-- `integration_test_host/` — optional host-side Matrix bridge tests
+- `lab_test/` — optional host-side Matrix bridge tests
 - `assets/brand/` — vendored TinyWeb logos
+
+## End-to-end encryption
+
+Stage 1 chat uses Matrix **Megolm** (`m.megolm.v1.aes-sha2`). The Rust `tinyweb_core` bridge (`matrix-sdk` 0.19.1) stores crypto state in **SQLite** with a random device passphrase in secure storage.
+
+**Included in this app**
+
+- Encrypted DMs and rooms (`m.room.encryption` on create; server also defaults rooms to encrypted)
+- Secret storage + key backup via `setup_recovery` / `recover` (recovery key shown once after enroll)
+- Decrypted timelines; undecryptable events show “Unable to decrypt this message”
+- Lock icon on encrypted rooms; recovery-key banner when the user skipped recovery
+
+**Deferred**
+
+- Interactive emoji/SAS verification of other users’ devices
+- Parent “oversight” of a kid’s ciphertext on the server — parents can read a kid’s chats only on the kid’s unlocked device for now
 
 ## Verified
 
-- `flutter test` — 23 widget/unit tests passed (host; no native lib loaded in UI tests)
+Last checked on spark (linux-arm64), 2026-10-18:
+
+- `flutter test` — 27 unit/widget tests passed (Matrix UI uses `FakeChatService`, no native lib)
 - `flutter analyze` — no issues
-- `cargo build --release` in `rust/` — OK
-- `flutter build apk --debug --target-platform android-arm64` — OK (~73 s warm)
-- Lab `integration_test_host/chat_bridge_test.dart` with `TW_HS` / `TW_CA_FILE` / `TW_LIB` / `TW_TEST_PASSWORD` — `chat bridge e2e against Synapse` passed (~5 s; source lives under `integration_test_host/`)
+- `cargo build --release` in `rust/` — OK (~90 s)
+- `flutter build apk --debug --target-platform android-arm64` — OK (~78 s warm)
+- Lab `lab_test/chat_bridge_test.dart` and `lab_test/e2ee_bridge_test.dart` (parent/kid, `TW_HS` / `TW_CA_FILE` / `TW_LIB` / `TW_TEST_PASSWORD`) — each passed alone; `flutter test lab_test/` passed serially (~chat 30–90s, e2ee ~1m37s)
 
 ## CI release builds (`.github/workflows/app.yml`)
 

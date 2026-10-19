@@ -155,6 +155,59 @@ void main() {
     expect(find.textContaining('Quiet hours'), findsOneWidget);
   });
 
+  testWidgets('ChatList shows lock for encrypted rooms', (tester) async {
+    final chat = FakeChatService(
+      initialRooms: [
+        ChatRoom(
+          roomId: '!enc',
+          title: 'Secret',
+          encrypted: true,
+          lastTsMs: 100,
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatListScreen(session: _session(role: 'parent'), chat: chat),
+      ),
+    );
+
+    expect(find.byIcon(Icons.lock), findsOneWidget);
+  });
+
+  testWidgets('RoomScreen styles unable-to-decrypt messages', (tester) async {
+    final chat = FakeChatService(
+      initialRooms: [ChatRoom(roomId: '!r1', title: 'Room', lastTsMs: 1)],
+    );
+    chat.injectMessage(
+      '!r1',
+      ChatMessage(
+        eventId: 'e1',
+        body: 'Unable to decrypt this message',
+        senderId: '@bob:family.test',
+        tsMs: 1,
+        isOwn: false,
+        utd: true,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: RoomScreen(
+          roomId: '!r1',
+          title: 'Room',
+          chat: chat,
+          profile: _session(role: 'parent').profile!,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unable to decrypt this message'), findsOneWidget);
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+  });
+
   testWidgets('Chat not set up without matrix creds', (tester) async {
     final session = AppSession(store: InMemoryCredentialStore());
     session.enrollment = EnrollmentBundle(
