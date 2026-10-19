@@ -118,6 +118,8 @@ def _mobilizon_login(events_base: str, username: str, server_name: str, password
             if token:
                 out: Dict[str, Any] = {
                     "status": "ok",
+                    "events_url": base,
+                    "api_url": api_url,
                     "access_token": token,
                 }
                 if login.get("refreshToken"):
