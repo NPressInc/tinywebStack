@@ -46,6 +46,13 @@ void main() {
       ),
     );
     expect(find.text('Locations'), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Calendar'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('kid does not see Locations tab', (tester) async {
@@ -58,5 +65,12 @@ void main() {
       ),
     );
     expect(find.text('Locations'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byType(NavigationBar),
+        matching: find.text('Calendar'),
+      ),
+      findsOneWidget,
+    );
   });
 }

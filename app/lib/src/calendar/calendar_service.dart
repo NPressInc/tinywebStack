@@ -27,11 +27,10 @@ class CalendarEventView {
 
 class CalendarService {
   CalendarService({
-    required EnrollmentBundle bundle,
+    required this._bundle,
     http.Client? httpClient,
     FamilyApiClient? familyApi,
-  })  : _bundle = bundle,
-        _client = httpClient,
+  })  : _client = httpClient,
         _familyApi = familyApi ?? FamilyApiClient(client: httpClient),
         _ownsApi = familyApi == null;
 
@@ -61,7 +60,7 @@ class CalendarService {
         root: creds.root,
         username: creds.username,
         password: creds.password,
-        client: _client!,
+        client: _client,
       );
       _ownsCalDav = false;
     } else {

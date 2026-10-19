@@ -23,17 +23,15 @@ List<DavResponse> parseMultistatus(String xml) {
     final propBlock = _findPropstatOkProps(block);
     final props = <String, String>{};
     if (propBlock != null) {
-      for (final name in [
-        'displayname',
-        'getetag',
-        'calendar-data',
-        'resourcetype',
-        'current-user-privilege-set',
-      ]) {
+      for (final name in ['displayname', 'getetag', 'calendar-data']) {
         final t = _firstElementText(propBlock, name);
         if (t != null) {
           props[name] = t;
         }
+      }
+      final rt = _firstElementBlock(propBlock, 'resourcetype');
+      if (rt != null) {
+        props['resourcetype'] = rt;
       }
     }
     responses.add(DavResponse(href: href.trim(), props: props));

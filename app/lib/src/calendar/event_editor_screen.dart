@@ -89,10 +89,14 @@ class _EventEditorScreenState extends State<EventEditorScreen> {
           _invited.add(user);
         }
       } else {
-        _selectedCalendar = cals.cast<CalDavCalendar?>().firstWhere(
-              (c) => c?.calendarId == 'tws-family',
-              orElse: () => cals.isNotEmpty ? cals.first : null,
-            );
+        CalDavCalendar? familyCal;
+        for (final c in cals) {
+          if (c.calendarId == 'tws-family') {
+            familyCal = c;
+            break;
+          }
+        }
+        _selectedCalendar = familyCal ?? (cals.isNotEmpty ? cals.first : null);
       }
       setState(() => _loading = false);
     } catch (e) {
@@ -128,6 +132,9 @@ class _EventEditorScreenState extends State<EventEditorScreen> {
           }
         }
       });
+      return;
+    }
+    if (!mounted) {
       return;
     }
     final time = await showTimePicker(
@@ -194,6 +201,9 @@ class _EventEditorScreenState extends State<EventEditorScreen> {
         Navigator.of(context).pop(true);
       }
     } catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
@@ -227,6 +237,9 @@ class _EventEditorScreenState extends State<EventEditorScreen> {
         Navigator.of(context).pop(true);
       }
     } catch (e) {
+      if (!mounted) {
+        return;
+      }
       setState(() => _saving = false);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(e.toString())),
@@ -282,7 +295,7 @@ class _EventEditorScreenState extends State<EventEditorScreen> {
                     const SizedBox(height: 12),
                     if (!_isEdit)
                       DropdownButtonFormField<CalDavCalendar>(
-                        value: _selectedCalendar,
+                        initialValue: _selectedCalendar,
                         decoration: const InputDecoration(labelText: 'Calendar'),
                         items: _calendars
                             .map(

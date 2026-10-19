@@ -50,30 +50,6 @@ class CalDavClient {
   final http.Client _client;
   final bool _ownsClient;
 
-  CalDavClient._withOwnership({
-    required this.root,
-    required this.username,
-    required this.password,
-    required http.Client client,
-    required bool ownsClient,
-  })  : _client = client,
-        _ownsClient = ownsClient;
-
-  factory CalDavClient.withClient({
-    required String root,
-    required String username,
-    required String password,
-    required http.Client client,
-  }) {
-    return CalDavClient._withOwnership(
-      root: root,
-      username: username,
-      password: password,
-      client: client,
-      ownsClient: false,
-    );
-  }
-
   CalDavClient({
     required this.root,
     required this.username,
@@ -82,6 +58,21 @@ class CalDavClient {
     bool ownsClient = true,
   })  : _client = client ?? http.Client(),
         _ownsClient = client == null ? true : ownsClient;
+
+  factory CalDavClient.withClient({
+    required String root,
+    required String username,
+    required String password,
+    required http.Client client,
+  }) {
+    return CalDavClient(
+      root: root,
+      username: username,
+      password: password,
+      client: client,
+      ownsClient: false,
+    );
+  }
 
   String get principalHref =>
       '${root.replaceAll(RegExp(r'/+$'), '')}/principals/users/$username/';
@@ -115,12 +106,12 @@ class CalDavClient {
   }
 
   Future<void> verifyLogin() async {
-    final response = await _client.send(
-      http.Request('PROPFIND', Uri.parse(principalHref))
-        ..headers.addAll(_headers(depth: '0', contentType: 'application/xml'))
-        ..body = propfindCalendarsBody(),
-    );
-    final status = await response.stream.bytesToString().then((_) => response.statusCode);
+    final request = http.Request('PROPFIND', Uri.parse(principalHref))
+      ..headers.addAll(_headers(depth: '0', contentType: 'application/xml; charset=utf-8'))
+      ..body = propfindCalendarsBody();
+    final streamed = await _client.send(request);
+    await streamed.stream.drain();
+    final status = streamed.statusCode;
     if (status == 401 || status == 403) {
       throw CalDavException('CalDAV authentication failed', statusCode: status);
     }
@@ -287,7 +278,7 @@ class CalDavClient {
     if (href.startsWith('/')) {
       return '${base.scheme}://${base.host}$href';
     }
-    return root.replaceAll(RegExp(r'/+$'), '') + '/$href';
+    return '${root.replaceAll(RegExp(r'/+$'), '')}/$href';
   }
 
   String _calendarIdFromHref(String href) {

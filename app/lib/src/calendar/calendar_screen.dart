@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/models.dart';
 import '../app_session.dart';
 import '../brand.dart';
+import 'ics.dart';
 import 'calendar_service.dart';
 import 'event_editor_screen.dart';
 
@@ -151,8 +152,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
 
   Widget _buildBody() {
     if (_loading && _events.isEmpty) {
-      return const ListView(
-        children: [
+      return ListView(
+        children: const [
           SizedBox(height: 120),
           Center(child: CircularProgressIndicator()),
         ],
@@ -262,7 +263,7 @@ class _EventTile extends StatelessWidget {
     );
   }
 
-  String _formatWhen(ev) {
+  String _formatWhen(IcsEvent ev) {
     final start = ev.dtStart;
     if (start == null) {
       return 'Time TBD';
