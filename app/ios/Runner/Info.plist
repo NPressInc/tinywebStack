@@ -28,6 +28,16 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a QR code to enroll this device with your family TinyWeb box.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>TinyWeb shares this phone's location with your family's parents on your family's own server.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>TinyWeb shares this phone's location with your family's parents on your family's own server, even when the app is closed.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>TinyWeb shares this phone's location with your family's parents on your family's own server, even when the app is closed.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

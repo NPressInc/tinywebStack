@@ -121,7 +121,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Stage 1 — Shell app (“everything” navigation)
 
-**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, CalDAV calendar, Mobilizon events, parent location map, **in-app background location publishing** (OwnTracks-format JSON to `/recorder/pub`), parent controls (permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Chat is **end-to-end encrypted**: sqlite crypto store, cross-signing and key backup, with a recovery key shown at enrollment so a new phone can read history. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Native simplified sliding sync was confirmed on lab Synapse by the spike.
+**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, CalDAV calendar, Mobilizon events, parent location list + track API (map deferred), **in-app background location publishing — built** (OwnTracks-format JSON to `/recorder/pub`), parent controls (permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Chat is **end-to-end encrypted**: sqlite crypto store, cross-signing and key backup, with a recovery key shown at enrollment so a new phone can read history. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Native simplified sliding sync was confirmed on lab Synapse by the spike.
 
 | Test | Pass criteria |
 |------|----------------|

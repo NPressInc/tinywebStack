@@ -4,6 +4,7 @@ import 'src/app_session.dart';
 import 'src/brand.dart';
 import 'src/enroll/enroll_screen.dart';
 import 'src/enroll/secure_recovery_screen.dart';
+import 'src/location/location_explainer_screen.dart';
 import 'src/shell/main_shell.dart';
 
 class TinyWebApp extends StatefulWidget {
@@ -55,6 +56,8 @@ class _TinyWebAppState extends State<TinyWebApp> {
         );
       case AppRoute.secureChats:
         return SecureRecoveryScreen(session: _session);
+      case AppRoute.locationExplainer:
+        return LocationExplainerScreen(session: _session);
       case AppRoute.home:
         return MainShell(session: _session);
     }

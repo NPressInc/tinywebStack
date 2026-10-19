@@ -7,8 +7,10 @@ Stage 1 shell: enroll against your family box, home shortcuts, and **in-app Matr
 - QR / manual enrollment (`tinyweb://enroll`, one-time code, or username + password)
 - Discovery via `/.well-known/tinywebstack-family.json`
 - Secure storage of the enrollment bundle (Keychain / Keystore)
-- Home: greeting, quiet-hours banner, tiles (Calendar / Events / map / controls show “Coming soon”)
-- Bottom nav: **Home | Chat** — family Matrix chat in-app (no Element X)
+- Home: greeting, quiet-hours banner, tiles (Calendar / Events / controls show “Coming soon”)
+- **Kids:** background location publish to your box’s OwnTracks Recorder (no OwnTracks app); status card on Home; one-time explainer after enroll
+- **Parents:** **Home | Locations | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet — see below)
+- Bottom nav chat: family Matrix chat in-app (no Element X)
 - Chat: **end-to-end encrypted** room list, timelines, send, new DM, live sync when the app is foregrounded
 - Recovery key setup after enroll (or when upgrading an older install)
 
@@ -54,6 +56,21 @@ Google ships no linux-arm64 NDK, aapt2 or Android `gen_snapshot`, so **release A
 
 `-Ptinyweb.ndkVersion=<ver>` still overrides the app module's NDK if needed. CI uses Flutter's default.
 
+## Location sharing
+
+Kids enrolled on a family box receive OwnTracks HTTP publish credentials in the enrollment bundle. The app posts OwnTracks JSON to `/recorder/pub` with basic auth (throttled, queued offline up to 7 days). Parents read `GET /family/api/locations` and per-kid tracks; kids cannot open the Locations tab.
+
+| OS | Behaviour |
+|----|-----------|
+| **Android** | Foreground service with a persistent notification (“TinyWeb is sharing your location with your family”); permissions: fine → background (“Allow all the time”) → notifications on Android 13+. |
+| **iOS** | Significant-location changes plus a ~150 m circular region re-armed on exit (not continuous GPS); permissions: When In Use → Always; background location indicator shown. |
+
+Battery: iOS defaults to low-power significant-change + region monitoring; Android uses geolocator with distance filter. Tuning iOS region radius is deferred.
+
+**Deferred:** in-app family map (needs self-hosted tiles — public OSM would leak viewport to a third party); parent pause/resume of kid sharing.
+
+Lab: `flutter test lab_test/location_publish_test.dart` (requires `TW_HS`, `TW_CA_FILE`, `TW_TEST_PASSWORD`; optional `TW_KID_USER` / `TW_PARENT_USER`, default `kid` / `parent`). Runs serially with other `lab_test/` tests.
+
 ## Lab TLS
 
 Lab family boxes use a **private CA**. Install the lab CA on a physical device for HTTPS enrollment — the app does **not** disable TLS verification. Pass the lab CA PEM into the Matrix Rust facade when testing on the host (`TW_CA_FILE` above).
@@ -62,6 +79,7 @@ Lab family boxes use a **private CA**. Install the lab CA on a physical device f
 
 - `lib/` — Dart UI and HTTP clients
 - `lib/src/chat/` — in-app chat UI and `ChatService`
+- `lib/src/location/` — OwnTracks publish, background service, parent Locations UI
 - `rust/` — `tinyweb_core` Matrix facade (frb 2.13.0, cargokit)
 - `lab_test/` — optional host-side Matrix bridge tests
 - `assets/brand/` — vendored TinyWeb logos

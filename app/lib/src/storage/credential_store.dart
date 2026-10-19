@@ -10,6 +10,7 @@ const _matrixPassphraseKey = 'tinyweb_matrix_store_passphrase_v1';
 const _matrixRecoveryKeyKey = 'tinyweb_matrix_recovery_key_v1';
 const _matrixE2eeSetupKey = 'tinyweb_matrix_e2ee_setup_v1';
 const _matrixRecoverySkippedKey = 'tinyweb_matrix_recovery_skipped_v1';
+const _locationExplainerKey = 'tinyweb_location_explainer_v1';
 
 abstract class CredentialStore {
   Future<EnrollmentBundle?> read();
@@ -31,6 +32,10 @@ abstract class CredentialStore {
   Future<void> setMatrixE2eeSetupComplete({bool skipped = false});
 
   Future<bool> isMatrixRecoverySkipped();
+
+  Future<bool> hasAcknowledgedLocationSharing();
+
+  Future<void> setLocationSharingAcknowledged();
 }
 
 class SecureCredentialStore implements CredentialStore {
@@ -61,6 +66,7 @@ class SecureCredentialStore implements CredentialStore {
     await _storage.delete(key: _matrixRecoveryKeyKey);
     await _storage.delete(key: _matrixE2eeSetupKey);
     await _storage.delete(key: _matrixRecoverySkippedKey);
+    await _storage.delete(key: _locationExplainerKey);
   }
 
   @override
@@ -109,6 +115,16 @@ class SecureCredentialStore implements CredentialStore {
     return v == '1';
   }
 
+  @override
+  Future<bool> hasAcknowledgedLocationSharing() async {
+    final v = await _storage.read(key: _locationExplainerKey);
+    return v == '1';
+  }
+
+  @override
+  Future<void> setLocationSharingAcknowledged() =>
+      _storage.write(key: _locationExplainerKey, value: '1');
+
   Map<String, dynamic> _toStored(EnrollmentBundle bundle) =>
       enrollmentToStoredJson(bundle);
 }
@@ -138,6 +154,8 @@ Map<String, dynamic> enrollmentToStoredJson(EnrollmentBundle bundle) {
       },
       if (bundle.rawJson?['matrix'] != null)
         'matrix': bundle.rawJson!['matrix'],
+      if (bundle.rawJson?['owntracks'] != null)
+        'owntracks': bundle.rawJson!['owntracks'],
     };
 }
 
@@ -168,6 +186,7 @@ class InMemoryCredentialStore implements CredentialStore {
     _recoveryKey = null;
     _e2eeSetup = false;
     _recoverySkipped = false;
+    _locationAck = false;
   }
 
   @override
@@ -202,4 +221,14 @@ class InMemoryCredentialStore implements CredentialStore {
 
   @override
   Future<bool> isMatrixRecoverySkipped() async => _recoverySkipped;
+
+  bool _locationAck = false;
+
+  @override
+  Future<bool> hasAcknowledgedLocationSharing() async => _locationAck;
+
+  @override
+  Future<void> setLocationSharingAcknowledged() async {
+    _locationAck = true;
+  }
 }
