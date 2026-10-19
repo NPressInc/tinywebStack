@@ -90,6 +90,51 @@ extension EnrollmentBundleMatrix on EnrollmentBundle {
   }
 }
 
+class CalDavCredentials {
+  CalDavCredentials({
+    required this.root,
+    required this.username,
+    required this.password,
+  });
+
+  final String root;
+  final String username;
+  final String password;
+
+  bool get isConfigured =>
+      root.isNotEmpty && username.isNotEmpty && password.isNotEmpty;
+
+  factory CalDavCredentials.fromJson(Map<String, dynamic> json) {
+    return CalDavCredentials(
+      root: json['root'] as String? ?? '',
+      username: json['username'] as String? ?? '',
+      password: json['password'] as String? ?? '',
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'root': root,
+        'username': username,
+        'password': password,
+      };
+
+  static CalDavCredentials? fromEnrollment(EnrollmentBundle bundle) {
+    final raw = bundle.rawJson?['caldav'];
+    if (raw is! Map<String, dynamic>) {
+      return null;
+    }
+    if (raw['status'] == 'unavailable') {
+      return null;
+    }
+    final creds = CalDavCredentials.fromJson(raw);
+    return creds.isConfigured ? creds : null;
+  }
+}
+
+extension EnrollmentBundleCalDav on EnrollmentBundle {
+  CalDavCredentials? get caldavCredentials => CalDavCredentials.fromEnrollment(this);
+}
+
 class OwnTracksCredentials {
   OwnTracksCredentials({
     required this.url,
@@ -239,6 +284,9 @@ class EnrollmentBundle {
     }
     if (json['owntracks'] != null) {
       raw['owntracks'] = json['owntracks'];
+    }
+    if (json['caldav'] != null) {
+      raw['caldav'] = json['caldav'];
     }
     return raw.isEmpty ? null : raw;
   }

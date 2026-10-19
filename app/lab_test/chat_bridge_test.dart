@@ -10,7 +10,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tinyweb/src/rust/api/matrix.dart';
 import 'package:tinyweb/src/rust/frb_generated.dart';
 
+import 'lab_env.dart';
+
 void main() {
+  installLabTestHttpOverrides();
   final hs = Platform.environment['TW_HS'];
   if (hs == null || hs.isEmpty) {
     test(

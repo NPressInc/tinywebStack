@@ -7,9 +7,11 @@ Stage 1 shell: enroll against your family box, home shortcuts, and **in-app Matr
 - QR / manual enrollment (`tinyweb://enroll`, one-time code, or username + password)
 - Discovery via `/.well-known/tinywebstack-family.json`
 - Secure storage of the enrollment bundle (Keychain / Keystore)
-- Home: greeting, quiet-hours banner, tiles (Calendar / Events / controls show “Coming soon”)
+- Home: greeting, quiet-hours banner, shortcuts (Events / family controls still “Coming soon”)
+- **Calendar:** CalDAV tab — upcoming events from Nextcloud (shared + personal calendars); create/edit/delete; invite family members; accept/decline invites (credentials from enrollment)
 - **Kids:** background location publish to your box’s OwnTracks Recorder (no OwnTracks app); status card on Home; one-time explainer after enroll
-- **Parents:** **Home | Locations | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet — see below)
+- **Parents:** **Home | Calendar | Locations | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet — see below)
+- **Kids:** **Home | Calendar | Chat**
 - Bottom nav chat: family Matrix chat in-app (no Element X)
 - Chat: **end-to-end encrypted** room list, timelines, send, new DM, live sync when the app is foregrounded
 - Recovery key setup after enroll (or when upgrading an older install)
@@ -37,6 +39,8 @@ export TW_HS=https://family-b.family.test
 export TW_CA_FILE=$HOME/.tinywebstack-secrets/lab-ca/lab-ca.crt.pem
 export TW_TEST_PASSWORD=...   # lab password from your secrets store
 export TW_LIB=$PWD/rust/target/release/libtinyweb_core.so
+# On spark (no /etc/hosts for every lab subdomain), point lab HTTPS at the box IP:
+export TW_RESOLVE_IP=192.168.x.x   # optional; lab_test/lab_env.dart only
 cd app
 flutter test lab_test/chat_bridge_test.dart
 flutter test lab_test/e2ee_bridge_test.dart
@@ -71,14 +75,25 @@ Battery: iOS defaults to low-power significant-change + region monitoring; Andro
 
 Lab: `flutter test lab_test/location_publish_test.dart` (requires `TW_HS`, `TW_CA_FILE`, `TW_TEST_PASSWORD`; optional `TW_KID_USER` / `TW_PARENT_USER`, default `kid` / `parent`). Runs serially with other `lab_test/` tests.
 
+Lab calendar: `flutter test lab_test/calendar_caldav_test.dart` (same env vars) — parent creates on `tws-family`, kid accepts invite.
+
+## Calendar (CalDAV)
+
+The app uses a small in-tree CalDAV client (`PROPFIND`, `REPORT calendar-query`, `PUT`/`DELETE` with ETags) and ICS parse/serialize against `TWS_CALDAV_ROOT`. Nextcloud app passwords are issued in the enrollment bundle (`caldav`); re-enroll if calendar credentials are missing on an older install.
+
 ## Lab TLS
 
 Lab family boxes use a **private CA**. Install the lab CA on a physical device for HTTPS enrollment — the app does **not** disable TLS verification. Pass the lab CA PEM into the Matrix Rust facade when testing on the host (`TW_CA_FILE` above).
+
+### Lab DNS on spark (`TW_RESOLVE_IP`)
+
+Some lab hostnames (e.g. `nextcloud.family-b.family.test`) are not in `/etc/hosts` on spark. Lab tests only: set `TW_RESOLVE_IP` to your family box IP before `flutter test lab_test/…`. Each `lab_test/*.dart` calls `installLabTestHttpOverrides()` from `lab_test/lab_env.dart`, which installs `HttpOverrides` and wires `lib/src/api/tls_http_client.dart` so Dart `HttpClient` still uses the original URL host for SNI/`Host`, verifies TLS with `TW_CA_FILE`, but opens TCP to `TW_RESOLVE_IP` for any host under the `TW_HS` hostname (via `connectionFactory`). Production app code in `lib/` is unchanged. Matrix bridge tests still use Rust’s own resolver for Synapse unless that host is also covered by your DNS setup.
 
 ## Layout
 
 - `lib/` — Dart UI and HTTP clients
 - `lib/src/chat/` — in-app chat UI and `ChatService`
+- `lib/src/calendar/` — CalDAV client, ICS, Calendar tab UI
 - `lib/src/location/` — OwnTracks publish, background service, parent Locations UI
 - `rust/` — `tinyweb_core` Matrix facade (frb 2.13.0, cargokit)
 - `lab_test/` — optional host-side Matrix bridge tests
@@ -104,7 +119,7 @@ Stage 1 chat uses Matrix **Megolm** (`m.megolm.v1.aes-sha2`). The Rust `tinyweb_
 
 Last checked on spark (linux-arm64), 2026-10-18:
 
-- `flutter test` — 27 unit/widget tests passed (Matrix UI uses `FakeChatService`, no native lib)
+- `flutter test` — unit/widget tests passed (Matrix UI uses `FakeChatService`, no native lib)
 - `flutter analyze` — no issues
 - `cargo build --release` in `rust/` — OK (~90 s)
 - `flutter build apk --debug --target-platform android-arm64` — OK (~78 s warm)
