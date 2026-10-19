@@ -37,6 +37,17 @@ from tinywebstack_dashboard.auth import (
     user_in_group,
 )
 from tinywebstack_dashboard.invite_store import load_pending
+from tinywebstack_dashboard.member_ops import (
+    create_family_member,
+    create_pending_family_invite,
+    delete_pending_family_invite,
+    issue_member_enroll_code,
+    list_member_devices_public,
+    member_role as ops_member_role,
+    remove_family_member,
+    reset_member_password,
+    revoke_member_app_device,
+)
 from tinywebstack_dashboard.members import list_members
 from tinywebstack_dashboard.owntracks_recorder import (
     fetch_all_last,
@@ -288,6 +299,15 @@ def _events_enabled(username: str, role: str) -> bool:
 
 class CodeCreateBody(BaseModel):
     username: str
+
+
+class MemberCreateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    username: str
+    role: Literal["parent", "kid"]
+    display_name: Optional[str] = None
+    issue_enroll_code: bool = False
 
 
 class EnrollBody(BaseModel):
@@ -607,21 +627,83 @@ def create_app_api_router(
             )
         return _no_store(invites)
 
+    @router.post("/api/members")
+    async def api_members_create(body: MemberCreateBody, request: Request):
+        parent = require_parent_user(api_user(request, cfg), cfg)
+        result = create_family_member(
+            cfg,
+            username=body.username,
+            role=body.role,
+            display_name=body.display_name,
+            issue_enroll_code=body.issue_enroll_code,
+            enroll_issued_by=parent,
+        )
+        payload: Dict[str, Any] = {
+            "username": result.username,
+            "role": result.role,
+            "password": result.password,
+        }
+        if result.enroll_code:
+            payload["enroll_code"] = result.enroll_code
+            payload["enroll_expires_at"] = result.enroll_expires_at
+            payload["enroll_qr_payload"] = result.enroll_qr_payload
+        return _no_store(payload)
+
+    @router.post("/api/members/{username}/reset-password")
+    async def api_members_reset_password(username: str, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        password = reset_member_password(cfg, username.strip().lower())
+        return _no_store({"username": username.strip().lower(), "password": password})
+
+    @router.delete("/api/members/{username}")
+    async def api_members_delete(username: str, request: Request):
+        auth = api_user(request, cfg)
+        parent = require_parent_user(auth, cfg)
+        result = remove_family_member(cfg, parent, username.strip().lower())
+        return _no_store({"username": username.strip().lower(), "result": result})
+
+    @router.post("/api/members/{username}/enroll-code")
+    async def api_members_enroll_code(username: str, request: Request):
+        parent = require_parent_user(api_user(request, cfg), cfg)
+        payload = issue_member_enroll_code(cfg, username.strip().lower(), parent)
+        return _no_store(payload)
+
+    @router.get("/api/members/{username}/devices")
+    async def api_members_devices(username: str, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        target = username.strip().lower()
+        if not ops_member_role(cfg, target):
+            raise HTTPException(status_code=404, detail="Not a family member")
+        return _no_store(list_member_devices_public(target))
+
+    @router.post("/api/members/{username}/devices/{device_id}/revoke")
+    async def api_members_device_revoke(username: str, device_id: str, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        revoke_member_app_device(cfg, username.strip().lower(), device_id)
+        return _no_store({"revoked": device_id})
+
+    @router.post("/api/invites")
+    async def api_invites_create(request: Request):
+        parent = require_parent_user(api_user(request, cfg), cfg)
+        secret = os.environ.get("TWS_INVITE_SECRET", "").strip()
+        if not secret:
+            raise HTTPException(status_code=500, detail="TWS_INVITE_SECRET not configured")
+        public_base = os.environ.get(
+            "TWS_PUBLIC_BASE_URL", f"https://{cfg.server_name}/family"
+        )
+        payload = create_pending_family_invite(
+            server_name=cfg.server_name,
+            invite_secret=secret,
+            pending_path=Path(pending_invites_path),
+            created_by=parent,
+            public_base_url=public_base,
+        )
+        return _no_store(payload)
+
+    @router.delete("/api/invites/{nonce}")
+    async def api_invites_delete(nonce: str, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        delete_pending_family_invite(Path(pending_invites_path), nonce)
+        return _no_store({"deleted": nonce})
+
     return router
-
-
-def revoke_user_devices(username: str, server_name: str) -> None:
-    """Revoke all app devices for a user (e.g. password reset). Best-effort cleanup."""
-    from tinywebstack_dashboard.app_devices import revoke_all_for_user
-
-    for dev in revoke_all_for_user(username):
-        if dev.matrix_device_id:
-            try:
-                matrix_device_delete(dev.username, server_name, dev.matrix_device_id)
-            except Exception:
-                pass
-        if dev.nextcloud_token_id:
-            try:
-                nextcloud_app_password_delete(dev.username, dev.nextcloud_token_id)
-            except Exception:
-                pass

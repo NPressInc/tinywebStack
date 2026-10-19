@@ -44,8 +44,51 @@ The dashboard exposes JSON under `/family/api/` for the **TinyWeb** iOS/Android 
 - **Auth:** app routes accept `Authorization: Bearer tws_…`; browser parents still use SSO on HTML routes. Nginx clears `YNH_USER` on `/family/api/*` so clients cannot spoof SSO headers.
 - **Revoke:** member detail page or `POST /family/api/app/devices/{id}/revoke`. Password reset revokes all devices for that user.
 - **Location (parents):** `GET /family/api/locations` — latest Recorder position per kid (`username`, `display_name`, `tid`, `lat`, `lon`, `acc`, `batt`, `tst`, `age_seconds`). `GET /family/api/locations/{username}/track?hours=24` — track history (kid usernames only, capped at 2000 points). Bearer token required; **kids receive 403**. If the Recorder API is unreachable, responses include `"status": "unavailable"`.
+- **Parent admin (parents only, bearer or SSO on read-only list routes):** JSON mirrors the HTML member and invite flows. All responses that include secrets use `Cache-Control: no-store`. Kids calling these routes get **403**.
 
-See [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) for request/response shapes.
+| Method | Path | Body / notes |
+|--------|------|----------------|
+| `GET` | `/family/api/members` | Member list (`username`, `role`, `mxid`, `matrix_label`, `device_count`). |
+| `POST` | `/family/api/members` | `{ "username", "role": "parent"\|"kid", "display_name"?, "issue_enroll_code"?: false }` → `{ "username", "role", "password" }` plus optional `enroll_code`, `enroll_expires_at`, `enroll_qr_payload`. |
+| `POST` | `/family/api/members/{username}/reset-password` | → `{ "username", "password" }`; revokes all app devices for that user. |
+| `DELETE` | `/family/api/members/{username}` | Refuses removing yourself or the last parent. |
+| `POST` | `/family/api/members/{username}/enroll-code` | → `{ "code", "expires_at", "qr_payload" }`. |
+| `GET` | `/family/api/members/{username}/devices` | Public device rows (no token hashes). |
+| `POST` | `/family/api/members/{username}/devices/{id}/revoke` | Same cleanup as the member detail page. |
+| `GET` | `/family/api/invites` | Pending cross-family invites (no token secrets). |
+| `POST` | `/family/api/invites` | → `{ "token", "nonce", "invite_url" }` (one-time household link). |
+| `DELETE` | `/family/api/invites/{nonce}` | Drop a pending invite. |
+
+**Permissions (kid policy):** `GET` / `PUT` `/family/permissions/{user}` (path is under the dashboard mount, not `/family/api/`). Browser parents use SSO; the TinyWeb app uses a **parent** bearer token. Kids may read their own row via SSO only; **kid bearer tokens get 403** on permissions.
+
+JSON shape (from the SQLite permissions store):
+
+```json
+{
+  "mxid": "@kid1:family.example",
+  "username": "kid1",
+  "role": "kid",
+  "is_admin": false,
+  "can_create_rooms": false,
+  "can_create_group_rooms": false,
+  "can_send_3pid_invites": false,
+  "can_publish_rooms": false,
+  "events_enabled": true,
+  "mobilizon_role": "member",
+  "allowlist_mxids": ["@friend:other.family"],
+  "allowlist_domains": ["other.family"],
+  "quiet_hours": {
+    "start": "21:00",
+    "end": "07:00",
+    "timezone": "America/Denver",
+    "days": [0, 1, 2, 3, 4, 5, 6]
+  }
+}
+```
+
+`quiet_hours` is `null` when unset. Parent `PUT` accepts the mutable fields above plus optional `"revoke": ["quiet_hours"]` (or other keys) to clear overrides. `events_enabled` toggles Mobilizon access for kids ([EVENTS.md](EVENTS.md)).
+
+See [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) for enrollment and location shapes.
 
 ## Privileged helpers (node)
 

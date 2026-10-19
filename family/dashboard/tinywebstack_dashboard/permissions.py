@@ -4,9 +4,9 @@ Mounted by app.py via ``create_permissions_router(cfg)``. Reads/writes the
 same DB file the Synapse module reads (tinywebstack_permissions), so a parent
 edit here flips enforcement immediately.
 
-Auth model (same SSO header + group checks as the rest of the dashboard):
-- GET  /permissions/{user}  — any SSO user; non-parents see only themselves.
-- PUT  /permissions/{user}  — parents group only (server-side, 403 otherwise);
+Auth model (SSO header or parent app bearer token on ``/family/api/*``):
+- GET  /permissions/{user}  — SSO: non-parents see only themselves; bearer: parents only.
+- PUT  /permissions/{user}  — parents group only (SSO or bearer; kids get 403);
   parent-only fields: unknown keys and role escalation to an admin role from
   a non-parent are rejected; role may only be an existing seeded role.
 If the DB file does not exist yet, PUT seeds it from the bundled role YAMLs
@@ -24,8 +24,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from tinywebstack_dashboard.auth import (
     DashboardConfig,
+    api_user,
     list_group_members,
-    username_from_headers,
 )
 
 log = logging.getLogger(__name__)
@@ -128,19 +128,22 @@ def create_permissions_router(cfg: DashboardConfig) -> APIRouter:
     def _is_parent(username: str) -> bool:
         return username in list_group_members(cfg.parents_group, cfg.yunohost_cli)
 
-    def sso_user(request: Request) -> str:
-        user = username_from_headers(dict(request.headers))
-        if not user:
-            raise HTTPException(status_code=401, detail="SSO login required")
-        return user
+    def authenticated_caller(request: Request):
+        auth = api_user(request, cfg)
+        if auth.via_bearer and not _is_parent(auth.username):
+            raise HTTPException(
+                status_code=403, detail="Parents group membership required"
+            )
+        return auth
 
     @router.get("/permissions/{user}")
     async def get_permissions(user: str, request: Request):
-        caller = sso_user(request)
+        auth = authenticated_caller(request)
+        caller = auth.username
         target = _target_username(user)
         if not target:
             raise HTTPException(status_code=404, detail="Unknown user")
-        if not _is_parent(caller) and target != caller:
+        if not auth.via_bearer and not _is_parent(caller) and target != caller:
             raise HTTPException(status_code=403, detail="You may only view your own permissions")
         # Ensure the caller's household members exist in the store so lookups
         # match the group model even before the seed step has registered them.
@@ -165,9 +168,8 @@ def create_permissions_router(cfg: DashboardConfig) -> APIRouter:
     async def put_permissions(
         user: str, body: PermissionsUpdate, request: Request
     ):
-        caller = sso_user(request)
-        # Tamper guard: only members of the parents group may modify anyone's
-        # permissions — including a kid editing themselves.
+        auth = authenticated_caller(request)
+        caller = auth.username
         if not _is_parent(caller):
             raise HTTPException(status_code=403, detail="Parents group membership required")
         target = _target_username(user)
