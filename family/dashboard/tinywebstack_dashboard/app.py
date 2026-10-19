@@ -7,8 +7,6 @@ import os
 import secrets
 import subprocess
 import threading
-import urllib.error
-import urllib.request
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -59,6 +57,13 @@ from tinywebstack_dashboard.yunohost_actions import (
     synapse_user_status,
 )
 from tinywebstack_family.invite import verify_invite_token
+from tinywebstack_dashboard.invite_store import pop_pending
+from tinywebstack_dashboard.link_invite import (
+    decline_link_invite_remote,
+    post_json as link_invite_post_json,
+    redeem_link_invite,
+    LinkInviteError,
+)
 from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
@@ -202,6 +207,37 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
 
         threading.Thread(target=_run, daemon=True).start()
 
+    def run_federation_sync_blocking() -> tuple[str, str]:
+        if not federation_sync_cmd:
+            return ("skipped", "skipped")
+        try:
+            subprocess.run(
+                federation_sync_cmd.split(),
+                check=True,
+                timeout=180,
+                capture_output=True,
+            )
+            return ("ok", "ok")
+        except subprocess.CalledProcessError as exc:
+            err = (exc.stderr or b"").decode("utf-8", errors="replace")[:120]
+            return (f"error:{err or exc.returncode}", f"error:{err or exc.returncode}")
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            return (f"error:{exc}", f"error:{exc}")
+
+    def schedule_federation_sync_status() -> tuple[str, str]:
+        schedule_federation_sync()
+        if federation_sync_cmd:
+            return ("ok", "ok")
+        return ("skipped", "skipped")
+
+    def trusted_domain_list() -> List[str]:
+        return reconcile_state_with_policy(
+            federation_state_path,
+            policy_path,
+            server_name=cfg.server_name,
+            read_only=True,
+        )
+
     def add_trusted_domain(domain: str, *, sync: bool = True) -> None:
         merged = reconcile_state_with_policy(
             federation_state_path,
@@ -224,24 +260,20 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     app.include_router(
         create_federation_router(cfg, state_path=federation_state_path, on_change=schedule_federation_sync)
     )
+    def add_trusted_domain_no_sync(domain: str) -> None:
+        add_trusted_domain(domain, sync=False)
+
     app.include_router(
         create_app_api_router(
             cfg,
             matrix_server=matrix_server or cfg.server_name,
             pending_invites_path=str(pending_path),
+            trusted_domains=trusted_domain_list,
+            add_trusted_domain=add_trusted_domain_no_sync,
+            run_federation_sync=run_federation_sync_blocking,
+            decline_remote_invite=decline_link_invite_remote,
         )
     )
-
-    def post_json(url: str, body: Dict[str, Any], timeout: int = 20) -> Dict[str, Any]:
-        data = json.dumps(body).encode("utf-8")
-        req = urllib.request.Request(
-            url,
-            data=data,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=timeout, context=_ssl_context()) as resp:
-            return json.loads(resp.read().decode("utf-8"))
 
     def matrix_homeserver_public_url() -> str:
         host = (matrix_server or cfg.server_name).strip()
@@ -303,6 +335,28 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             }
         )
 
+    @app.post("/api/invite/decline")
+    async def api_invite_decline(request: Request):
+        """Public: redeemer declines; remove pending nonce without linking."""
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="JSON body required") from exc
+        token = str(body.get("token", "")).strip()
+        if not token:
+            raise HTTPException(status_code=400, detail="token required")
+        try:
+            payload = verify_invite_token(token, ensure_invite_secret())
+        except ValueError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        pending = load_pending(pending_path).get("invites", {}).get(payload["nonce"])
+        if not pending:
+            raise HTTPException(status_code=403, detail="Invite not found or expired")
+        if pending.get("used"):
+            raise HTTPException(status_code=403, detail="Invite already used")
+        pop_pending(pending_path, payload["nonce"])
+        return JSONResponse({"declined": True})
+
     @app.get("/invite", response_class=HTMLResponse)
     async def invite_page(request: Request, user: str = Depends(current_user)):
         return TEMPLATES.TemplateResponse(
@@ -357,39 +411,22 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
     ):
         verify_csrf(request, csrf)
         token = token.strip()
-        try:
-            from tinywebstack_family.invite import decode_invite_token
-
-            decoded = decode_invite_token(token)
-            issuer = str(decoded["p"]["domain"])
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Invalid token: {exc}") from exc
-        if issuer == cfg.server_name:
-            raise HTTPException(
-                status_code=400,
-                detail="This invite was issued on this server; give it to the other household.",
-            )
-        peer_base = os.environ.get("TWS_PEER_INVITE_VERIFY_BASE", f"https://{issuer}/family")
-        verify_url = f"{peer_base.rstrip('/')}/api/invite/verify"
         message = ""
         try:
-            verify_resp = post_json(
-                verify_url,
-                {"token": token, "redeemer_domain": cfg.server_name},
+            result = redeem_link_invite(
+                token,
+                own_domain=cfg.server_name,
+                trusted_domains=trusted_domain_list(),
+                post_peer_json=link_invite_post_json,
+                add_trusted_domain=lambda d: add_trusted_domain(d, sync=False),
+                run_federation_sync=schedule_federation_sync_status,
+                federation_sync_mode="none",
             )
-            if not verify_resp.get("matrix_server_key"):
-                peer_host = verify_resp.get("matrix_server") or issuer
-                verify_peer_domain(peer_host, None)
-            add_trusted_domain(issuer, sync=True)
-            message = f"Linked with {issuer}. Federation allowlist sync requested."
-        except urllib.error.HTTPError as exc:
-            body = exc.read().decode("utf-8", errors="replace")
-            if exc.code == 403 and "already used" in body.lower():
-                message = "This invite was already used. Ask the other household to create a new invite."
-            else:
-                message = f"Peer rejected the invite (HTTP {exc.code}): {body[:200]}"
-        except (urllib.error.URLError, OSError) as exc:
-            message = f"Could not reach peer at {verify_url}: {exc}"
+            if not result.already_linked:
+                schedule_federation_sync()
+            message = result.user_message
+        except LinkInviteError as exc:
+            message = exc.detail
         return TEMPLATES.TemplateResponse(
             request,
             "invite_redeem.html",

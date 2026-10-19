@@ -58,6 +58,11 @@ The dashboard exposes JSON under `/family/api/` for the **TinyWeb** iOS/Android 
 | `GET` | `/family/api/invites` | Pending cross-family invites (no token secrets). |
 | `POST` | `/family/api/invites` | → `{ "token", "nonce", "invite_url" }` (one-time household link). |
 | `DELETE` | `/family/api/invites/{nonce}` | Drop a pending invite. |
+| `POST` | `/family/api/link-invites/preview` | Incoming invite preview (`token`); `Cache-Control: no-store`. |
+| `POST` | `/family/api/link-invites/accept` | Redeem an invite from another household (shared logic with HTML redeem). |
+| `POST` | `/family/api/link-invites/decline` | Decline; notifies issuer when reachable. |
+| `GET` | `/family/api/linked-families` | Trusted peer domains with optional display names. |
+| `POST` | `/family/api/invite/decline` | **Public** — issuer cancels a pending nonce (peer decline). |
 
 **Permissions (kid policy):** `GET` / `PUT` `/family/permissions/{user}` (path is under the dashboard mount, not `/family/api/`). Browser parents use SSO; the TinyWeb app uses a **parent** bearer token. Kids may read their own row via SSO only; **kid bearer tokens get 403** on permissions.
 
