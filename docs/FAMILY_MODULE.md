@@ -18,7 +18,7 @@ Or step by step:
 
 This pip-installs the module into the Synapse venv, drops `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`, sets `encryption_enabled_by_default_for_room_type: off`, and restarts Synapse.
 
-`install-family-module.sh` also creates `/etc/matrix-synapse/tinywebstack-login-ticket.secret` (32 random bytes, mode `640`, group `www-data`) and sets module config `login_ticket_secret_file` to that path. The family dashboard reads the same path via `TWS_MATRIX_LOGIN_TICKET_SECRET_FILE` to mint short-lived tickets for code enrollment.
+`install-family-module.sh` also creates `/etc/tinywebstack/matrix-login-ticket.secret` (32 random bytes, mode `640`, group `www-data`) and sets module config `login_ticket_secret_file` to that path. The family dashboard reads the same path via `TWS_MATRIX_LOGIN_TICKET_SECRET_FILE` to mint short-lived tickets for code enrollment.
 
 ### Matrix login type `org.tinywebstack.login_ticket`
 

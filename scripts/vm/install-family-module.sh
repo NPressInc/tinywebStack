@@ -149,7 +149,7 @@ EOF
 fi
 
 CONF_D="${TWS_SYNAPSE_CONF_D:-/etc/matrix-synapse/conf.d}"
-LOGIN_TICKET_SECRET="${TWS_LOGIN_TICKET_SECRET:-${TWS_SYNAPSE_LOGIN_TICKET_SECRET:-/etc/matrix-synapse/tinywebstack-login-ticket.secret}}"
+LOGIN_TICKET_SECRET="${TWS_LOGIN_TICKET_SECRET:-${TWS_SYNAPSE_LOGIN_TICKET_SECRET:-/etc/tinywebstack/matrix-login-ticket.secret}}"
 
 synapse_runtime_user() {
   if getent passwd matrix-synapse >/dev/null 2>&1; then
