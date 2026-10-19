@@ -71,7 +71,7 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 **Source:** [TinyWebC `README.md`](https://github.com/NPressInc/TinyWebC/blob/main/README.md) — “encrypted message relay”; [KEY_DISTRIBUTION_ARCHITECTURE.md](https://github.com/NPressInc/TinyWebC/blob/main/docs/KEY_DISTRIBUTION_ARCHITECTURE.md) — “End-to-end encryption — Messages encrypted by clients, nodes cannot decrypt”; “Nodes only store public keys.”
 
-**tinywebStack:** **Adapted.** Matrix provides **E2EE** for supported room types; the homeserver still sees metadata (who talks to whom, when). Location data in Traccar is protected by **Traccar user/device permission links**, not TinyWebC’s custom encrypted location API. The spirit—**servers verify and route, they do not become a readable copy of family life**—still guides what we log, what parents can see, and what we refuse to build (for example, a centralized family spy server).
+**tinywebStack:** **Adapted.** Matrix provides **E2EE**, and family chat is **encrypted by default from Stage 1**. The homeserver still sees metadata (who talks to whom, when), which is what the family module uses to enforce allowlists and quiet hours. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Location data in Traccar is protected by **Traccar user/device permission links**, not TinyWebC’s custom encrypted location API. The spirit—**servers verify and route, they do not become a readable copy of family life**—still guides what we log, what parents can see, and what we refuse to build (for example, a centralized family spy server).
 
 ---
 
