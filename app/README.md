@@ -38,7 +38,11 @@ export TW_LIB=$PWD/rust/target/release/libtinyweb_core.so
 cd app
 flutter test lab_test/chat_bridge_test.dart
 flutter test lab_test/e2ee_bridge_test.dart
+# Or both (serial — see lab_test/dart_test.yaml):
+flutter test lab_test/
 ```
+
+Lab tests in `lab_test/` run **one at a time** (`dart_test.yaml` sets `concurrency: 1`) because they use the same lab accounts and `e2ee_bridge_test` resets cross-signing identity.
 
 ### Debug APK on spark
 
@@ -86,8 +90,7 @@ Last checked on spark (linux-arm64), 2026-10-18:
 - `flutter analyze` — no issues
 - `cargo build --release` in `rust/` — OK (~90 s)
 - `flutter build apk --debug --target-platform android-arm64` — OK (~78 s warm)
-- Lab `lab_test/e2ee_bridge_test.dart` (parent/kid, `TW_HS` / `TW_CA_FILE` / `TW_LIB` / `TW_TEST_PASSWORD`) — passed twice in a row (~1m37s each): encrypted DM, A→B and B→A decrypt, raw event `m.room.encrypted` with no plaintext, new-device `recover` + key backup read
-- Lab `lab_test/chat_bridge_test.dart` — same env vars as above (not re-run in this session)
+- Lab `lab_test/chat_bridge_test.dart` and `lab_test/e2ee_bridge_test.dart` (parent/kid, `TW_HS` / `TW_CA_FILE` / `TW_LIB` / `TW_TEST_PASSWORD`) — each passed alone; `flutter test lab_test/` passed serially (~chat 30–90s, e2ee ~1m37s)
 
 ## CI release builds (`.github/workflows/app.yml`)
 

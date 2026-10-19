@@ -71,15 +71,31 @@ void main() {
 
     await sessionA.syncOnce();
     await sessionB.syncOnce();
+    // Encrypted DMs need the SDK crypto stack ready before send/receive.
+    await sessionA.encryptionStatus();
+    await sessionB.encryptionStatus();
 
     final streamB = sessionB.startSync();
     await Future<void>.delayed(const Duration(seconds: 2));
 
     final roomId = await sessionA.createDirectChat(userId: mxidB);
+    await sessionB.joinRoom(roomId: roomId);
+    await sessionA.syncOnce();
+    await sessionB.syncOnce();
+    await Future<void>.delayed(const Duration(seconds: 2));
+
+    final roomsB = await sessionB.listRooms();
+    expect(
+      roomsB.any((r) => r.roomId == roomId),
+      isTrue,
+      reason: 'B should see the DM after join/sync',
+    );
+
     final pingBody = 'ping ${DateTime.now().toIso8601String()}';
     await sessionA.sendText(roomId: roomId, body: pingBody);
 
-    await _waitForBody(streamB, pingBody);
+    final incoming = await _waitForBody(streamB, pingBody);
+    expect(incoming.utd, isFalse);
 
     final timeline = await sessionA.roomTimeline(roomId: roomId, limit: 20);
     expect(
@@ -122,5 +138,5 @@ Future<IncomingMessage> _waitForBody(
       .where((m) => m != null && m.body == body)
       .map((m) => m!)
       .first
-      .timeout(const Duration(seconds: 60));
+      .timeout(const Duration(seconds: 90));
 }
