@@ -42,6 +42,7 @@ from tinywebstack_dashboard.owntracks_setup import (
 )
 from tinywebstack_dashboard.policy_store import load_policy, save_policy, set_parent_mxids, sync_kids_from_usernames
 from tinywebstack_dashboard.app_api import create_app_api_router
+from tinywebstack_dashboard.map_routes import create_map_router
 from tinywebstack_dashboard.member_ops import (
     create_family_member,
     create_pending_family_invite,
@@ -274,6 +275,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             decline_remote_invite=decline_link_invite_remote,
         )
     )
+    app.include_router(create_map_router(cfg))
 
     def matrix_homeserver_public_url() -> str:
         host = (matrix_server or cfg.server_name).strip()

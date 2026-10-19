@@ -761,6 +761,6 @@ Test restore quarterly; an untested backup is not a backup.
 - [test-nodes.md](test-nodes.md) — lab path (spark VMs, private CA)
 - [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), [FAMILY_MODULE.md](FAMILY_MODULE.md),
   [module-packaging.md](module-packaging.md),
-  [CALENDAR.md](CALENDAR.md), [EVENTS.md](EVENTS.md),
+  [CALENDAR.md](CALENDAR.md), [EVENTS.md](EVENTS.md), [MAP.md](MAP.md),
   [FAMILY_INVITE.md](FAMILY_INVITE.md), [TINYWEB_BRANDING.md](TINYWEB_BRANDING.md),
   [PHILOSOPHY.md](PHILOSOPHY.md)

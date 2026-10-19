@@ -1,0 +1,14 @@
+{
+  "version": 8,
+  "name": "TinyWeb Protomaps (self-hosted)",
+  "sources": {
+    "protomaps": {
+      "type": "vector",
+      "url": "pmtiles://basemap.pmtiles",
+      "attribution": "© OpenStreetMap contributors, Protomaps"
+    }
+  },
+  "glyphs": "fonts/{fontstack}/{range}.pbf",
+  "sprite": "sprites/v4/light",
+  "layers": []
+}

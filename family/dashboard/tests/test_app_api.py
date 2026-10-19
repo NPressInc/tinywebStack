@@ -811,3 +811,63 @@ def test_quiet_hours_active_inactive(app_env, monkeypatch):
     )
     parent_me = client.get("/api/app/me", headers={"Authorization": f"Bearer {t_parent}"})
     assert parent_me.json()["quiet_hours"]["configured"] is False
+
+
+def test_map_unavailable_without_data(app_env, monkeypatch, tmp_path):
+    client, _, _ = app_env
+    monkeypatch.setenv("TWS_MAP_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TWS_PUBLIC_BASE_URL", "https://family-a.test/family")
+    token = _parent_token(client)
+    r = client.get("/api/map", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["available"] is False
+    assert data["attribution"] == "© OpenStreetMap contributors, Protomaps"
+    assert "tiles_url" in data
+
+
+def test_map_available_with_pmtiles(app_env, monkeypatch, tmp_path):
+    client, _, _ = app_env
+    monkeypatch.setenv("TWS_MAP_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("TWS_PUBLIC_BASE_URL", "https://family-a.test/family")
+    (tmp_path / "basemap.pmtiles").write_bytes(b"pmtiles-test")
+    (tmp_path / "map.meta.json").write_text(
+        json.dumps(
+            {
+                "bounds": [-109.0, 39.0, -104.0, 41.0],
+                "maxzoom": 14,
+                "flavor": "light",
+            }
+        ),
+        encoding="utf-8",
+    )
+    token = _parent_token(client)
+    r = client.get("/api/map", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 200
+    data = r.json()
+    assert data["available"] is True
+    assert data["bounds"] == [-109.0, 39.0, -104.0, 41.0]
+    assert data["tiles_url"].startswith("https://family-a.test/family/tiles/")
+    assert "t=" in data["glyphs_url"]
+
+
+def test_map_kid_forbidden(app_env, monkeypatch, tmp_path):
+    client, _, _ = app_env
+    monkeypatch.setenv("TWS_MAP_DATA_DIR", str(tmp_path))
+    t_kid = mint_device_token()
+    create_device(username="kid1", role="kid", device_name="k", platform="android", token=t_kid)
+    assert client.get("/api/map", headers={"Authorization": f"Bearer {t_kid}"}).status_code == 403
+
+
+def test_map_tile_serve_with_bearer(app_env, monkeypatch, tmp_path):
+    client, _, _ = app_env
+    monkeypatch.setenv("TWS_MAP_DATA_DIR", str(tmp_path))
+    (tmp_path / "basemap.pmtiles").write_bytes(b"tile-bytes")
+    token = _parent_token(client)
+    r = client.get(
+        "/tiles/basemap.pmtiles",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    assert r.content == b"tile-bytes"
+    assert r.headers.get("accept-ranges") == "bytes"
