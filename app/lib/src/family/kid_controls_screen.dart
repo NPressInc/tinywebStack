@@ -4,7 +4,9 @@ import '../api/family_api.dart';
 import '../api/models.dart';
 import '../app_session.dart';
 import '../brand.dart';
-import 'kid_detail_screen.dart';
+import 'add_member_screen.dart';
+import 'member_detail_screen.dart';
+import 'one_time_secret_panel.dart';
 
 class KidControlsScreen extends StatefulWidget {
   const KidControlsScreen({
@@ -22,9 +24,11 @@ class KidControlsScreen extends StatefulWidget {
 
 class _KidControlsScreenState extends State<KidControlsScreen> {
   late final FamilyApiClient _api = widget.api ?? FamilyApiClient();
-  List<FamilyMember> _kids = [];
+  List<FamilyMember> _members = [];
+  List<FamilyInviteRow> _invites = [];
   bool _loading = true;
   String? _error;
+  HouseholdInviteCreateResult? _newInvite;
 
   @override
   void initState() {
@@ -50,9 +54,20 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
       _error = null;
     });
     try {
-      final members = await _api.fetchMembers(bundle);
+      final results = await Future.wait([
+        _api.fetchMembers(bundle),
+        _api.fetchInvites(bundle),
+      ]);
+      final members = results[0] as List<FamilyMember>;
+      members.sort((a, b) {
+        if (a.role != b.role) {
+          return a.role == 'parent' ? -1 : 1;
+        }
+        return a.username.compareTo(b.username);
+      });
       setState(() {
-        _kids = members.where((m) => m.role == 'kid').toList();
+        _members = members;
+        _invites = results[1] as List<FamilyInviteRow>;
         _loading = false;
       });
     } catch (e) {
@@ -63,28 +78,146 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Family'),
+  Future<void> _openMember(FamilyMember member) async {
+    final changed = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => MemberDetailScreen(
+          session: widget.session,
+          member: member,
+          api: widget.api,
+        ),
+      ),
+    );
+    if (changed == true) {
+      await _refresh();
+    }
+  }
+
+  Future<void> _addMember() async {
+    final added = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => AddMemberScreen(
+          session: widget.session,
+          api: widget.api,
+        ),
+      ),
+    );
+    if (added == true) {
+      await _refresh();
+    }
+  }
+
+  Future<void> _createInvite() async {
+    final bundle = widget.session.enrollment;
+    if (bundle == null) {
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      final invite = await _api.createHouseholdInvite(bundle);
+      setState(() {
+        _newInvite = invite;
+        _loading = false;
+      });
+      await _refresh();
+    } catch (e) {
+      setState(() {
+        _loading = false;
+        _error = e.toString();
+      });
+    }
+  }
+
+  Future<void> _deleteInvite(FamilyInviteRow invite) async {
+    final bundle = widget.session.enrollment;
+    if (bundle == null) {
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete invite?'),
+        content: const Text('Pending household links stop working immediately.'),
         actions: [
-          IconButton(
-            onPressed: _loading ? null : _refresh,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
           ),
         ],
       ),
-      body: _buildBody(),
+    );
+    if (ok != true) {
+      return;
+    }
+    try {
+      await _api.deleteHouseholdInvite(bundle, invite.nonce);
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DefaultTabController(
+      length: 2,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Family'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'Members'),
+              Tab(text: 'Invites'),
+            ],
+          ),
+          actions: [
+            IconButton(
+              onPressed: _loading ? null : _refresh,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'Refresh',
+            ),
+          ],
+        ),
+        floatingActionButton: Builder(
+          builder: (context) {
+            final tab = DefaultTabController.of(context);
+            return AnimatedBuilder(
+              animation: tab,
+              builder: (context, _) {
+                if (tab.index == 0) {
+                  return FloatingActionButton.extended(
+                    onPressed: _loading ? null : _addMember,
+                    icon: const Icon(Icons.person_add),
+                    label: const Text('Add'),
+                  );
+                }
+                return FloatingActionButton.extended(
+                  onPressed: _loading ? null : _createInvite,
+                  icon: const Icon(Icons.link),
+                  label: const Text('New invite'),
+                );
+              },
+            );
+          },
+        ),
+        body: _buildBody(),
+      ),
     );
   }
 
   Widget _buildBody() {
-    if (_loading) {
+    if (_loading && _members.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
-    if (_error != null) {
+    if (_error != null && _members.isEmpty) {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -99,41 +232,101 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
         ),
       );
     }
-    if (_kids.isEmpty) {
-      return const Center(child: Text('No child accounts on this family box.'));
+
+    return TabBarView(
+      children: [
+        RefreshIndicator(
+          onRefresh: _refresh,
+          child: _membersTab(),
+        ),
+        RefreshIndicator(
+          onRefresh: _refresh,
+          child: _invitesTab(),
+        ),
+      ],
+    );
+  }
+
+  Widget _membersTab() {
+    if (_members.isEmpty) {
+      return ListView(
+        children: const [
+          SizedBox(height: 120),
+          Center(child: Text('No family members yet.')),
+        ],
+      );
     }
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: _kids.length,
-        itemBuilder: (context, index) {
-          final kid = _kids[index];
-          final label = kid.displayName?.isNotEmpty == true
-              ? kid.displayName!
-              : kid.username;
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: ListTile(
-              leading: const Icon(Icons.child_care, color: TinyWebColors.blueDeep),
-              title: Text(label),
-              subtitle: Text(kid.mxid.isNotEmpty ? kid.mxid : kid.username),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => KidDetailScreen(
-                      session: widget.session,
-                      kid: kid,
-                      api: widget.api,
-                    ),
-                  ),
-                );
-              },
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+      itemCount: _members.length,
+      itemBuilder: (context, index) {
+        final member = _members[index];
+        final devices = member.deviceCount == 1
+            ? '1 phone'
+            : '${member.deviceCount} phones';
+        return Card(
+          margin: const EdgeInsets.only(bottom: 12),
+          child: ListTile(
+            leading: Icon(
+              member.role == 'parent'
+                  ? Icons.supervisor_account
+                  : Icons.child_care,
+              color: TinyWebColors.blueDeep,
             ),
-          );
-        },
-      ),
+            title: Text(member.displayLabel),
+            subtitle: Text(
+              '${member.role == 'parent' ? 'Parent' : 'Child'} · $devices',
+            ),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _openMember(member),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _invitesTab() {
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
+      children: [
+        if (_newInvite != null)
+          OneTimeSecretPanel(
+            title: 'New household invite',
+            secret: _newInvite!.token,
+            hint: 'Share this link with another family. Shown once.',
+            qrPayload: _newInvite!.inviteUrl,
+            secondaryLabel: 'Invite link',
+            secondarySecret: _newInvite!.inviteUrl,
+          ),
+        if (_invites.isEmpty && _newInvite == null)
+          const Padding(
+            padding: EdgeInsets.only(top: 48),
+            child: Center(
+              child: Text('No pending household invites.'),
+            ),
+          )
+        else
+          ..._invites.map(
+            (inv) => Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                leading: const Icon(Icons.link),
+                title: Text('Invite ${inv.nonce}'),
+                subtitle: Text(
+                  [
+                    if (inv.issuer != null) 'from ${inv.issuer}',
+                    if (inv.createdBy != null) 'by ${inv.createdBy}',
+                  ].join(' · '),
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Delete',
+                  onPressed: () => _deleteInvite(inv),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

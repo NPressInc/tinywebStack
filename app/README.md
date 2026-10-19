@@ -11,7 +11,7 @@ Stage 1 shell: enroll against your family box, home shortcuts, and **in-app Matr
 - **Calendar:** CalDAV tab — upcoming events from Nextcloud (shared + personal calendars); create/edit/delete; invite family members; accept/decline invites (credentials from enrollment)
 - **Events:** Mobilizon tab — upcoming family and federated **PUBLIC** events; detail + join/leave RSVP; parents can create events (password enrollment issues Mobilizon GraphQL tokens). Kids without the dashboard **Events** toggle do not see the tab.
 - **Kids:** background location publish to your box’s OwnTracks Recorder (no OwnTracks app); status card on Home; one-time explainer after enroll
-- **Parents:** **Home | Calendar | Events | Locations | Family | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet); **Family** tab edits per-kid chat allowlists, quiet hours, and Events access (`GET/PUT /family/permissions/{user}` with the dashboard bearer token)
+- **Parents:** **Home | Calendar | Events | Locations | Family | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet); **Family** tab lists members (roles, enrolled phones), add/remove accounts, reset passwords, one-time enroll QR/codes, household invites, and per-kid chat allowlists, quiet hours, and Events access (`GET/PUT /family/permissions/{user}` with the dashboard bearer token)
 - **Kids (events enabled):** **Home | Calendar | Events | Chat**
 - **Kids (events disabled):** **Home | Calendar | Chat**
 - Bottom nav chat: family Matrix chat in-app (no Element X)
@@ -82,6 +82,8 @@ Lab calendar: `flutter test lab_test/calendar_caldav_test.dart` (same env vars) 
 Lab events: `flutter test lab_test/events_mobilizon_test.dart` (same env vars) — parent creates a PUBLIC Mobilizon event on the lab box; kid RSVPs.
 
 Lab kid controls: `flutter test lab_test/kid_controls_test.dart` (same env vars) — parent toggles kid Events and quiet hours via permissions API, then restores.
+
+Lab members admin: `flutter test lab_test/members_admin_test.dart` (same env vars) — parent creates/deletes a throwaway kid, enroll code, password reset, and household invite.
 
 ## Calendar (CalDAV)
 
