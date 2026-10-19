@@ -186,6 +186,7 @@ class InMemoryCredentialStore implements CredentialStore {
     _recoveryKey = null;
     _e2eeSetup = false;
     _recoverySkipped = false;
+    _locationAck = false;
   }
 
   @override

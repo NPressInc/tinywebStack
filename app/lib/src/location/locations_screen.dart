@@ -108,8 +108,8 @@ class _LocationsScreenState extends State<LocationsScreen> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: _loading
-            ? const ListView(
-                children: [
+            ? ListView(
+                children: const [
                   SizedBox(height: 120),
                   Center(child: CircularProgressIndicator()),
                 ],

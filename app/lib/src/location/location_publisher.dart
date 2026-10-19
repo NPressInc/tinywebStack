@@ -19,12 +19,11 @@ const _throttleDistanceMeters = 100.0;
 
 class LocationPublisher {
   LocationPublisher({
-    required OwnTracksCredentials credentials,
+    required this._credentials,
     http.Client? httpClient,
     Future<Directory> Function()? queueDirectory,
     DateTime Function()? clock,
-  })  : _credentials = credentials,
-        _client = httpClient ?? http.Client(),
+  })  : _client = httpClient ?? http.Client(),
         _queueDirectory = queueDirectory ?? _defaultQueueDir,
         _clock = clock ?? DateTime.now;
 
@@ -78,12 +77,21 @@ class LocationPublisher {
       return;
     }
     await _enqueue(payload);
-    await _scheduleFlush();
+    unawaited(_scheduleFlush());
   }
 
   /// Test hook: POST without throttle (still updates queue on failure).
-  Future<_PostResult> postPayloadForTest(Map<String, dynamic> payload) =>
-      _postPayload(payload);
+  Future<LocationPostResult> postPayloadForTest(Map<String, dynamic> payload) async {
+    final result = await _postPayload(payload);
+    switch (result) {
+      case _PostResult.success:
+        return LocationPostResult.success;
+      case _PostResult.unauthorized:
+        return LocationPostResult.unauthorized;
+      case _PostResult.retryable:
+        return LocationPostResult.retryable;
+    }
+  }
 
   Future<void> flushQueueNow() => _flushQueue();
 
@@ -250,6 +258,11 @@ class LocationPublisher {
     await _writeQueueFile(queue);
   }
 
+  Future<int> queuedCount() async {
+    final data = await _readQueueFile();
+    return (data['queue'] as List? ?? []).length;
+  }
+
   Future<void> loadPersistedState() async {
     final file = await _queueFile();
     if (!await file.exists()) {
@@ -274,6 +287,8 @@ class LocationPublisher {
     _client.close();
   }
 }
+
+enum LocationPostResult { success, unauthorized, retryable }
 
 enum _PostResult { success, unauthorized, retryable }
 

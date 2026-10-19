@@ -25,15 +25,12 @@ enum LocationSharingStatus {
 
 class LocationService extends ChangeNotifier {
   LocationService({
-    OwnTracksCredentials? credentials,
-    http.Client? httpClient,
-    LocationPublisher? publisher,
+    this._credentials,
+    this._httpClient,
+    this._publisher,
     IosLocationBridge? iosBridge,
     Battery? battery,
-  })  : _credentials = credentials,
-        _httpClient = httpClient,
-        _publisher = publisher,
-        _iosBridge = iosBridge ?? IosLocationBridge(),
+  })  : _iosBridge = iosBridge ?? IosLocationBridge(),
         _battery = battery ?? Battery();
 
   OwnTracksCredentials? _credentials;

@@ -65,12 +65,42 @@ void main() {
     expect(find.text('Family controls'), findsNothing);
   });
 
-  testWidgets('parent sees family tiles', (tester) async {
+  testWidgets('parent sees family controls tile', (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: HomeScreen(session: _session(role: 'parent', quietActive: false))),
     );
-    expect(find.text('Family map'), findsOneWidget);
     expect(find.text('Family controls'), findsOneWidget);
+    expect(find.text('Family map'), findsNothing);
+  });
+
+  testWidgets('kid with owntracks sees location sharing card', (tester) async {
+    final session = _session(role: 'kid', quietActive: false);
+    session.enrollment = EnrollmentBundle(
+      deviceId: 'd',
+      username: 'alice',
+      role: 'kid',
+      mxid: '@alice:family.example',
+      serverName: 'family.example',
+      dashboardToken: 'tok',
+      apiBase: '/family/api',
+      serverOrigin: 'https://family.example',
+      discovery: _discovery(),
+      rawJson: {
+        'owntracks': {
+          'url': 'https://ot.example/pub',
+          'username': 'alice',
+          'device': 'phone',
+          'password': 'x',
+          'tid': 'a1',
+          'publish': true,
+          'mode': 'http',
+        },
+      },
+    );
+    await tester.pumpWidget(
+      MaterialApp(home: HomeScreen(session: session)),
+    );
+    expect(find.text('Location sharing'), findsOneWidget);
   });
 
   testWidgets('events tile hidden when disabled', (tester) async {

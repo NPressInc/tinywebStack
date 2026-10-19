@@ -123,7 +123,7 @@ class _LocationSharingCard extends StatelessWidget {
     if (error != null && error.isNotEmpty) {
       subtitle = error;
     } else if (last != null) {
-      subtitle = 'Last sent ${MaterialLocalizations.of(context).formatShortTime(last)}';
+      subtitle = 'Last sent ${last.toLocal().toString().substring(11, 16)}';
     } else if (service.status == LocationSharingStatus.running) {
       subtitle = 'Sharing in the background';
     } else {

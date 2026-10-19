@@ -46,7 +46,7 @@ class FamilyDiscovery {
       serverOrigin: serverOrigin,
       serverName: json['server_name'] as String?,
       matrixServer: json['matrix_server'] as String?,
-      appApiVersion: json['app_api_version'] as String?,
+      appApiVersion: json['app_api_version']?.toString(),
       dashboardBase: json['dashboard_base'] as String? ?? '/family',
       enrollUrl: json['enroll_url'] as String?,
       matrixHomeserverUrl: json['matrix_homeserver_url'] as String?,
