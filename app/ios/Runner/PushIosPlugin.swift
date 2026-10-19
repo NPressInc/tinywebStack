@@ -5,9 +5,17 @@ import UserNotifications
 final class PushIosPlugin: NSObject, FlutterPlugin {
   private var pendingResult: FlutterResult?
 
-  static func register(with registry: FlutterPluginRegistry) {
-    let registrar = registry.registrar(forPlugin: "PushIosPlugin")!
+  private static var shared: PushIosPlugin?
+
+  static func register(in registry: FlutterPluginRegistry) {
+    guard let registrar = registry.registrar(forPlugin: "PushIosPlugin") else { return }
+    register(with: registrar)
+  }
+
+  // FlutterPlugin conformance.
+  static func register(with registrar: FlutterPluginRegistrar) {
     let instance = PushIosPlugin()
+    shared = instance
     let channel = FlutterMethodChannel(
       name: "tinyweb/push_ios",
       binaryMessenger: registrar.messenger()
@@ -23,7 +31,10 @@ final class PushIosPlugin: NSObject, FlutterPlugin {
       UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .badge, .sound]) {
         granted, _ in
         guard granted else {
-          result(nil)
+          DispatchQueue.main.async {
+            self.pendingResult = nil
+            result(nil)
+          }
           return
         }
         DispatchQueue.main.async {
