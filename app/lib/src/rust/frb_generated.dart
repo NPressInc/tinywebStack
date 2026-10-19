@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 1499170482;
+  int get rustContentHash => -1072040662;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -91,6 +91,12 @@ abstract class RustLibApi extends BaseApi {
     required String name,
     required List<String> inviteUserIds,
     required bool encrypted,
+  });
+
+  Future<void> crateApiMatrixMatrixSessionDeleteHttpPusher({
+    required MatrixSession that,
+    required String appId,
+    required String pushkey,
   });
 
   Future<void> crateApiMatrixMatrixSessionDownloadRoomKeyBackup({
@@ -146,6 +152,14 @@ abstract class RustLibApi extends BaseApi {
     required MatrixSession that,
     required String roomId,
     required String body,
+  });
+
+  Future<void> crateApiMatrixMatrixSessionSetHttpPusher({
+    required MatrixSession that,
+    required String appId,
+    required String pushkey,
+    required String gatewayUrl,
+    String? lang,
   });
 
   Future<String> crateApiMatrixMatrixSessionSetupRecovery({
@@ -299,6 +313,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiMatrixMatrixSessionDeleteHttpPusher({
+    required MatrixSession that,
+    required String appId,
+    required String pushkey,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(appId, serializer);
+          sse_encode_String(pushkey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionDeleteHttpPusherConstMeta,
+        argValues: [that, appId, pushkey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionDeleteHttpPusherConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_delete_http_pusher",
+        argNames: ["that", "appId", "pushkey"],
+      );
+
+  @override
   Future<void> crateApiMatrixMatrixSessionDownloadRoomKeyBackup({
     required MatrixSession that,
     required String roomId,
@@ -315,7 +369,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 4,
             port: port_,
           );
         },
@@ -352,7 +406,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -388,7 +442,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 6,
             port: port_,
           );
         },
@@ -426,7 +480,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 7,
             port: port_,
           );
         },
@@ -462,7 +516,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 8,
             port: port_,
           );
         },
@@ -498,7 +552,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 9,
             port: port_,
           );
         },
@@ -534,7 +588,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 10,
             port: port_,
           );
         },
@@ -572,7 +626,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 11,
             port: port_,
           );
         },
@@ -610,7 +664,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 12,
             port: port_,
           );
         },
@@ -648,7 +702,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 13,
             port: port_,
           );
         },
@@ -688,7 +742,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 14,
             port: port_,
           );
         },
@@ -728,7 +782,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 15,
             port: port_,
           );
         },
@@ -750,6 +804,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiMatrixMatrixSessionSetHttpPusher({
+    required MatrixSession that,
+    required String appId,
+    required String pushkey,
+    required String gatewayUrl,
+    String? lang,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(appId, serializer);
+          sse_encode_String(pushkey, serializer);
+          sse_encode_String(gatewayUrl, serializer);
+          sse_encode_opt_String(lang, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 16,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionSetHttpPusherConstMeta,
+        argValues: [that, appId, pushkey, gatewayUrl, lang],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionSetHttpPusherConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_set_http_pusher",
+        argNames: ["that", "appId", "pushkey", "gatewayUrl", "lang"],
+      );
+
+  @override
   Future<String> crateApiMatrixMatrixSessionSetupRecovery({
     required MatrixSession that,
     String? password,
@@ -766,7 +864,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 17,
             port: port_,
           );
         },
@@ -805,7 +903,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 16,
+              funcId: 18,
               port: port_,
             );
           },
@@ -843,7 +941,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 19,
             port: port_,
           );
         },
@@ -879,7 +977,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 18,
+            funcId: 20,
             port: port_,
           );
         },
@@ -915,7 +1013,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 21,
             port: port_,
           );
         },
@@ -951,7 +1049,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 22,
             port: port_,
           );
         },
@@ -989,7 +1087,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1019,7 +1117,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1061,7 +1159,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1122,7 +1220,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 26,
             port: port_,
           );
         },
@@ -2114,6 +2212,15 @@ class MatrixSessionImpl extends RustOpaque implements MatrixSession {
     encrypted: encrypted,
   );
 
+  Future<void> deleteHttpPusher({
+    required String appId,
+    required String pushkey,
+  }) => RustLib.instance.api.crateApiMatrixMatrixSessionDeleteHttpPusher(
+    that: this,
+    appId: appId,
+    pushkey: pushkey,
+  );
+
   Future<void> downloadRoomKeyBackup({required String roomId}) =>
       RustLib.instance.api.crateApiMatrixMatrixSessionDownloadRoomKeyBackup(
         that: this,
@@ -2164,6 +2271,19 @@ class MatrixSessionImpl extends RustOpaque implements MatrixSession {
         roomId: roomId,
         body: body,
       );
+
+  Future<void> setHttpPusher({
+    required String appId,
+    required String pushkey,
+    required String gatewayUrl,
+    String? lang,
+  }) => RustLib.instance.api.crateApiMatrixMatrixSessionSetHttpPusher(
+    that: this,
+    appId: appId,
+    pushkey: pushkey,
+    gatewayUrl: gatewayUrl,
+    lang: lang,
+  );
 
   Future<String> setupRecovery({String? password}) => RustLib.instance.api
       .crateApiMatrixMatrixSessionSetupRecovery(that: this, password: password);

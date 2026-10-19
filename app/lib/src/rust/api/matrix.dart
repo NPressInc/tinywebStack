@@ -58,6 +58,11 @@ abstract class MatrixSession implements RustOpaqueInterface {
     required bool encrypted,
   });
 
+  Future<void> deleteHttpPusher({
+    required String appId,
+    required String pushkey,
+  });
+
   Future<void> downloadRoomKeyBackup({required String roomId});
 
   Future<EncryptionStatus> encryptionStatus();
@@ -84,6 +89,13 @@ abstract class MatrixSession implements RustOpaqueInterface {
   });
 
   Future<String> sendText({required String roomId, required String body});
+
+  Future<void> setHttpPusher({
+    required String appId,
+    required String pushkey,
+    required String gatewayUrl,
+    String? lang,
+  });
 
   Future<String> setupRecovery({String? password});
 

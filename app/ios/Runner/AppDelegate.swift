@@ -13,5 +13,6 @@ import UIKit
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     LocationIosPlugin.register(with: engineBridge.pluginRegistry)
+    PushIosPlugin.register(in: engineBridge.pluginRegistry)
   }
 }

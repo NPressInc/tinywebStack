@@ -39,7 +39,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
                     default_rust_auto_opaque = RustAutoOpaqueMoi,
                 );
                 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.13.0";
-                pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1499170482;
+                pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1072040662;
             
 
 // Section: executor
@@ -86,6 +86,26 @@ let decode_indices_ = flutter_rust_bridge::for_generated::lockable_compute_decod
         }
         let api_that_guard = api_that_guard.unwrap();
  let output_ok = crate::api::matrix::MatrixSession::create_room(&*api_that_guard, api_name, api_invite_user_ids, api_encrypted).await?;   std::result::Result::Ok(output_ok)
+                    })().await)
+                } })
+            }fn wire__crate__api__matrix__MatrixSession_delete_http_pusher_impl(port_: flutter_rust_bridge::for_generated::MessagePort,ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,rust_vec_len_: i32,data_len_: i32)  {
+                FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec,_,_,_>(flutter_rust_bridge::for_generated::TaskInfo{ debug_name: "MatrixSession_delete_http_pusher", port: Some(port_), mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal }, move || {
+            let message = unsafe { flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(ptr_, rust_vec_len_, data_len_) };
+            let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MatrixSession>>>::sse_decode(&mut deserializer);
+let api_app_id = <String>::sse_decode(&mut deserializer);
+let api_pushkey = <String>::sse_decode(&mut deserializer);deserializer.end(); move |context| async move {
+                    transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>((move || async move {
+                        let mut api_that_guard = None;
+let decode_indices_ = flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(&api_that, 0, false)]);
+        for i in decode_indices_ {
+            match i {
+                0 => api_that_guard = Some(api_that.lockable_decode_async_ref().await),
+                _ => unreachable!(),
+            }
+        }
+        let api_that_guard = api_that_guard.unwrap();
+ let output_ok = crate::api::matrix::MatrixSession::delete_http_pusher(&*api_that_guard, api_app_id, api_pushkey).await?;   std::result::Result::Ok(output_ok)
                     })().await)
                 } })
             }fn wire__crate__api__matrix__MatrixSession_download_room_key_backup_impl(port_: flutter_rust_bridge::for_generated::MessagePort,ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,rust_vec_len_: i32,data_len_: i32)  {
@@ -311,6 +331,28 @@ let decode_indices_ = flutter_rust_bridge::for_generated::lockable_compute_decod
         }
         let api_that_guard = api_that_guard.unwrap();
  let output_ok = crate::api::matrix::MatrixSession::send_text(&*api_that_guard, api_room_id, api_body).await?;   std::result::Result::Ok(output_ok)
+                    })().await)
+                } })
+            }fn wire__crate__api__matrix__MatrixSession_set_http_pusher_impl(port_: flutter_rust_bridge::for_generated::MessagePort,ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,rust_vec_len_: i32,data_len_: i32)  {
+                FLUTTER_RUST_BRIDGE_HANDLER.wrap_async::<flutter_rust_bridge::for_generated::SseCodec,_,_,_>(flutter_rust_bridge::for_generated::TaskInfo{ debug_name: "MatrixSession_set_http_pusher", port: Some(port_), mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal }, move || {
+            let message = unsafe { flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(ptr_, rust_vec_len_, data_len_) };
+            let mut deserializer = flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_that = <RustOpaqueMoi<flutter_rust_bridge::for_generated::RustAutoOpaqueInner<MatrixSession>>>::sse_decode(&mut deserializer);
+let api_app_id = <String>::sse_decode(&mut deserializer);
+let api_pushkey = <String>::sse_decode(&mut deserializer);
+let api_gateway_url = <String>::sse_decode(&mut deserializer);
+let api_lang = <Option<String>>::sse_decode(&mut deserializer);deserializer.end(); move |context| async move {
+                    transform_result_sse::<_, flutter_rust_bridge::for_generated::anyhow::Error>((move || async move {
+                        let mut api_that_guard = None;
+let decode_indices_ = flutter_rust_bridge::for_generated::lockable_compute_decode_order(vec![flutter_rust_bridge::for_generated::LockableOrderInfo::new(&api_that, 0, false)]);
+        for i in decode_indices_ {
+            match i {
+                0 => api_that_guard = Some(api_that.lockable_decode_async_ref().await),
+                _ => unreachable!(),
+            }
+        }
+        let api_that_guard = api_that_guard.unwrap();
+ let output_ok = crate::api::matrix::MatrixSession::set_http_pusher(&*api_that_guard, api_app_id, api_pushkey, api_gateway_url, api_lang).await?;   std::result::Result::Ok(output_ok)
                     })().await)
                 } })
             }fn wire__crate__api__matrix__MatrixSession_setup_recovery_impl(port_: flutter_rust_bridge::for_generated::MessagePort,ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,rust_vec_len_: i32,data_len_: i32)  {
@@ -710,28 +752,30 @@ return crate::api::matrix::TimelineMessage{event_id: var_eventId, sender: var_se
                     match func_id {
                         1 => wire__crate__api__matrix__MatrixSession_create_direct_chat_impl(port, ptr, rust_vec_len, data_len),
 2 => wire__crate__api__matrix__MatrixSession_create_room_impl(port, ptr, rust_vec_len, data_len),
-3 => wire__crate__api__matrix__MatrixSession_download_room_key_backup_impl(port, ptr, rust_vec_len, data_len),
-4 => wire__crate__api__matrix__MatrixSession_encryption_status_impl(port, ptr, rust_vec_len, data_len),
-5 => wire__crate__api__matrix__MatrixSession_flush_key_backup_impl(port, ptr, rust_vec_len, data_len),
-6 => wire__crate__api__matrix__MatrixSession_join_room_impl(port, ptr, rust_vec_len, data_len),
-7 => wire__crate__api__matrix__MatrixSession_list_own_devices_impl(port, ptr, rust_vec_len, data_len),
-8 => wire__crate__api__matrix__MatrixSession_list_rooms_impl(port, ptr, rust_vec_len, data_len),
-9 => wire__crate__api__matrix__MatrixSession_logout_impl(port, ptr, rust_vec_len, data_len),
-10 => wire__crate__api__matrix__MatrixSession_recover_impl(port, ptr, rust_vec_len, data_len),
-11 => wire__crate__api__matrix__MatrixSession_reset_recovery_impl(port, ptr, rust_vec_len, data_len),
-12 => wire__crate__api__matrix__MatrixSession_room_members_impl(port, ptr, rust_vec_len, data_len),
-13 => wire__crate__api__matrix__MatrixSession_room_timeline_impl(port, ptr, rust_vec_len, data_len),
-14 => wire__crate__api__matrix__MatrixSession_send_text_impl(port, ptr, rust_vec_len, data_len),
-15 => wire__crate__api__matrix__MatrixSession_setup_recovery_impl(port, ptr, rust_vec_len, data_len),
-16 => wire__crate__api__matrix__MatrixSession_start_sync_impl(port, ptr, rust_vec_len, data_len),
-17 => wire__crate__api__matrix__MatrixSession_stop_sync_impl(port, ptr, rust_vec_len, data_len),
-18 => wire__crate__api__matrix__MatrixSession_sync_once_impl(port, ptr, rust_vec_len, data_len),
-19 => wire__crate__api__matrix__MatrixSession_try_sliding_sync_impl(port, ptr, rust_vec_len, data_len),
-20 => wire__crate__api__matrix__MatrixSession_user_id_impl(port, ptr, rust_vec_len, data_len),
-21 => wire__crate__api__matrix__MatrixSession_user_identity_verified_impl(port, ptr, rust_vec_len, data_len),
-22 => wire__crate__api__matrix__init_app_impl(port, ptr, rust_vec_len, data_len),
-23 => wire__crate__api__matrix__login_impl(port, ptr, rust_vec_len, data_len),
-24 => wire__crate__api__matrix__restore_session_impl(port, ptr, rust_vec_len, data_len),
+3 => wire__crate__api__matrix__MatrixSession_delete_http_pusher_impl(port, ptr, rust_vec_len, data_len),
+4 => wire__crate__api__matrix__MatrixSession_download_room_key_backup_impl(port, ptr, rust_vec_len, data_len),
+5 => wire__crate__api__matrix__MatrixSession_encryption_status_impl(port, ptr, rust_vec_len, data_len),
+6 => wire__crate__api__matrix__MatrixSession_flush_key_backup_impl(port, ptr, rust_vec_len, data_len),
+7 => wire__crate__api__matrix__MatrixSession_join_room_impl(port, ptr, rust_vec_len, data_len),
+8 => wire__crate__api__matrix__MatrixSession_list_own_devices_impl(port, ptr, rust_vec_len, data_len),
+9 => wire__crate__api__matrix__MatrixSession_list_rooms_impl(port, ptr, rust_vec_len, data_len),
+10 => wire__crate__api__matrix__MatrixSession_logout_impl(port, ptr, rust_vec_len, data_len),
+11 => wire__crate__api__matrix__MatrixSession_recover_impl(port, ptr, rust_vec_len, data_len),
+12 => wire__crate__api__matrix__MatrixSession_reset_recovery_impl(port, ptr, rust_vec_len, data_len),
+13 => wire__crate__api__matrix__MatrixSession_room_members_impl(port, ptr, rust_vec_len, data_len),
+14 => wire__crate__api__matrix__MatrixSession_room_timeline_impl(port, ptr, rust_vec_len, data_len),
+15 => wire__crate__api__matrix__MatrixSession_send_text_impl(port, ptr, rust_vec_len, data_len),
+16 => wire__crate__api__matrix__MatrixSession_set_http_pusher_impl(port, ptr, rust_vec_len, data_len),
+17 => wire__crate__api__matrix__MatrixSession_setup_recovery_impl(port, ptr, rust_vec_len, data_len),
+18 => wire__crate__api__matrix__MatrixSession_start_sync_impl(port, ptr, rust_vec_len, data_len),
+19 => wire__crate__api__matrix__MatrixSession_stop_sync_impl(port, ptr, rust_vec_len, data_len),
+20 => wire__crate__api__matrix__MatrixSession_sync_once_impl(port, ptr, rust_vec_len, data_len),
+21 => wire__crate__api__matrix__MatrixSession_try_sliding_sync_impl(port, ptr, rust_vec_len, data_len),
+22 => wire__crate__api__matrix__MatrixSession_user_id_impl(port, ptr, rust_vec_len, data_len),
+23 => wire__crate__api__matrix__MatrixSession_user_identity_verified_impl(port, ptr, rust_vec_len, data_len),
+24 => wire__crate__api__matrix__init_app_impl(port, ptr, rust_vec_len, data_len),
+25 => wire__crate__api__matrix__login_impl(port, ptr, rust_vec_len, data_len),
+26 => wire__crate__api__matrix__restore_session_impl(port, ptr, rust_vec_len, data_len),
                         _ => unreachable!(),
                     }
                 }

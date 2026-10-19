@@ -87,6 +87,10 @@ Lab kid controls: `flutter test lab_test/kid_controls_test.dart` (same env vars)
 
 Lab members admin: `flutter test lab_test/members_admin_test.dart` (same env vars) — parent creates/deletes a throwaway kid, enroll code, password reset, and household invite.
 
+Lab push: `/tmp/labtest-push.sh lab_test/push_test.dart` (same env vars plus `TW_LIB`) — Synapse→ntfy delivery with full-URL `pushkey` on `https://push.<domain>/`; asserts `event_id` only, no message body. Box: [docs/PUSH.md](../docs/PUSH.md).
+
+**Push (app):** After enroll, the app registers a Matrix HTTP pusher (`event_id_only`); Android uses UnifiedPush with `pushkey` = ntfy endpoint URL (ntfy app server `https://push.<domain>`); iOS uses APNs via Sygnal when keys are installed. Notification text is loaded from the box, never from the push payload. Per-device toggle on Home.
+
 ## Calendar (CalDAV)
 
 The app uses a small in-tree CalDAV client (`PROPFIND`, `REPORT calendar-query`, `PUT`/`DELETE` with ETags) and ICS parse/serialize against `TWS_CALDAV_ROOT`. Nextcloud app passwords are issued in the enrollment bundle (`caldav`); re-enroll if calendar credentials are missing on an older install.

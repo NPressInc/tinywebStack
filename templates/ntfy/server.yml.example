@@ -1,0 +1,14 @@
+# Managed by tinywebStack install-push.sh — ntfy Matrix push gateway (no message bodies).
+base-url: "https://push.example.com"
+listen-http: "127.0.0.1:8090"
+behind-proxy: true
+auth-file: "/var/lib/tinywebstack-ntfy/user.db"
+auth-default-access: deny-all
+enable-signup: false
+enable-login: false
+attachment-cache-dir: ""
+upstream-base-url: ""
+cache-duration: "12h"
+visitor-attachment-total-size-limit: "0"
+visitor-request-limit-burst: 30
+visitor-request-limit-replenish: "5s"

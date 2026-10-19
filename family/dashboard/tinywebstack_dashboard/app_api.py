@@ -38,6 +38,7 @@ from tinywebstack_dashboard.auth import (
 )
 from tinywebstack_dashboard.map_assets import mint_map_assets_token
 from tinywebstack_dashboard.map_config import load_map_config
+from tinywebstack_dashboard.push_config import enroll_push_section
 from tinywebstack_dashboard.invite_store import load_pending
 from tinywebstack_dashboard.link_invite import (
     LinkInviteError,
@@ -505,20 +506,22 @@ def create_app_api_router(
             nextcloud_token_id=nc_token_id,
         )
 
-        return _no_store(
-            {
-                "device_id": device.id,
-                "username": username,
-                "role": role,
-                "mxid": mxid,
-                "server_name": cfg.server_name,
-                "dashboard": {"token": token, "api_base": "/family/api"},
-                "matrix": matrix_section,
-                "caldav": caldav_section,
-                "mobilizon": mobilizon_section,
-                "owntracks": owntracks_section,
-            }
-        )
+        payload: Dict[str, Any] = {
+            "device_id": device.id,
+            "username": username,
+            "role": role,
+            "mxid": mxid,
+            "server_name": cfg.server_name,
+            "dashboard": {"token": token, "api_base": "/family/api"},
+            "matrix": matrix_section,
+            "caldav": caldav_section,
+            "mobilizon": mobilizon_section,
+            "owntracks": owntracks_section,
+        }
+        push_section = enroll_push_section(cfg.server_name)
+        if push_section:
+            payload["push"] = push_section
+        return _no_store(payload)
 
     @router.get("/api/app/me")
     async def app_me(request: Request):

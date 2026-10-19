@@ -25,6 +25,8 @@ def test_setup_calls_permission_create_with_yunohost12_api():
         importlib.reload(perms)
         perms.setup_family_dashboard_permissions("synapse", "parents", create_owntracks_pub=False)
     assert fake_mod.permission_create.call_count >= 2
+    created = {c[0][0]: c[1] for c in fake_mod.permission_create.call_args_list}
+    assert "synapse.family_push_public" not in created
     assert "permission_url_add" not in dir(fake_mod)
     created = {c[0][0]: c[1] for c in fake_mod.permission_create.call_args_list}
     assert "synapse.family_dashboard" in created
@@ -83,6 +85,9 @@ def test_setup_with_main_domain_uses_absolute_urls_on_create():
         "home.example.com/family/api/app/enroll",
         "home.example.com/family/api/",
     ]
+    push_pub = created["synapse.family_push_public"]
+    assert push_pub["url"] == "push.home.example.com/"
+    assert push_pub["allowed"] == ["visitors"]
 
 
 def test_setup_with_main_domain_uses_absolute_urls_on_update():
@@ -91,6 +96,7 @@ def test_setup_with_main_domain_uses_absolute_urls_on_update():
         "permissions": {
             "synapse.family_dashboard": {},
             "synapse.family_public": {},
+            "synapse.family_push_public": {},
         },
     }
     with patch.dict(
@@ -110,7 +116,7 @@ def test_setup_with_main_domain_uses_absolute_urls_on_update():
             main_domain="home.example.com",
         )
     assert fake_mod.permission_create.call_count == 0
-    assert fake_mod.permission_url.call_count == 2
+    assert fake_mod.permission_url.call_count == 3
     by_name = {c[0][0]: c[1] for c in fake_mod.permission_url.call_args_list}
     dash = by_name["synapse.family_dashboard"]
     assert "clear_urls" not in dash
@@ -123,3 +129,5 @@ def test_setup_with_main_domain_uses_absolute_urls_on_update():
         "home.example.com/family/api/app/enroll",
         "home.example.com/family/api/",
     ]
+    push_pub = by_name["synapse.family_push_public"]
+    assert push_pub["url"] == "push.home.example.com/"

@@ -295,6 +295,7 @@ configure_family_home_tile "$DASH_PERM" \
 NGINX_DIR="/etc/nginx/conf.d/${MAIN_DOMAIN}.d"
 install -d "$NGINX_DIR"
 NGINX_SNIP="${NGINX_DIR}/tinywebstack-family.conf"
+rm -f "${NGINX_DIR}/tinywebstack-ntfy-proxy.conf"
 TMP="$(mktemp)"
 cat >"$TMP" <<EOF
 # Managed by tinywebStack family dashboard

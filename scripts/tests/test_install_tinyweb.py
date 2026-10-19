@@ -26,6 +26,7 @@ INSTALL_STEPS_ORDER = [
     "7 family-permissions-seed and family-federation-state-seed",
     "8 mobilizon-admin-password",
     "9 family-sync-federation and family-events-perms",
+    "9b push (ntfy + Sygnal)",
     "10 self-check",
 ]
 

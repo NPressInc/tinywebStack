@@ -11,6 +11,11 @@ const _matrixRecoveryKeyKey = 'tinyweb_matrix_recovery_key_v1';
 const _matrixE2eeSetupKey = 'tinyweb_matrix_e2ee_setup_v1';
 const _matrixRecoverySkippedKey = 'tinyweb_matrix_recovery_skipped_v1';
 const _locationExplainerKey = 'tinyweb_location_explainer_v1';
+const _notificationsEnabledKey = 'tinyweb_notifications_enabled_v1';
+const _unifiedPushTopicKey = 'tinyweb_unifiedpush_topic_v1';
+const _unifiedPushEndpointKey = 'tinyweb_unifiedpush_endpoint_v1';
+const _apnsTokenKey = 'tinyweb_apns_token_v1';
+const _matrixPusherKey = 'tinyweb_matrix_pusher_v1';
 
 abstract class CredentialStore {
   Future<EnrollmentBundle?> read();
@@ -36,6 +41,31 @@ abstract class CredentialStore {
   Future<bool> hasAcknowledgedLocationSharing();
 
   Future<void> setLocationSharingAcknowledged();
+
+  Future<bool> areNotificationsEnabled();
+
+  Future<void> setNotificationsEnabled(bool enabled);
+
+  Future<String?> readUnifiedPushTopic();
+
+  Future<void> writeUnifiedPushTopic(String topic);
+
+  Future<String?> readUnifiedPushEndpoint();
+
+  Future<void> writeUnifiedPushEndpoint(String endpoint);
+
+  Future<String?> readApnsTokenHex();
+
+  Future<void> writeApnsTokenHex(String token);
+
+  Future<({String appId, String pushkey})?> readMatrixPusherRegistration();
+
+  Future<void> writeMatrixPusherRegistration({
+    required String appId,
+    required String pushkey,
+  });
+
+  Future<void> clearMatrixPusherRegistration();
 }
 
 class SecureCredentialStore implements CredentialStore {
@@ -67,6 +97,11 @@ class SecureCredentialStore implements CredentialStore {
     await _storage.delete(key: _matrixE2eeSetupKey);
     await _storage.delete(key: _matrixRecoverySkippedKey);
     await _storage.delete(key: _locationExplainerKey);
+    await _storage.delete(key: _notificationsEnabledKey);
+    await _storage.delete(key: _unifiedPushTopicKey);
+    await _storage.delete(key: _unifiedPushEndpointKey);
+    await _storage.delete(key: _apnsTokenKey);
+    await _storage.delete(key: _matrixPusherKey);
   }
 
   @override
@@ -125,6 +160,74 @@ class SecureCredentialStore implements CredentialStore {
   Future<void> setLocationSharingAcknowledged() =>
       _storage.write(key: _locationExplainerKey, value: '1');
 
+  @override
+  Future<bool> areNotificationsEnabled() async {
+    final v = await _storage.read(key: _notificationsEnabledKey);
+    return v != '0';
+  }
+
+  @override
+  Future<void> setNotificationsEnabled(bool enabled) => _storage.write(
+        key: _notificationsEnabledKey,
+        value: enabled ? '1' : '0',
+      );
+
+  @override
+  Future<String?> readUnifiedPushTopic() =>
+      _storage.read(key: _unifiedPushTopicKey);
+
+  @override
+  Future<void> writeUnifiedPushTopic(String topic) =>
+      _storage.write(key: _unifiedPushTopicKey, value: topic);
+
+  @override
+  Future<String?> readUnifiedPushEndpoint() =>
+      _storage.read(key: _unifiedPushEndpointKey);
+
+  @override
+  Future<void> writeUnifiedPushEndpoint(String endpoint) =>
+      _storage.write(key: _unifiedPushEndpointKey, value: endpoint);
+
+  @override
+  Future<String?> readApnsTokenHex() => _storage.read(key: _apnsTokenKey);
+
+  @override
+  Future<void> writeApnsTokenHex(String token) =>
+      _storage.write(key: _apnsTokenKey, value: token);
+
+  @override
+  Future<({String appId, String pushkey})?> readMatrixPusherRegistration() async {
+    final raw = await _storage.read(key: _matrixPusherKey);
+    if (raw == null || raw.isEmpty) {
+      return null;
+    }
+    try {
+      final map = jsonDecode(raw) as Map<String, dynamic>;
+      final appId = map['app_id'] as String?;
+      final pushkey = map['pushkey'] as String?;
+      if (appId == null || pushkey == null) {
+        return null;
+      }
+      return (appId: appId, pushkey: pushkey);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> writeMatrixPusherRegistration({
+    required String appId,
+    required String pushkey,
+  }) =>
+      _storage.write(
+        key: _matrixPusherKey,
+        value: jsonEncode({'app_id': appId, 'pushkey': pushkey}),
+      );
+
+  @override
+  Future<void> clearMatrixPusherRegistration() =>
+      _storage.delete(key: _matrixPusherKey);
+
   Map<String, dynamic> _toStored(EnrollmentBundle bundle) =>
       enrollmentToStoredJson(bundle);
 }
@@ -160,6 +263,7 @@ Map<String, dynamic> enrollmentToStoredJson(EnrollmentBundle bundle) {
         'caldav': bundle.rawJson!['caldav'],
       if (bundle.rawJson?['mobilizon'] != null)
         'mobilizon': bundle.rawJson!['mobilizon'],
+      if (bundle.rawJson?['push'] != null) 'push': bundle.rawJson!['push'],
     };
 }
 
@@ -191,6 +295,11 @@ class InMemoryCredentialStore implements CredentialStore {
     _e2eeSetup = false;
     _recoverySkipped = false;
     _locationAck = false;
+    _notificationsEnabled = true;
+    _upTopic = null;
+    _upEndpoint = null;
+    _apnsToken = null;
+    _pusher = null;
   }
 
   @override
@@ -227,6 +336,11 @@ class InMemoryCredentialStore implements CredentialStore {
   Future<bool> isMatrixRecoverySkipped() async => _recoverySkipped;
 
   bool _locationAck = false;
+  bool _notificationsEnabled = true;
+  String? _upTopic;
+  String? _upEndpoint;
+  String? _apnsToken;
+  ({String appId, String pushkey})? _pusher;
 
   @override
   Future<bool> hasAcknowledgedLocationSharing() async => _locationAck;
@@ -234,5 +348,54 @@ class InMemoryCredentialStore implements CredentialStore {
   @override
   Future<void> setLocationSharingAcknowledged() async {
     _locationAck = true;
+  }
+
+  @override
+  Future<bool> areNotificationsEnabled() async => _notificationsEnabled;
+
+  @override
+  Future<void> setNotificationsEnabled(bool enabled) async {
+    _notificationsEnabled = enabled;
+  }
+
+  @override
+  Future<String?> readUnifiedPushTopic() async => _upTopic;
+
+  @override
+  Future<void> writeUnifiedPushTopic(String topic) async {
+    _upTopic = topic;
+  }
+
+  @override
+  Future<String?> readUnifiedPushEndpoint() async => _upEndpoint;
+
+  @override
+  Future<void> writeUnifiedPushEndpoint(String endpoint) async {
+    _upEndpoint = endpoint;
+  }
+
+  @override
+  Future<String?> readApnsTokenHex() async => _apnsToken;
+
+  @override
+  Future<void> writeApnsTokenHex(String token) async {
+    _apnsToken = token;
+  }
+
+  @override
+  Future<({String appId, String pushkey})?> readMatrixPusherRegistration() async =>
+      _pusher;
+
+  @override
+  Future<void> writeMatrixPusherRegistration({
+    required String appId,
+    required String pushkey,
+  }) async {
+    _pusher = (appId: appId, pushkey: pushkey);
+  }
+
+  @override
+  Future<void> clearMatrixPusherRegistration() async {
+    _pusher = null;
   }
 }

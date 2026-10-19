@@ -20,6 +20,7 @@ android {
         ?: flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -65,4 +66,19 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+configurations.configureEach {
+    resolutionStrategy {
+        dependencySubstitution {
+            substitute(module("com.google.crypto.tink:tink"))
+                .using(module("com.google.crypto.tink:tink-android:1.23.0"))
+                .because("UnifiedPush and secure storage must not pull duplicate Tink artifacts")
+        }
+        force("com.google.crypto.tink:tink-android:1.23.0")
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
