@@ -43,6 +43,7 @@ The dashboard exposes JSON under `/family/api/` for the **TinyWeb** iOS/Android 
 - **Device store:** `/etc/tinywebstack/app-devices.db` (`TWS_APP_DEVICES_DB`), mode `600`, `www-data`.
 - **Auth:** app routes accept `Authorization: Bearer tws_…`; browser parents still use SSO on HTML routes. Nginx clears `YNH_USER` on `/family/api/*` so clients cannot spoof SSO headers.
 - **Revoke:** member detail page or `POST /family/api/app/devices/{id}/revoke`. Password reset revokes all devices for that user.
+- **Location (parents):** `GET /family/api/locations` — latest Recorder position per kid (`username`, `display_name`, `tid`, `lat`, `lon`, `acc`, `batt`, `tst`, `age_seconds`). `GET /family/api/locations/{username}/track?hours=24` — track history (kid usernames only, capped at 2000 points). Bearer token required; **kids receive 403**. If the Recorder API is unreachable, responses include `"status": "unavailable"`.
 
 See [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) for request/response shapes.
 

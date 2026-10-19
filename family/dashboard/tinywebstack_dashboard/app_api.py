@@ -38,6 +38,12 @@ from tinywebstack_dashboard.auth import (
 )
 from tinywebstack_dashboard.invite_store import load_pending
 from tinywebstack_dashboard.members import list_members
+from tinywebstack_dashboard.owntracks_recorder import (
+    fetch_all_last,
+    fetch_track,
+    latest_per_kid,
+    track_points,
+)
 from tinywebstack_dashboard.owntracks_setup import load_stored_credentials
 from tinywebstack_dashboard.peer_verify import _ssl_context
 from tinywebstack_dashboard.yunohost_actions import (
@@ -188,7 +194,15 @@ def _matrix_password_login(
     try:
         with urllib.request.urlopen(req, timeout=25, context=_ssl_context()) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError:
+    except urllib.error.HTTPError as exc:
+        if exc.code == 429:
+            # Synapse rc_login throttling is not a bad password; don't count it as a failure.
+            retry_s = 60
+            try:
+                retry_s = max(1, int(json.loads(exc.read().decode("utf-8")).get("retry_after_ms", 60000) / 1000))
+            except (ValueError, OSError, AttributeError, TypeError):
+                pass
+            return {"_rate_limited": True, "retry_after": retry_s}
         return {"_auth_error": True}
     except (urllib.error.URLError, OSError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=503, detail="Matrix login unavailable") from exc
@@ -199,6 +213,23 @@ def _matrix_password_login(
         "user_id": payload.get("user_id"),
         "homeserver": homeserver_url.rstrip("/"),
     }
+
+
+def _kid_owntracks_section(section: Dict[str, Any]) -> Dict[str, Any]:
+    """Kids get HTTP publish credentials; parents do not publish from the app."""
+    if section.get("status") in ("unavailable", "not_needed"):
+        return section
+    return {**section, "publish": True, "mode": "http"}
+
+
+def _kid_tid_map(cfg: DashboardConfig) -> Dict[str, str]:
+    kids = list_group_members(cfg.kids_group, cfg.yunohost_cli)
+    out: Dict[str, str] = {}
+    for username in kids:
+        stored = load_stored_credentials(cfg.owntracks_store_path, username)
+        if stored and stored.get("tracker_id"):
+            out[username] = str(stored["tracker_id"])
+    return out
 
 
 def _quiet_hours_payload(
@@ -344,6 +375,12 @@ def create_app_api_router(
                 body.password or "",
                 body.device_name,
             )
+            if matrix_section.get("_rate_limited"):
+                return JSONResponse(
+                    {"error": "rate_limited", "retry_after": matrix_section["retry_after"]},
+                    status_code=429,
+                    headers={"Retry-After": str(matrix_section["retry_after"]), "Cache-Control": "no-store"},
+                )
             if matrix_section.get("_auth_error"):
                 record_enroll_failure(ip, username)
                 return _no_store({"error": "invalid_credentials"}, status=401)
@@ -406,6 +443,7 @@ def create_app_api_router(
                     }
                 except Exception:
                     owntracks_section = {"status": "unavailable"}
+            owntracks_section = _kid_owntracks_section(owntracks_section)
         else:
             owntracks_section = {"status": "not_needed"}
 
@@ -513,6 +551,41 @@ def create_app_api_router(
                 }
             )
         return _no_store(rows)
+
+    @router.get("/api/locations")
+    async def api_locations(request: Request):
+        """Parent-only: latest Recorder position per kid (kids cannot read the map)."""
+        require_parent_user(api_user(request, cfg), cfg)
+        kids = list_group_members(cfg.kids_group, cfg.yunohost_cli)
+        rows, ok = fetch_all_last()
+        if not ok or rows is None:
+            return _no_store({"kids": [], "status": "unavailable"})
+        tid_map = _kid_tid_map(cfg)
+        return _no_store({"kids": latest_per_kid(kids, rows, tid_map)})
+
+    @router.get("/api/locations/{username}/track")
+    async def api_location_track(username: str, request: Request, hours: int = 24):
+        """Parent-only track history for one kid (Recorder /api/0/locations, capped at 2000 points)."""
+        require_parent_user(api_user(request, cfg), cfg)
+        kid = username.strip().lower()
+        kids = list_group_members(cfg.kids_group, cfg.yunohost_cli)
+        if kid not in kids:
+            raise HTTPException(status_code=404, detail="Not a kid account")
+        stored = load_stored_credentials(cfg.owntracks_store_path, kid)
+        device = (stored or {}).get("device_id") or ""
+        if not device:
+            raise HTTPException(status_code=404, detail="No location device for user")
+        rows, ok = fetch_track(kid, device, hours)
+        if not ok or rows is None:
+            return _no_store({"username": kid, "hours": hours, "points": [], "status": "unavailable"})
+        return _no_store(
+            {
+                "username": kid,
+                "display_name": kid,
+                "hours": max(1, min(hours, 168)),
+                "points": track_points(rows),
+            }
+        )
 
     @router.get("/api/invites")
     async def api_invites(request: Request):
