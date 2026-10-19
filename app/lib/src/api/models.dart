@@ -561,6 +561,79 @@ class HouseholdInviteCreateResult {
   }
 }
 
+class LinkInvitePreview {
+  LinkInvitePreview({
+    required this.inviterDomain,
+    required this.inviterFamilyName,
+    required this.expiresAt,
+    required this.alreadyLinked,
+    required this.reachable,
+  });
+
+  final String inviterDomain;
+  final String inviterFamilyName;
+  final int expiresAt;
+  final bool alreadyLinked;
+  final bool reachable;
+
+  factory LinkInvitePreview.fromJson(Map<String, dynamic> json) {
+    return LinkInvitePreview(
+      inviterDomain: json['inviter_domain'] as String? ?? '',
+      inviterFamilyName: json['inviter_family_name'] as String? ?? '',
+      expiresAt: json['expires_at'] as int? ?? 0,
+      alreadyLinked: json['already_linked'] as bool? ?? false,
+      reachable: json['reachable'] as bool? ?? false,
+    );
+  }
+
+  DateTime? get expiresAtUtc {
+    if (expiresAt <= 0) {
+      return null;
+    }
+    return DateTime.fromMillisecondsSinceEpoch(expiresAt * 1000, isUtc: true);
+  }
+}
+
+class LinkInviteAcceptResult {
+  LinkInviteAcceptResult({
+    required this.linkedDomain,
+    required this.synapseFederation,
+    required this.mobilizonRelay,
+    required this.alreadyLinked,
+  });
+
+  final String linkedDomain;
+  final String synapseFederation;
+  final String mobilizonRelay;
+  final bool alreadyLinked;
+
+  factory LinkInviteAcceptResult.fromJson(Map<String, dynamic> json) {
+    return LinkInviteAcceptResult(
+      linkedDomain: json['linked_domain'] as String? ?? '',
+      synapseFederation: json['synapse_federation'] as String? ?? '',
+      mobilizonRelay: json['mobilizon_relay'] as String? ?? '',
+      alreadyLinked: json['already_linked'] as bool? ?? false,
+    );
+  }
+}
+
+class LinkedFamily {
+  LinkedFamily({
+    required this.domain,
+    required this.familyName,
+  });
+
+  final String domain;
+  final String familyName;
+
+  factory LinkedFamily.fromJson(Map<String, dynamic> json) {
+    return LinkedFamily(
+      domain: json['domain'] as String? ?? '',
+      familyName: json['family_name'] as String? ?? '',
+    );
+  }
+}
+
 class KidLocationSnapshot {
   KidLocationSnapshot({
     required this.username,

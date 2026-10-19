@@ -47,6 +47,9 @@ FamilyApiClient _fakeApi() {
       if (request.url.path.endsWith('/invites')) {
         return http.Response(jsonEncode([]), 200);
       }
+      if (request.url.path.endsWith('/linked-families')) {
+        return http.Response(jsonEncode({'linked_families': []}), 200);
+      }
       if (request.url.path.endsWith('/members') && request.method == 'GET') {
         return http.Response(
           jsonEncode([

@@ -331,6 +331,77 @@ class FamilyApiClient {
     _throwForStatus(response);
   }
 
+  Future<LinkInvitePreview> previewLinkInvite(
+    EnrollmentBundle bundle,
+    String token,
+  ) async {
+    final response = await _client.post(
+      Uri.parse(_apiUrl(bundle, '/link-invites/preview')),
+      headers: {
+        'Authorization': 'Bearer ${bundle.dashboardToken}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'token': token}),
+    );
+    if (response.statusCode == 200) {
+      return LinkInvitePreview.fromJson(_jsonMapFromResponse(response));
+    }
+    _throwForStatus(response);
+  }
+
+  Future<LinkInviteAcceptResult> acceptLinkInvite(
+    EnrollmentBundle bundle,
+    String token,
+  ) async {
+    final response = await _client.post(
+      Uri.parse(_apiUrl(bundle, '/link-invites/accept')),
+      headers: {
+        'Authorization': 'Bearer ${bundle.dashboardToken}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'token': token}),
+    );
+    if (response.statusCode == 200 || response.statusCode == 409) {
+      return LinkInviteAcceptResult.fromJson(_jsonMapFromResponse(response));
+    }
+    _throwForStatus(response);
+  }
+
+  Future<void> declineLinkInvite(
+    EnrollmentBundle bundle,
+    String token,
+  ) async {
+    final response = await _client.post(
+      Uri.parse(_apiUrl(bundle, '/link-invites/decline')),
+      headers: {
+        'Authorization': 'Bearer ${bundle.dashboardToken}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'token': token}),
+    );
+    if (response.statusCode == 200) {
+      return;
+    }
+    _throwForStatus(response);
+  }
+
+  Future<List<LinkedFamily>> fetchLinkedFamilies(
+    EnrollmentBundle bundle,
+  ) async {
+    final response = await _client.get(
+      Uri.parse(_apiUrl(bundle, '/linked-families')),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      final json = _jsonMapFromResponse(response);
+      final list = json['linked_families'] as List<dynamic>? ?? [];
+      return list
+          .map((e) => LinkedFamily.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    _throwForStatus(response);
+  }
+
   Future<FederationPeersResponse> fetchFederationPeers(
     EnrollmentBundle bundle,
   ) async {

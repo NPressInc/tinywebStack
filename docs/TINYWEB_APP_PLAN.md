@@ -169,7 +169,9 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | `POST /family/api/members` | **Built** | Create member (app + JSON API) |
 | `POST /family/api/members/{user}/reset-password` | **Built** | Parent reset; revokes app devices |
 | `POST/DELETE /family/api/invites` | **Built** | Household invite create/delete (app) |
-| `GET/POST /family/api/invite/*` | Partial | `POST …/verify` built; redeem JSON TBD |
+| `POST /family/api/link-invites/*`, `GET /family/api/linked-families` | **Built** | Incoming invite preview/accept/decline + linked list |
+| `POST /family/api/invite/decline` | **Built** | Public issuer-side nonce cancel |
+| `POST /family/api/invite/verify` | **Built** | Public peer verify (issuer) |
 | `GET /family/api/locations` | **Built** | Parent-only: latest position per kid (Recorder `/api/0/last` via `TWS_OWNTRACKS_API_URL`) |
 | `GET /family/api/locations/{username}/track` | **Built** | Parent-only track history (`hours` query, max 2000 points) |
 

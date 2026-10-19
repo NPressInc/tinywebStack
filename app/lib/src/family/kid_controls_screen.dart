@@ -4,6 +4,7 @@ import '../api/family_api.dart';
 import '../api/models.dart';
 import '../app_session.dart';
 import '../brand.dart';
+import 'accept_link_invite_screen.dart';
 import 'add_member_screen.dart';
 import 'member_detail_screen.dart';
 import 'one_time_secret_panel.dart';
@@ -26,6 +27,7 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
   late final FamilyApiClient _api = widget.api ?? FamilyApiClient();
   List<FamilyMember> _members = [];
   List<FamilyInviteRow> _invites = [];
+  List<LinkedFamily> _linkedFamilies = [];
   bool _loading = true;
   String? _error;
   HouseholdInviteCreateResult? _newInvite;
@@ -57,6 +59,7 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
       final results = await Future.wait([
         _api.fetchMembers(bundle),
         _api.fetchInvites(bundle),
+        _api.fetchLinkedFamilies(bundle),
       ]);
       final members = results[0] as List<FamilyMember>;
       members.sort((a, b) {
@@ -68,6 +71,7 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
       setState(() {
         _members = members;
         _invites = results[1] as List<FamilyInviteRow>;
+        _linkedFamilies = results[2] as List<LinkedFamily>;
         _loading = false;
       });
     } catch (e) {
@@ -103,6 +107,20 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
       ),
     );
     if (added == true) {
+      await _refresh();
+    }
+  }
+
+  Future<void> _acceptInvite() async {
+    final linked = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => AcceptLinkInviteScreen(
+          session: widget.session,
+          api: widget.api,
+        ),
+      ),
+    );
+    if (linked == true) {
       await _refresh();
     }
   }
@@ -248,40 +266,79 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
   }
 
   Widget _membersTab() {
-    if (_members.isEmpty) {
-      return ListView(
-        children: const [
-          SizedBox(height: 120),
-          Center(child: Text('No family members yet.')),
-        ],
-      );
-    }
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-      itemCount: _members.length,
-      itemBuilder: (context, index) {
-        final member = _members[index];
-        final devices = member.deviceCount == 1
-            ? '1 phone'
-            : '${member.deviceCount} phones';
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: Icon(
-              member.role == 'parent'
-                  ? Icons.supervisor_account
-                  : Icons.child_care,
-              color: TinyWebColors.blueDeep,
+      children: [
+        _linkedFamiliesSection(),
+        if (_members.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 48),
+            child: Center(child: Text('No family members yet.')),
+          )
+        else
+          ..._members.map((member) {
+            final devices = member.deviceCount == 1
+                ? '1 phone'
+                : '${member.deviceCount} phones';
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: ListTile(
+                leading: Icon(
+                  member.role == 'parent'
+                      ? Icons.supervisor_account
+                      : Icons.child_care,
+                  color: TinyWebColors.blueDeep,
+                ),
+                title: Text(member.displayLabel),
+                subtitle: Text(
+                  '${member.role == 'parent' ? 'Parent' : 'Child'} · $devices',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openMember(member),
+              ),
+            );
+          }),
+      ],
+    );
+  }
+
+  Widget _linkedFamiliesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Linked families',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
-            title: Text(member.displayLabel),
-            subtitle: Text(
-              '${member.role == 'parent' ? 'Parent' : 'Child'} · $devices',
+            TextButton.icon(
+              onPressed: _loading ? null : _acceptInvite,
+              icon: const Icon(Icons.link),
+              label: const Text('Accept invite'),
             ),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _openMember(member),
+          ],
+        ),
+        if (_linkedFamilies.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(bottom: 16),
+            child: Text('No linked households yet.'),
+          )
+        else
+          ..._linkedFamilies.map(
+            (f) => Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.home_work_outlined),
+                title: Text(f.familyName),
+                subtitle: Text(f.domain),
+              ),
+            ),
           ),
-        );
-      },
+        const SizedBox(height: 8),
+      ],
     );
   }
 

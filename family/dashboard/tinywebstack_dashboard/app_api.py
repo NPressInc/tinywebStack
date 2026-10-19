@@ -9,7 +9,7 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -37,6 +37,13 @@ from tinywebstack_dashboard.auth import (
     user_in_group,
 )
 from tinywebstack_dashboard.invite_store import load_pending
+from tinywebstack_dashboard.link_invite import (
+    LinkInviteError,
+    decline_link_invite_remote,
+    linked_families_payload,
+    preview_link_invite,
+    redeem_link_invite,
+)
 from tinywebstack_dashboard.member_ops import (
     create_family_member,
     create_pending_family_invite,
@@ -317,6 +324,12 @@ class MemberCreateBody(BaseModel):
     issue_enroll_code: bool = False
 
 
+class LinkInviteTokenBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1)
+
+
 class EnrollBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -333,6 +346,10 @@ def create_app_api_router(
     *,
     matrix_server: str,
     pending_invites_path: str,
+    trusted_domains: Callable[[], List[str]],
+    add_trusted_domain: Callable[[str], None],
+    run_federation_sync: Callable[[], Tuple[str, str]],
+    decline_remote_invite: Callable[[str, str], None] = decline_link_invite_remote,
 ) -> APIRouter:
     router = APIRouter(tags=["app"])
 
@@ -734,5 +751,61 @@ def create_app_api_router(
         require_parent_user(api_user(request, cfg), cfg)
         delete_pending_family_invite(Path(pending_invites_path), nonce)
         return _no_store({"deleted": nonce})
+
+    @router.post("/api/link-invites/preview")
+    async def api_link_invites_preview(body: LinkInviteTokenBody, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        try:
+            payload = preview_link_invite(
+                body.token,
+                own_domain=cfg.server_name,
+                trusted_domains=trusted_domains(),
+            )
+        except LinkInviteError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        return _no_store(payload)
+
+    @router.post("/api/link-invites/accept")
+    async def api_link_invites_accept(body: LinkInviteTokenBody, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        try:
+            result = redeem_link_invite(
+                body.token,
+                own_domain=cfg.server_name,
+                trusted_domains=trusted_domains(),
+                add_trusted_domain=add_trusted_domain,
+                run_federation_sync=run_federation_sync,
+                federation_sync_mode="sync",
+            )
+        except LinkInviteError as exc:
+            raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+        status = 200 if not result.already_linked else 409
+        return _no_store(
+            {
+                "linked_domain": result.linked_domain,
+                "synapse_federation": result.synapse_federation,
+                "mobilizon_relay": result.mobilizon_relay,
+                "already_linked": result.already_linked,
+            },
+            status=status,
+        )
+
+    @router.post("/api/link-invites/decline")
+    async def api_link_invites_decline(body: LinkInviteTokenBody, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        try:
+            from tinywebstack_dashboard.link_invite import decode_inviter_domain
+
+            inviter = decode_inviter_domain(body.token)
+            decline_remote_invite(body.token, inviter)
+        except LinkInviteError:
+            pass
+        return _no_store({"declined": True})
+
+    @router.get("/api/linked-families")
+    async def api_linked_families(request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        families = linked_families_payload(trusted_domains(), cfg.server_name)
+        return _no_store({"linked_families": families})
 
     return router
