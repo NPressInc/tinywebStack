@@ -1,7 +1,9 @@
 // ignore_for_file: avoid_print
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -46,11 +48,14 @@ void main() {
     final storeA = await Directory.systemTemp.createTemp('tw_chat_a_');
     final storeB = await Directory.systemTemp.createTemp('tw_chat_b_');
 
+    final passA = _randomPassphrase();
+    final passB = _randomPassphrase();
     final sessionA = await login(
       homeserverUrl: homeserver,
       username: userA,
       password: password,
       storeDir: storeA.path,
+      storePassphrase: passA,
       caCertPem: caPem,
       deviceName: 'tw_chat_bridge_test_a',
     );
@@ -59,6 +64,7 @@ void main() {
       username: userB,
       password: password,
       storeDir: storeB.path,
+      storePassphrase: passB,
       caCertPem: caPem,
       deviceName: 'tw_chat_bridge_test_b',
     );
@@ -90,6 +96,11 @@ void main() {
     await storeA.delete(recursive: true);
     await storeB.delete(recursive: true);
   }, timeout: const Timeout(Duration(minutes: 5)));
+}
+
+String _randomPassphrase() {
+  final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+  return base64Encode(bytes);
 }
 
 String _mxid(String username, Uri homeserver) {

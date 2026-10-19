@@ -35,7 +35,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       _ownsChat = true;
       final bundle = widget.session.enrollment;
       if (bundle != null && bundle.matrixEnrollment.isOk) {
-        _chat = RustChatService(bundle: bundle);
+        _chat = RustChatService(
+          bundle: bundle,
+          credentialStore: widget.session.credentialStore,
+        );
         _bootstrapRustChat();
       } else {
         _chat = UnconfiguredChatService();

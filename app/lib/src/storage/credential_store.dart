@@ -1,10 +1,15 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../api/models.dart';
 
 const _storageKey = 'tinyweb_enrollment_v1';
+const _matrixPassphraseKey = 'tinyweb_matrix_store_passphrase_v1';
+const _matrixRecoveryKeyKey = 'tinyweb_matrix_recovery_key_v1';
+const _matrixE2eeSetupKey = 'tinyweb_matrix_e2ee_setup_v1';
+const _matrixRecoverySkippedKey = 'tinyweb_matrix_recovery_skipped_v1';
 
 abstract class CredentialStore {
   Future<EnrollmentBundle?> read();
@@ -12,6 +17,20 @@ abstract class CredentialStore {
   Future<void> write(EnrollmentBundle bundle);
 
   Future<void> clear();
+
+  Future<String?> readMatrixStorePassphrase();
+
+  Future<String> ensureMatrixStorePassphrase();
+
+  Future<String?> readMatrixRecoveryKey();
+
+  Future<void> writeMatrixRecoveryKey(String key);
+
+  Future<bool> isMatrixE2eeSetupComplete();
+
+  Future<void> setMatrixE2eeSetupComplete({bool skipped = false});
+
+  Future<bool> isMatrixRecoverySkipped();
 }
 
 class SecureCredentialStore implements CredentialStore {
@@ -38,6 +57,56 @@ class SecureCredentialStore implements CredentialStore {
   @override
   Future<void> clear() async {
     await _storage.delete(key: _storageKey);
+    await _storage.delete(key: _matrixPassphraseKey);
+    await _storage.delete(key: _matrixRecoveryKeyKey);
+    await _storage.delete(key: _matrixE2eeSetupKey);
+    await _storage.delete(key: _matrixRecoverySkippedKey);
+  }
+
+  @override
+  Future<String?> readMatrixStorePassphrase() =>
+      _storage.read(key: _matrixPassphraseKey);
+
+  @override
+  Future<String> ensureMatrixStorePassphrase() async {
+    final existing = await readMatrixStorePassphrase();
+    if (existing != null && existing.isNotEmpty) {
+      return existing;
+    }
+    final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+    final passphrase = base64Encode(bytes);
+    await _storage.write(key: _matrixPassphraseKey, value: passphrase);
+    return passphrase;
+  }
+
+  @override
+  Future<String?> readMatrixRecoveryKey() =>
+      _storage.read(key: _matrixRecoveryKeyKey);
+
+  @override
+  Future<void> writeMatrixRecoveryKey(String key) =>
+      _storage.write(key: _matrixRecoveryKeyKey, value: key);
+
+  @override
+  Future<bool> isMatrixE2eeSetupComplete() async {
+    final v = await _storage.read(key: _matrixE2eeSetupKey);
+    return v == '1';
+  }
+
+  @override
+  Future<void> setMatrixE2eeSetupComplete({bool skipped = false}) async {
+    await _storage.write(key: _matrixE2eeSetupKey, value: '1');
+    if (skipped) {
+      await _storage.write(key: _matrixRecoverySkippedKey, value: '1');
+    } else {
+      await _storage.delete(key: _matrixRecoverySkippedKey);
+    }
+  }
+
+  @override
+  Future<bool> isMatrixRecoverySkipped() async {
+    final v = await _storage.read(key: _matrixRecoverySkippedKey);
+    return v == '1';
   }
 
   Map<String, dynamic> _toStored(EnrollmentBundle bundle) =>
@@ -74,6 +143,10 @@ Map<String, dynamic> enrollmentToStoredJson(EnrollmentBundle bundle) {
 
 class InMemoryCredentialStore implements CredentialStore {
   Map<String, dynamic>? _json;
+  String? _passphrase;
+  String? _recoveryKey;
+  bool _e2eeSetup = false;
+  bool _recoverySkipped = false;
 
   @override
   Future<EnrollmentBundle?> read() async {
@@ -91,5 +164,42 @@ class InMemoryCredentialStore implements CredentialStore {
   @override
   Future<void> clear() async {
     _json = null;
+    _passphrase = null;
+    _recoveryKey = null;
+    _e2eeSetup = false;
+    _recoverySkipped = false;
   }
+
+  @override
+  Future<String?> readMatrixStorePassphrase() async => _passphrase;
+
+  @override
+  Future<String> ensureMatrixStorePassphrase() async {
+    if (_passphrase != null) {
+      return _passphrase!;
+    }
+    final bytes = List<int>.generate(32, (_) => Random.secure().nextInt(256));
+    _passphrase = base64Encode(bytes);
+    return _passphrase!;
+  }
+
+  @override
+  Future<String?> readMatrixRecoveryKey() async => _recoveryKey;
+
+  @override
+  Future<void> writeMatrixRecoveryKey(String key) async {
+    _recoveryKey = key;
+  }
+
+  @override
+  Future<bool> isMatrixE2eeSetupComplete() async => _e2eeSetup;
+
+  @override
+  Future<void> setMatrixE2eeSetupComplete({bool skipped = false}) async {
+    _e2eeSetup = true;
+    _recoverySkipped = skipped;
+  }
+
+  @override
+  Future<bool> isMatrixRecoverySkipped() async => _recoverySkipped;
 }

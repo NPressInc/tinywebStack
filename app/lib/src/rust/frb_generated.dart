@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => 365604854;
+  int get rustContentHash => 1499170482;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -93,9 +93,26 @@ abstract class RustLibApi extends BaseApi {
     required bool encrypted,
   });
 
+  Future<void> crateApiMatrixMatrixSessionDownloadRoomKeyBackup({
+    required MatrixSession that,
+    required String roomId,
+  });
+
+  Future<EncryptionStatus> crateApiMatrixMatrixSessionEncryptionStatus({
+    required MatrixSession that,
+  });
+
+  Future<void> crateApiMatrixMatrixSessionFlushKeyBackup({
+    required MatrixSession that,
+  });
+
   Future<void> crateApiMatrixMatrixSessionJoinRoom({
     required MatrixSession that,
     required String roomId,
+  });
+
+  Future<List<OwnDeviceInfo>> crateApiMatrixMatrixSessionListOwnDevices({
+    required MatrixSession that,
   });
 
   Future<List<RoomSummary>> crateApiMatrixMatrixSessionListRooms({
@@ -103,6 +120,16 @@ abstract class RustLibApi extends BaseApi {
   });
 
   Future<void> crateApiMatrixMatrixSessionLogout({required MatrixSession that});
+
+  Future<void> crateApiMatrixMatrixSessionRecover({
+    required MatrixSession that,
+    required String recoveryKey,
+  });
+
+  Future<String> crateApiMatrixMatrixSessionResetRecovery({
+    required MatrixSession that,
+    String? password,
+  });
 
   Future<List<RoomMemberInfo>> crateApiMatrixMatrixSessionRoomMembers({
     required MatrixSession that,
@@ -119,6 +146,11 @@ abstract class RustLibApi extends BaseApi {
     required MatrixSession that,
     required String roomId,
     required String body,
+  });
+
+  Future<String> crateApiMatrixMatrixSessionSetupRecovery({
+    required MatrixSession that,
+    String? password,
   });
 
   Stream<SyncEvent> crateApiMatrixMatrixSessionStartSync({
@@ -141,6 +173,11 @@ abstract class RustLibApi extends BaseApi {
     required MatrixSession that,
   });
 
+  Future<bool> crateApiMatrixMatrixSessionUserIdentityVerified({
+    required MatrixSession that,
+    required String userId,
+  });
+
   Future<void> crateApiMatrixInitApp();
 
   Future<MatrixSession> crateApiMatrixLogin({
@@ -148,6 +185,7 @@ abstract class RustLibApi extends BaseApi {
     required String username,
     required String password,
     required String storeDir,
+    String? storePassphrase,
     String? caCertPem,
     required String deviceName,
   });
@@ -158,6 +196,7 @@ abstract class RustLibApi extends BaseApi {
     required String deviceId,
     required String accessToken,
     required String storeDir,
+    String? storePassphrase,
     String? caCertPem,
   });
 
@@ -260,7 +299,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
-  Future<void> crateApiMatrixMatrixSessionJoinRoom({
+  Future<void> crateApiMatrixMatrixSessionDownloadRoomKeyBackup({
     required MatrixSession that,
     required String roomId,
   }) {
@@ -284,6 +323,117 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeSuccessData: sse_decode_unit,
           decodeErrorData: sse_decode_AnyhowException,
         ),
+        constMeta: kCrateApiMatrixMatrixSessionDownloadRoomKeyBackupConstMeta,
+        argValues: [that, roomId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta
+  get kCrateApiMatrixMatrixSessionDownloadRoomKeyBackupConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_download_room_key_backup",
+        argNames: ["that", "roomId"],
+      );
+
+  @override
+  Future<EncryptionStatus> crateApiMatrixMatrixSessionEncryptionStatus({
+    required MatrixSession that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_encryption_status,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionEncryptionStatusConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionEncryptionStatusConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_encryption_status",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiMatrixMatrixSessionFlushKeyBackup({
+    required MatrixSession that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionFlushKeyBackupConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionFlushKeyBackupConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_flush_key_backup",
+        argNames: ["that"],
+      );
+
+  @override
+  Future<void> crateApiMatrixMatrixSessionJoinRoom({
+    required MatrixSession that,
+    required String roomId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(roomId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
         constMeta: kCrateApiMatrixMatrixSessionJoinRoomConstMeta,
         argValues: [that, roomId],
         apiImpl: this,
@@ -295,6 +445,42 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "MatrixSession_join_room",
         argNames: ["that", "roomId"],
+      );
+
+  @override
+  Future<List<OwnDeviceInfo>> crateApiMatrixMatrixSessionListOwnDevices({
+    required MatrixSession that,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 7,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_list_own_device_info,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionListOwnDevicesConstMeta,
+        argValues: [that],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionListOwnDevicesConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_list_own_devices",
+        argNames: ["that"],
       );
 
   @override
@@ -312,7 +498,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 8,
             port: port_,
           );
         },
@@ -348,7 +534,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 9,
             port: port_,
           );
         },
@@ -370,6 +556,82 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiMatrixMatrixSessionRecover({
+    required MatrixSession that,
+    required String recoveryKey,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(recoveryKey, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 10,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionRecoverConstMeta,
+        argValues: [that, recoveryKey],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionRecoverConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_recover",
+        argNames: ["that", "recoveryKey"],
+      );
+
+  @override
+  Future<String> crateApiMatrixMatrixSessionResetRecovery({
+    required MatrixSession that,
+    String? password,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_opt_String(password, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 11,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionResetRecoveryConstMeta,
+        argValues: [that, password],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionResetRecoveryConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_reset_recovery",
+        argNames: ["that", "password"],
+      );
+
+  @override
   Future<List<RoomMemberInfo>> crateApiMatrixMatrixSessionRoomMembers({
     required MatrixSession that,
     required String roomId,
@@ -386,7 +648,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 12,
             port: port_,
           );
         },
@@ -426,7 +688,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 13,
             port: port_,
           );
         },
@@ -466,7 +728,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 14,
             port: port_,
           );
         },
@@ -488,6 +750,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiMatrixMatrixSessionSetupRecovery({
+    required MatrixSession that,
+    String? password,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_opt_String(password, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 15,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionSetupRecoveryConstMeta,
+        argValues: [that, password],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionSetupRecoveryConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_setup_recovery",
+        argNames: ["that", "password"],
+      );
+
+  @override
   Stream<SyncEvent> crateApiMatrixMatrixSessionStartSync({
     required MatrixSession that,
   }) {
@@ -505,7 +805,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 9,
+              funcId: 16,
               port: port_,
             );
           },
@@ -543,7 +843,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 17,
             port: port_,
           );
         },
@@ -579,7 +879,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 18,
             port: port_,
           );
         },
@@ -615,7 +915,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 19,
             port: port_,
           );
         },
@@ -651,7 +951,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 20,
             port: port_,
           );
         },
@@ -673,6 +973,44 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<bool> crateApiMatrixMatrixSessionUserIdentityVerified({
+    required MatrixSession that,
+    required String userId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(userId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 21,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionUserIdentityVerifiedConstMeta,
+        argValues: [that, userId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionUserIdentityVerifiedConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_user_identity_verified",
+        argNames: ["that", "userId"],
+      );
+
+  @override
   Future<void> crateApiMatrixInitApp() {
     return handler.executeNormal(
       NormalTask(
@@ -681,7 +1019,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 22,
             port: port_,
           );
         },
@@ -705,6 +1043,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String username,
     required String password,
     required String storeDir,
+    String? storePassphrase,
     String? caCertPem,
     required String deviceName,
   }) {
@@ -716,12 +1055,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(username, serializer);
           sse_encode_String(password, serializer);
           sse_encode_String(storeDir, serializer);
+          sse_encode_opt_String(storePassphrase, serializer);
           sse_encode_opt_String(caCertPem, serializer);
           sse_encode_String(deviceName, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 23,
             port: port_,
           );
         },
@@ -736,6 +1076,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           username,
           password,
           storeDir,
+          storePassphrase,
           caCertPem,
           deviceName,
         ],
@@ -751,6 +1092,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       "username",
       "password",
       "storeDir",
+      "storePassphrase",
       "caCertPem",
       "deviceName",
     ],
@@ -763,6 +1105,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String deviceId,
     required String accessToken,
     required String storeDir,
+    String? storePassphrase,
     String? caCertPem,
   }) {
     return handler.executeNormal(
@@ -774,11 +1117,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(deviceId, serializer);
           sse_encode_String(accessToken, serializer);
           sse_encode_String(storeDir, serializer);
+          sse_encode_opt_String(storePassphrase, serializer);
           sse_encode_opt_String(caCertPem, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 24,
             port: port_,
           );
         },
@@ -794,6 +1138,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           deviceId,
           accessToken,
           storeDir,
+          storePassphrase,
           caCertPem,
         ],
         apiImpl: this,
@@ -810,6 +1155,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           "deviceId",
           "accessToken",
           "storeDir",
+          "storePassphrase",
           "caCertPem",
         ],
       );
@@ -886,6 +1232,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  EncryptionStatus dco_decode_encryption_status(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return EncryptionStatus(
+      crossSigningReady: dco_decode_bool(arr[0]),
+      backupEnabled: dco_decode_bool(arr[1]),
+      recoveryState: dco_decode_String(arr[2]),
+      deviceVerified: dco_decode_bool(arr[3]),
+    );
+  }
+
+  @protected
   PlatformInt64 dco_decode_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeI64(raw);
@@ -895,8 +1255,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   IncomingMessage dco_decode_incoming_message(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 8)
-      throw Exception('unexpected arr length: expect 8 but see ${arr.length}');
+    if (arr.length != 9)
+      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
     return IncomingMessage(
       roomId: dco_decode_String(arr[0]),
       sender: dco_decode_String(arr[1]),
@@ -906,6 +1266,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       wasEncrypted: dco_decode_bool(arr[5]),
       tsMs: dco_decode_i_64(arr[6]),
       isOwn: dco_decode_bool(arr[7]),
+      utd: dco_decode_bool(arr[8]),
     );
   }
 
@@ -913,6 +1274,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   List<String> dco_decode_list_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
+  List<OwnDeviceInfo> dco_decode_list_own_device_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_own_device_info).toList();
   }
 
   @protected
@@ -949,6 +1316,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_i_64(raw);
+  }
+
+  @protected
+  OwnDeviceInfo dco_decode_own_device_info(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return OwnDeviceInfo(
+      deviceId: dco_decode_String(arr[0]),
+      displayName: dco_decode_opt_String(arr[1]),
+      verified: dco_decode_bool(arr[2]),
+      isCurrent: dco_decode_bool(arr[3]),
+    );
   }
 
   @protected
@@ -1000,8 +1381,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TimelineMessage dco_decode_timeline_message(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return TimelineMessage(
       eventId: dco_decode_String(arr[0]),
       sender: dco_decode_String(arr[1]),
@@ -1009,6 +1390,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       body: dco_decode_String(arr[3]),
       tsMs: dco_decode_i_64(arr[4]),
       isOwn: dco_decode_bool(arr[5]),
+      utd: dco_decode_bool(arr[6]),
     );
   }
 
@@ -1121,6 +1503,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  EncryptionStatus sse_decode_encryption_status(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_crossSigningReady = sse_decode_bool(deserializer);
+    var var_backupEnabled = sse_decode_bool(deserializer);
+    var var_recoveryState = sse_decode_String(deserializer);
+    var var_deviceVerified = sse_decode_bool(deserializer);
+    return EncryptionStatus(
+      crossSigningReady: var_crossSigningReady,
+      backupEnabled: var_backupEnabled,
+      recoveryState: var_recoveryState,
+      deviceVerified: var_deviceVerified,
+    );
+  }
+
+  @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getPlatformInt64();
@@ -1137,6 +1534,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_wasEncrypted = sse_decode_bool(deserializer);
     var var_tsMs = sse_decode_i_64(deserializer);
     var var_isOwn = sse_decode_bool(deserializer);
+    var var_utd = sse_decode_bool(deserializer);
     return IncomingMessage(
       roomId: var_roomId,
       sender: var_sender,
@@ -1146,6 +1544,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       wasEncrypted: var_wasEncrypted,
       tsMs: var_tsMs,
       isOwn: var_isOwn,
+      utd: var_utd,
     );
   }
 
@@ -1157,6 +1556,20 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var ans_ = <String>[];
     for (var idx_ = 0; idx_ < len_; ++idx_) {
       ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
+  List<OwnDeviceInfo> sse_decode_list_own_device_info(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <OwnDeviceInfo>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_own_device_info(deserializer));
     }
     return ans_;
   }
@@ -1231,6 +1644,21 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  OwnDeviceInfo sse_decode_own_device_info(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_deviceId = sse_decode_String(deserializer);
+    var var_displayName = sse_decode_opt_String(deserializer);
+    var var_verified = sse_decode_bool(deserializer);
+    var var_isCurrent = sse_decode_bool(deserializer);
+    return OwnDeviceInfo(
+      deviceId: var_deviceId,
+      displayName: var_displayName,
+      verified: var_verified,
+      isCurrent: var_isCurrent,
+    );
+  }
+
+  @protected
   RoomMemberInfo sse_decode_room_member_info(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_userId = sse_decode_String(deserializer);
@@ -1286,6 +1714,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_body = sse_decode_String(deserializer);
     var var_tsMs = sse_decode_i_64(deserializer);
     var var_isOwn = sse_decode_bool(deserializer);
+    var var_utd = sse_decode_bool(deserializer);
     return TimelineMessage(
       eventId: var_eventId,
       sender: var_sender,
@@ -1293,6 +1722,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       body: var_body,
       tsMs: var_tsMs,
       isOwn: var_isOwn,
+      utd: var_utd,
     );
   }
 
@@ -1427,6 +1857,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_encryption_status(
+    EncryptionStatus self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_bool(self.crossSigningReady, serializer);
+    sse_encode_bool(self.backupEnabled, serializer);
+    sse_encode_String(self.recoveryState, serializer);
+    sse_encode_bool(self.deviceVerified, serializer);
+  }
+
+  @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putPlatformInt64(self);
@@ -1446,6 +1888,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_bool(self.wasEncrypted, serializer);
     sse_encode_i_64(self.tsMs, serializer);
     sse_encode_bool(self.isOwn, serializer);
+    sse_encode_bool(self.utd, serializer);
   }
 
   @protected
@@ -1454,6 +1897,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_32(self.length, serializer);
     for (final item in self) {
       sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
+  void sse_encode_list_own_device_info(
+    List<OwnDeviceInfo> self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_own_device_info(item, serializer);
     }
   }
 
@@ -1527,6 +1982,18 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_own_device_info(
+    OwnDeviceInfo self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.deviceId, serializer);
+    sse_encode_opt_String(self.displayName, serializer);
+    sse_encode_bool(self.verified, serializer);
+    sse_encode_bool(self.isCurrent, serializer);
+  }
+
+  @protected
   void sse_encode_room_member_info(
     RoomMemberInfo self,
     SseSerializer serializer,
@@ -1573,6 +2040,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.body, serializer);
     sse_encode_i_64(self.tsMs, serializer);
     sse_encode_bool(self.isOwn, serializer);
+    sse_encode_bool(self.utd, serializer);
   }
 
   @protected
@@ -1646,14 +2114,35 @@ class MatrixSessionImpl extends RustOpaque implements MatrixSession {
     encrypted: encrypted,
   );
 
+  Future<void> downloadRoomKeyBackup({required String roomId}) =>
+      RustLib.instance.api.crateApiMatrixMatrixSessionDownloadRoomKeyBackup(
+        that: this,
+        roomId: roomId,
+      );
+
+  Future<EncryptionStatus> encryptionStatus() => RustLib.instance.api
+      .crateApiMatrixMatrixSessionEncryptionStatus(that: this);
+
+  Future<void> flushKeyBackup() => RustLib.instance.api
+      .crateApiMatrixMatrixSessionFlushKeyBackup(that: this);
+
   Future<void> joinRoom({required String roomId}) => RustLib.instance.api
       .crateApiMatrixMatrixSessionJoinRoom(that: this, roomId: roomId);
+
+  Future<List<OwnDeviceInfo>> listOwnDevices() => RustLib.instance.api
+      .crateApiMatrixMatrixSessionListOwnDevices(that: this);
 
   Future<List<RoomSummary>> listRooms() =>
       RustLib.instance.api.crateApiMatrixMatrixSessionListRooms(that: this);
 
   Future<void> logout() =>
       RustLib.instance.api.crateApiMatrixMatrixSessionLogout(that: this);
+
+  Future<void> recover({required String recoveryKey}) => RustLib.instance.api
+      .crateApiMatrixMatrixSessionRecover(that: this, recoveryKey: recoveryKey);
+
+  Future<String> resetRecovery({String? password}) => RustLib.instance.api
+      .crateApiMatrixMatrixSessionResetRecovery(that: this, password: password);
 
   Future<List<RoomMemberInfo>> roomMembers({required String roomId}) => RustLib
       .instance
@@ -1676,6 +2165,9 @@ class MatrixSessionImpl extends RustOpaque implements MatrixSession {
         body: body,
       );
 
+  Future<String> setupRecovery({String? password}) => RustLib.instance.api
+      .crateApiMatrixMatrixSessionSetupRecovery(that: this, password: password);
+
   Stream<SyncEvent> startSync() =>
       RustLib.instance.api.crateApiMatrixMatrixSessionStartSync(that: this);
 
@@ -1690,4 +2182,10 @@ class MatrixSessionImpl extends RustOpaque implements MatrixSession {
 
   Future<String> userId() =>
       RustLib.instance.api.crateApiMatrixMatrixSessionUserId(that: this);
+
+  Future<bool> userIdentityVerified({required String userId}) =>
+      RustLib.instance.api.crateApiMatrixMatrixSessionUserIdentityVerified(
+        that: this,
+        userId: userId,
+      );
 }

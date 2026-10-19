@@ -62,6 +62,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   IncomingMessage dco_decode_box_autoadd_incoming_message(dynamic raw);
 
   @protected
+  EncryptionStatus dco_decode_encryption_status(dynamic raw);
+
+  @protected
   PlatformInt64 dco_decode_i_64(dynamic raw);
 
   @protected
@@ -69,6 +72,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<OwnDeviceInfo> dco_decode_list_own_device_info(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
@@ -87,6 +93,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  OwnDeviceInfo dco_decode_own_device_info(dynamic raw);
 
   @protected
   RoomMemberInfo dco_decode_room_member_info(dynamic raw);
@@ -156,6 +165,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  EncryptionStatus sse_decode_encryption_status(SseDeserializer deserializer);
+
+  @protected
   PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
 
   @protected
@@ -163,6 +175,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<OwnDeviceInfo> sse_decode_list_own_device_info(
+    SseDeserializer deserializer,
+  );
 
   @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
@@ -185,6 +202,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  OwnDeviceInfo sse_decode_own_device_info(SseDeserializer deserializer);
 
   @protected
   RoomMemberInfo sse_decode_room_member_info(SseDeserializer deserializer);
@@ -268,6 +288,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_encryption_status(
+    EncryptionStatus self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
 
   @protected
@@ -278,6 +304,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_own_device_info(
+    List<OwnDeviceInfo> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -311,6 +343,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
     PlatformInt64? self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_own_device_info(OwnDeviceInfo self, SseSerializer serializer);
 
   @protected
   void sse_encode_room_member_info(

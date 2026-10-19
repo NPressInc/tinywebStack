@@ -9,8 +9,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'matrix.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `body_from_msgtype`, `build_client`, `direct_room_display_name`, `enrich_display_names`, `map_send_error`, `member_display_name`, `mxid_from_username`, `parse_timeline_message`, `runtime`, `server_name_from_homeserver`, `timeline_ts_ms`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `body_from_msgtype`, `bootstrap_cross_signing`, `build_client`, `direct_room_display_name`, `encryption_initial_state`, `enrich_display_names`, `map_send_error`, `member_display_name`, `mxid_from_username`, `parse_timeline_message`, `recovery_state_label`, `runtime`, `server_name_from_homeserver`, `timeline_ts_ms`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 Future<MatrixSession> restoreSession({
   required String homeserverUrl,
@@ -18,6 +18,7 @@ Future<MatrixSession> restoreSession({
   required String deviceId,
   required String accessToken,
   required String storeDir,
+  String? storePassphrase,
   String? caCertPem,
 }) => RustLib.instance.api.crateApiMatrixRestoreSession(
   homeserverUrl: homeserverUrl,
@@ -25,6 +26,7 @@ Future<MatrixSession> restoreSession({
   deviceId: deviceId,
   accessToken: accessToken,
   storeDir: storeDir,
+  storePassphrase: storePassphrase,
   caCertPem: caCertPem,
 );
 
@@ -33,6 +35,7 @@ Future<MatrixSession> login({
   required String username,
   required String password,
   required String storeDir,
+  String? storePassphrase,
   String? caCertPem,
   required String deviceName,
 }) => RustLib.instance.api.crateApiMatrixLogin(
@@ -40,6 +43,7 @@ Future<MatrixSession> login({
   username: username,
   password: password,
   storeDir: storeDir,
+  storePassphrase: storePassphrase,
   caCertPem: caCertPem,
   deviceName: deviceName,
 );
@@ -54,11 +58,23 @@ abstract class MatrixSession implements RustOpaqueInterface {
     required bool encrypted,
   });
 
+  Future<void> downloadRoomKeyBackup({required String roomId});
+
+  Future<EncryptionStatus> encryptionStatus();
+
+  Future<void> flushKeyBackup();
+
   Future<void> joinRoom({required String roomId});
+
+  Future<List<OwnDeviceInfo>> listOwnDevices();
 
   Future<List<RoomSummary>> listRooms();
 
   Future<void> logout();
+
+  Future<void> recover({required String recoveryKey});
+
+  Future<String> resetRecovery({String? password});
 
   Future<List<RoomMemberInfo>> roomMembers({required String roomId});
 
@@ -69,6 +85,8 @@ abstract class MatrixSession implements RustOpaqueInterface {
 
   Future<String> sendText({required String roomId, required String body});
 
+  Future<String> setupRecovery({String? password});
+
   Stream<SyncEvent> startSync();
 
   Future<void> stopSync();
@@ -78,6 +96,39 @@ abstract class MatrixSession implements RustOpaqueInterface {
   Future<String> trySlidingSync();
 
   Future<String> userId();
+
+  Future<bool> userIdentityVerified({required String userId});
+}
+
+class EncryptionStatus {
+  final bool crossSigningReady;
+  final bool backupEnabled;
+  final String recoveryState;
+  final bool deviceVerified;
+
+  const EncryptionStatus({
+    required this.crossSigningReady,
+    required this.backupEnabled,
+    required this.recoveryState,
+    required this.deviceVerified,
+  });
+
+  @override
+  int get hashCode =>
+      crossSigningReady.hashCode ^
+      backupEnabled.hashCode ^
+      recoveryState.hashCode ^
+      deviceVerified.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EncryptionStatus &&
+          runtimeType == other.runtimeType &&
+          crossSigningReady == other.crossSigningReady &&
+          backupEnabled == other.backupEnabled &&
+          recoveryState == other.recoveryState &&
+          deviceVerified == other.deviceVerified;
 }
 
 class IncomingMessage {
@@ -89,6 +140,7 @@ class IncomingMessage {
   final bool wasEncrypted;
   final PlatformInt64 tsMs;
   final bool isOwn;
+  final bool utd;
 
   const IncomingMessage({
     required this.roomId,
@@ -99,6 +151,7 @@ class IncomingMessage {
     required this.wasEncrypted,
     required this.tsMs,
     required this.isOwn,
+    required this.utd,
   });
 
   @override
@@ -110,7 +163,8 @@ class IncomingMessage {
       eventId.hashCode ^
       wasEncrypted.hashCode ^
       tsMs.hashCode ^
-      isOwn.hashCode;
+      isOwn.hashCode ^
+      utd.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -124,7 +178,39 @@ class IncomingMessage {
           eventId == other.eventId &&
           wasEncrypted == other.wasEncrypted &&
           tsMs == other.tsMs &&
-          isOwn == other.isOwn;
+          isOwn == other.isOwn &&
+          utd == other.utd;
+}
+
+class OwnDeviceInfo {
+  final String deviceId;
+  final String? displayName;
+  final bool verified;
+  final bool isCurrent;
+
+  const OwnDeviceInfo({
+    required this.deviceId,
+    this.displayName,
+    required this.verified,
+    required this.isCurrent,
+  });
+
+  @override
+  int get hashCode =>
+      deviceId.hashCode ^
+      displayName.hashCode ^
+      verified.hashCode ^
+      isCurrent.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is OwnDeviceInfo &&
+          runtimeType == other.runtimeType &&
+          deviceId == other.deviceId &&
+          displayName == other.displayName &&
+          verified == other.verified &&
+          isCurrent == other.isCurrent;
 }
 
 class RoomMemberInfo {
@@ -207,6 +293,7 @@ class TimelineMessage {
   final String body;
   final PlatformInt64 tsMs;
   final bool isOwn;
+  final bool utd;
 
   const TimelineMessage({
     required this.eventId,
@@ -215,6 +302,7 @@ class TimelineMessage {
     required this.body,
     required this.tsMs,
     required this.isOwn,
+    required this.utd,
   });
 
   @override
@@ -224,7 +312,8 @@ class TimelineMessage {
       senderDisplayName.hashCode ^
       body.hashCode ^
       tsMs.hashCode ^
-      isOwn.hashCode;
+      isOwn.hashCode ^
+      utd.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -236,5 +325,6 @@ class TimelineMessage {
           senderDisplayName == other.senderDisplayName &&
           body == other.body &&
           tsMs == other.tsMs &&
-          isOwn == other.isOwn;
+          isOwn == other.isOwn &&
+          utd == other.utd;
 }

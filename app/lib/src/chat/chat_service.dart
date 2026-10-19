@@ -1,11 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:path_provider/path_provider.dart';
-
 import '../api/models.dart';
-import '../matrix_core.dart';
+import '../matrix/matrix_session_opener.dart';
 import '../rust/api/matrix.dart' as rust;
+import '../storage/credential_store.dart';
 import 'chat_models.dart';
 
 abstract class ChatService {
@@ -140,6 +139,10 @@ class FakeChatService implements ChatService {
     return List<ChatMessage>.from(_timelines[roomId] ?? const []);
   }
 
+  void injectMessage(String roomId, ChatMessage message) {
+    _timelines.putIfAbsent(roomId, () => []).add(message);
+  }
+
   @override
   Future<List<ChatMember>> loadMembers(String roomId) async => [
         ChatMember(userId: '@alice:family.test', displayName: 'Alice'),
@@ -222,9 +225,14 @@ class ChatSendException implements Exception {
 }
 
 class RustChatService implements ChatService {
-  RustChatService({required this.bundle, this.caCertPem});
+  RustChatService({
+    required this.bundle,
+    required this.credentialStore,
+    this.caCertPem,
+  });
 
   final EnrollmentBundle bundle;
+  final CredentialStore credentialStore;
   final String? caCertPem;
 
   rust.MatrixSession? _session;
@@ -248,19 +256,11 @@ class RustChatService implements ChatService {
     if (!isConfigured) {
       return;
     }
-    await MatrixCore.instance.ensureInitialized();
-    final creds = bundle.matrixEnrollment;
-    final dir = await getApplicationSupportDirectory();
-    final storeDir = '${dir.path}/matrix';
-    _session = await rust.restoreSession(
-      homeserverUrl: creds.homeserver!,
-      userId: creds.userId!,
-      deviceId: creds.deviceId!,
-      accessToken: creds.accessToken!,
-      storeDir: storeDir,
+    _session = await openMatrixSession(
+      bundle: bundle,
+      store: credentialStore,
       caCertPem: caCertPem,
     );
-    await _session!.syncOnce();
     await refreshRooms();
     await startSync();
   }
@@ -285,6 +285,7 @@ class RustChatService implements ChatService {
             lastTsMs: r.lastTsMs?.toInt(),
             unread: r.unread.toInt(),
             isDirect: r.isDirect,
+            encrypted: r.isEncrypted,
           ),
         )
         .toList();
@@ -303,6 +304,7 @@ class RustChatService implements ChatService {
             senderDisplayName: m.senderDisplayName,
             tsMs: m.tsMs.toInt(),
             isOwn: m.isOwn,
+            utd: m.utd,
           ),
         )
         .toList();
@@ -349,6 +351,7 @@ class RustChatService implements ChatService {
             senderDisplayName: msg.senderDisplayName,
             tsMs: msg.tsMs.toInt(),
             isOwn: msg.isOwn,
+            utd: msg.utd,
           );
           _sync.add(ChatSyncEvent.message(msg.roomId, chatMsg));
         },
