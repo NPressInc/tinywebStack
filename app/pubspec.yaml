@@ -1,0 +1,35 @@
+name: tinyweb
+description: TinyWeb family app — your own box, one login.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  tinyweb_core:
+    path: rust_builder
+  flutter_rust_bridge: 2.13.0
+  http: ^1.2.2
+  flutter_secure_storage: ^9.2.4
+  mobile_scanner: ^7.0.1
+  url_launcher: ^6.3.1
+  path_provider: ^2.1.5
+  freezed_annotation: ^3.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  freezed: ^3.0.0
+  build_runner: ^2.4.15
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/brand/logo-icon.svg
+    - assets/brand/logo-text-blue.svg
