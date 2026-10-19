@@ -30,7 +30,33 @@ void main() {
     expect(creds.accessToken, 'abc');
   });
 
-  test('code enrollment mobilizon password_required yields null', () {
+  test('code enrollment mobilizon ok yields credentials', () {
+    final discovery = FamilyDiscovery(
+      serverOrigin: 'https://family.example',
+      eventsUrl: 'https://mobilizon.family.example',
+    );
+    final bundle = EnrollmentBundle(
+      deviceId: 'd',
+      username: 'kid',
+      role: 'kid',
+      mxid: '@kid:family.example',
+      serverName: 'family.example',
+      dashboardToken: 't',
+      apiBase: '/family/api',
+      serverOrigin: 'https://family.example',
+      discovery: discovery,
+      rawJson: {
+        'mobilizon': {
+          'status': 'ok',
+          'access_token': 'code-enroll-tok',
+        },
+      },
+    );
+    expect(bundle.mobilizonCredentials, isNotNull);
+    expect(bundle.mobilizonCredentials!.accessToken, 'code-enroll-tok');
+  });
+
+  test('mobilizon unavailable status yields null credentials', () {
     final discovery = FamilyDiscovery(serverOrigin: 'https://family.example');
     final bundle = EnrollmentBundle(
       deviceId: 'd',
@@ -43,7 +69,7 @@ void main() {
       serverOrigin: 'https://family.example',
       discovery: discovery,
       rawJson: {
-        'mobilizon': {'status': 'password_required'},
+        'mobilizon': {'status': 'unavailable'},
       },
     );
     expect(bundle.mobilizonCredentials, isNull);

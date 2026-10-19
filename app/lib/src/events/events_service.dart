@@ -12,14 +12,16 @@ query SearchUpcoming($beginsOn: DateTime, $limit: Int) {
       id
       uuid
       title
-      description
       beginsOn
       endsOn
-      visibility
       physicalAddress { description locality }
       organizerActor { id name preferredUsername domain }
       attributedTo { id name preferredUsername domain }
       participantStats { going }
+      ... on Event {
+        description
+        visibility
+      }
     }
   }
 }
