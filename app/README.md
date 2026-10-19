@@ -7,11 +7,13 @@ Stage 1 shell: enroll against your family box, home shortcuts, and **in-app Matr
 - QR / manual enrollment (`tinyweb://enroll`, one-time code, or username + password)
 - Discovery via `/.well-known/tinywebstack-family.json`
 - Secure storage of the enrollment bundle (Keychain / Keystore)
-- Home: greeting, quiet-hours banner, shortcuts (Events / family controls still “Coming soon”)
+- Home: greeting, quiet-hours banner, shortcuts (family controls still “Coming soon”)
 - **Calendar:** CalDAV tab — upcoming events from Nextcloud (shared + personal calendars); create/edit/delete; invite family members; accept/decline invites (credentials from enrollment)
+- **Events:** Mobilizon tab — upcoming family and federated **PUBLIC** events; detail + join/leave RSVP; parents can create events (password enrollment issues Mobilizon GraphQL tokens). Kids without the dashboard **Events** toggle do not see the tab.
 - **Kids:** background location publish to your box’s OwnTracks Recorder (no OwnTracks app); status card on Home; one-time explainer after enroll
-- **Parents:** **Home | Calendar | Locations | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet — see below)
-- **Kids:** **Home | Calendar | Chat**
+- **Parents:** **Home | Calendar | Events | Locations | Chat** — Locations tab lists each kid’s last fix and 24 h track points (no map yet — see below)
+- **Kids (events enabled):** **Home | Calendar | Events | Chat**
+- **Kids (events disabled):** **Home | Calendar | Chat**
 - Bottom nav chat: family Matrix chat in-app (no Element X)
 - Chat: **end-to-end encrypted** room list, timelines, send, new DM, live sync when the app is foregrounded
 - Recovery key setup after enroll (or when upgrading an older install)
@@ -77,9 +79,15 @@ Lab: `flutter test lab_test/location_publish_test.dart` (requires `TW_HS`, `TW_C
 
 Lab calendar: `flutter test lab_test/calendar_caldav_test.dart` (same env vars) — parent creates on `tws-family`, kid accepts invite.
 
+Lab events: `flutter test lab_test/events_mobilizon_test.dart` (same env vars) — parent creates a PUBLIC Mobilizon event on the lab box; kid RSVPs.
+
 ## Calendar (CalDAV)
 
 The app uses a small in-tree CalDAV client (`PROPFIND`, `REPORT calendar-query`, `PUT`/`DELETE` with ETags) and ICS parse/serialize against `TWS_CALDAV_ROOT`. Nextcloud app passwords are issued in the enrollment bundle (`caldav`); re-enroll if calendar credentials are missing on an older install.
+
+## Events (Mobilizon)
+
+GraphQL client in `lib/src/events/` talks to `mobilizon.<domain>/api` with the `mobilizon` section from password enrollment (`access_token`, `api_url`). One-time **code** enrollment does not mint Mobilizon tokens — use password enroll or re-enroll for Events. New events default to **PUBLIC** for federation ([EVENTS.md](../docs/EVENTS.md)).
 
 ## Lab TLS
 
@@ -94,6 +102,7 @@ Some lab hostnames (e.g. `nextcloud.family-b.family.test`) are not in `/etc/host
 - `lib/` — Dart UI and HTTP clients
 - `lib/src/chat/` — in-app chat UI and `ChatService`
 - `lib/src/calendar/` — CalDAV client, ICS, Calendar tab UI
+- `lib/src/events/` — Mobilizon GraphQL, Events tab UI
 - `lib/src/location/` — OwnTracks publish, background service, parent Locations UI
 - `rust/` — `tinyweb_core` Matrix facade (frb 2.13.0, cargokit)
 - `lab_test/` — optional host-side Matrix bridge tests

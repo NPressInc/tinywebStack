@@ -11,11 +11,13 @@ class HomeScreen extends StatelessWidget {
     required this.session,
     this.onOpenChat,
     this.onOpenCalendar,
+    this.onOpenEvents,
   });
 
   final AppSession session;
   final VoidCallback? onOpenChat;
   final VoidCallback? onOpenCalendar;
+  final VoidCallback? onOpenEvents;
 
   @override
   Widget build(BuildContext context) {
@@ -85,12 +87,12 @@ class HomeScreen extends StatelessWidget {
               subtitle: 'Family schedules',
               onTap: onOpenCalendar ?? () {},
             ),
-            if (profile.eventsEnabled)
+            if (profile.eventsEnabled && onOpenEvents != null)
               _HomeTile(
                 icon: Icons.event_outlined,
                 title: 'Events',
-                subtitle: 'Coming soon',
-                onTap: () => _showComingSoon(context, 'Events'),
+                subtitle: 'Family & federated RSVPs',
+                onTap: onOpenEvents!,
               ),
             if (isParent)
               _HomeTile(

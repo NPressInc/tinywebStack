@@ -158,6 +158,8 @@ Map<String, dynamic> enrollmentToStoredJson(EnrollmentBundle bundle) {
         'owntracks': bundle.rawJson!['owntracks'],
       if (bundle.rawJson?['caldav'] != null)
         'caldav': bundle.rawJson!['caldav'],
+      if (bundle.rawJson?['mobilizon'] != null)
+        'mobilizon': bundle.rawJson!['mobilizon'],
     };
 }
 

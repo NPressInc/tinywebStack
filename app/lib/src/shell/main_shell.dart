@@ -6,6 +6,7 @@ import '../chat/chat_list_screen.dart';
 import '../chat/chat_service.dart';
 import '../home/home_screen.dart';
 import '../calendar/calendar_screen.dart';
+import '../events/events_screen.dart';
 import '../location/locations_screen.dart';
 
 class MainShell extends StatefulWidget {
@@ -96,9 +97,24 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   bool get _isParent => widget.session.profile?.role == 'parent';
 
-  int _chatTabIndex() => _isParent ? 3 : 2;
+  bool get _showEventsTab {
+    final profile = widget.session.profile;
+    if (profile == null) {
+      return false;
+    }
+    return _isParent || profile.eventsEnabled;
+  }
 
-  int _calendarTabIndex() => _isParent ? 1 : 1;
+  int _chatTabIndex() {
+    if (_isParent) {
+      return _showEventsTab ? 4 : 3;
+    }
+    return _showEventsTab ? 3 : 2;
+  }
+
+  int _calendarTabIndex() => 1;
+
+  int _eventsTabIndex() => 2;
 
   @override
   Widget build(BuildContext context) {
@@ -107,8 +123,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         session: widget.session,
         onOpenChat: () => _selectTab(_chatTabIndex()),
         onOpenCalendar: () => _selectTab(_calendarTabIndex()),
+        onOpenEvents:
+            _showEventsTab ? () => _selectTab(_eventsTabIndex()) : null,
       ),
       CalendarScreen(session: widget.session),
+      if (_showEventsTab) EventsScreen(session: widget.session),
       if (_isParent) LocationsScreen(session: widget.session),
       ChatListScreen(session: widget.session, chat: _chat),
     ];
@@ -124,6 +143,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         selectedIcon: Icon(Icons.calendar_month),
         label: 'Calendar',
       ),
+      if (_showEventsTab)
+        const NavigationDestination(
+          icon: Icon(Icons.event_outlined),
+          selectedIcon: Icon(Icons.event),
+          label: 'Events',
+        ),
       if (_isParent)
         const NavigationDestination(
           icon: Icon(Icons.location_on_outlined),
