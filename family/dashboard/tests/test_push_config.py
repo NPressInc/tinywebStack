@@ -34,7 +34,7 @@ def test_enroll_push_section_urls() -> None:
     )
     assert section["sygnal"]["ios_app_id"] == ios_app_id()
     assert section["sygnal"]["android_app_id"] == android_app_id()
-    assert section["unifiedpush"]["public_base"] == "https://family.test/push"
+    assert section["unifiedpush"]["public_base"] == "https://push.family.test"
     assert "password" not in str(section).lower()
 
 

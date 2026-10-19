@@ -302,15 +302,6 @@ cat >"$TMP" <<EOF
 location = / {
     return 302 /family/;
 }
-location /push/ {
-    proxy_pass http://127.0.0.1:${TWS_NTFY_PORT:-8090}/;
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    proxy_set_header Remote-User "";
-    proxy_set_header YNH_USER "";
-    proxy_read_timeout 3600s;
-}
 location /.well-known/tinywebstack-family.json {
     proxy_pass http://127.0.0.1:8765/.well-known/tinywebstack-family.json;
     proxy_set_header Host \$host;

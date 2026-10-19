@@ -25,10 +25,30 @@ class MatrixPushHint {
     if (json == null) {
       return null;
     }
+    final messageField = json['message'];
+    if (messageField is String) {
+      try {
+        final inner = jsonDecode(messageField);
+        if (inner is Map<String, dynamic>) {
+          json = inner;
+        }
+      } catch (_) {
+        return null;
+      }
+    }
     final notification = json['notification'] as Map<String, dynamic>?;
-    final content = (notification?['content'] as Map<String, dynamic>?) ?? json;
-    final eventId = content['event_id'] as String? ?? content['id'] as String?;
-    final roomId = content['room_id'] as String?;
+    if (notification == null) {
+      return null;
+    }
+    final content = notification['content'];
+    final Map<String, dynamic> fields;
+    if (content is Map<String, dynamic>) {
+      fields = content;
+    } else {
+      fields = notification;
+    }
+    final eventId = fields['event_id'] as String? ?? fields['id'] as String?;
+    final roomId = fields['room_id'] as String?;
     if (eventId == null || roomId == null) {
       return null;
     }
@@ -38,19 +58,27 @@ class MatrixPushHint {
   /// True when the payload might contain human-readable message content (forbidden).
   static bool containsForbiddenMessageContent(Map<String, dynamic> json) {
     final notification = json['notification'] as Map<String, dynamic>?;
-    final content = notification?['content'];
-    if (content is! Map<String, dynamic>) {
+    if (notification == null) {
       return false;
     }
-    if (content['body'] != null || content['msgtype'] != null) {
-      return true;
-    }
-    if (content['sender_display_name'] != null || content['room_name'] != null) {
-      return true;
-    }
-    final inner = content['content'];
-    if (inner is Map && (inner['body'] != null || inner['msgtype'] != null)) {
-      return true;
+    for (final candidate in [
+      notification['content'],
+      notification,
+    ]) {
+      if (candidate is! Map<String, dynamic>) {
+        continue;
+      }
+      if (candidate['body'] != null || candidate['msgtype'] != null) {
+        return true;
+      }
+      if (candidate['sender_display_name'] != null ||
+          candidate['room_name'] != null) {
+        return true;
+      }
+      final inner = candidate['content'];
+      if (inner is Map && (inner['body'] != null || inner['msgtype'] != null)) {
+        return true;
+      }
     }
     return false;
   }

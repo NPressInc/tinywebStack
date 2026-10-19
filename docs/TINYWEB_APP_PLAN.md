@@ -186,7 +186,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Push notifications
 
-**Status (2026-03):** Box `install-push.sh` (ntfy + Sygnal), enrollment `push` section, app pusher registration + Android UnifiedPush + iOS APNs channel skeleton; see [PUSH.md](PUSH.md). APNs/FCM keys still operator-supplied.
+**Status (2026-10):** Box `install-push.sh` (locked-down ntfy on `push.<domain>`, Sygnal via `SYGNAL_CONF`), enrollment `push` section, app pusher with full-URL Android pushkeys + iOS APNs entitlements; see [PUSH.md](PUSH.md). APNs/FCM keys still operator-supplied.
 
 ### Push notifications (design)
 

@@ -11,6 +11,7 @@ import '../rust/api/matrix.dart' as rust;
 import '../storage/credential_store.dart';
 import 'matrix_push_payload.dart';
 import 'push_config.dart';
+import 'unified_push_instance.dart';
 
 class PushService {
   PushService({
@@ -26,6 +27,10 @@ class PushService {
   rust.MatrixSession? _matrix;
   String? _registeredPushkey;
   String? _registeredAppId;
+  bool _unifiedPushInitialized = false;
+
+  /// Shown on Home when Android UnifiedPush endpoint does not match the family push origin.
+  String? pushSetupDetail;
 
   Future<void> syncFromEnrollment(EnrollmentBundle bundle) async {
     if (!bundle.matrixEnrollment.isOk) {
@@ -41,7 +46,6 @@ class PushService {
     } catch (_) {
       return;
     }
-
     final pushkey = await _ensurePushkey(config);
     if (pushkey == null || pushkey.isEmpty) {
       return;
@@ -67,6 +71,7 @@ class PushService {
     _matrix = session;
     _registeredPushkey = pushkey;
     _registeredAppId = appId;
+    pushSetupDetail = null;
     await store.writeMatrixPusherRegistration(appId: appId, pushkey: pushkey);
   }
 
@@ -106,6 +111,7 @@ class PushService {
     if (enabled) {
       await syncFromEnrollment(bundle);
     } else {
+      pushSetupDetail = null;
       await unregisterPusher();
     }
   }
@@ -177,20 +183,33 @@ class PushService {
     return null;
   }
 
-  Future<String?> _ensureAndroidPushkey(PushEnrollmentConfig config) async {
-    final existing = await store.readUnifiedPushTopic();
-    final topic = existing ?? _randomTopic();
-    if (existing == null) {
-      await store.writeUnifiedPushTopic(topic);
+  Future<void> _initUnifiedPush(PushEnrollmentConfig config) async {
+    if (_unifiedPushInitialized) {
+      return;
     }
+    _unifiedPushInitialized = true;
     await UnifiedPush.initialize(
       onNewEndpoint: (endpoint, _) async {
-        await store.writeUnifiedPushEndpoint(endpoint.url);
+        final url = endpoint.url;
+        if (!_endpointAllowed(url, config)) {
+          pushSetupDetail =
+              'Set the ntfy app\'s server to ${config.expectedPublicPushOrigin()}';
+          return;
+        }
+        pushSetupDetail = null;
+        await store.writeUnifiedPushEndpoint(url);
+        final bundle = await store.read();
+        if (bundle != null) {
+          await syncFromEnrollment(bundle);
+        }
       },
       onRegistrationFailed: (reason, instance) {
-        // Distributor unavailable; user can install ntfy as UnifiedPush distributor.
+        pushSetupDetail =
+            'Set the ntfy app\'s server to ${config.expectedPublicPushOrigin()}';
       },
-      onUnregistered: (_) {},
+      onUnregistered: (_) async {
+        await unregisterPusher();
+      },
       onMessage: (message, _) async {
         await handleBackgroundPayload(String.fromCharCodes(message.content));
       },
@@ -203,8 +222,42 @@ class PushService {
         await UnifiedPush.tryUseCurrentOrDefaultDistributor();
       }
     }
+  }
+
+  bool _endpointAllowed(String endpoint, PushEnrollmentConfig config) {
+    final origin = config.expectedPublicPushOrigin();
+    if (origin.isEmpty) {
+      return false;
+    }
+    final prefix = origin.endsWith('/') ? origin : '$origin/';
+    return endpoint.startsWith(prefix);
+  }
+
+  Future<String?> _ensureAndroidPushkey(PushEnrollmentConfig config) async {
+    await _initUnifiedPush(config);
+
+    final cached = await store.readUnifiedPushEndpoint();
+    if (cached != null && _endpointAllowed(cached, config)) {
+      return cached;
+    }
+
+    var topic = await store.readUnifiedPushTopic();
+    if (topic == null || topic.isEmpty) {
+      topic = generateUnifiedPushInstanceId();
+      await store.writeUnifiedPushTopic(topic);
+    }
     await UnifiedPush.register(instance: topic);
-    return topic;
+
+    for (var i = 0; i < 40; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      final ep = await store.readUnifiedPushEndpoint();
+      if (ep != null && _endpointAllowed(ep, config)) {
+        return ep;
+      }
+    }
+    pushSetupDetail =
+        'Set the ntfy app\'s server to ${config.expectedPublicPushOrigin()}';
+    return null;
   }
 
   Future<String?> _ensureIosPushkey() async {
@@ -220,11 +273,6 @@ class PushService {
       }
     } catch (_) {}
     return null;
-  }
-
-  String _randomTopic() {
-    final bytes = List<int>.generate(24, (i) => (i * 17 + 91) % 256);
-    return 'tw-${bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join()}';
   }
 
   Future<void> _initNotifications() async {

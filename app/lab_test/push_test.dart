@@ -8,8 +8,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tinyweb/src/api/discovery.dart';
 import 'package:tinyweb/src/api/family_api.dart';
-import 'package:tinyweb/src/api/tls_http_client.dart';
 import 'package:tinyweb/src/api/models.dart';
+import 'package:tinyweb/src/api/tls_http_client.dart';
 import 'package:tinyweb/src/push/matrix_push_payload.dart';
 import 'package:tinyweb/src/push/push_config.dart';
 import 'package:tinyweb/src/rust/api/matrix.dart';
@@ -25,7 +25,7 @@ void main() {
     return;
   }
 
-  test('matrix push via ntfy topic has no message body', () async {
+  test('matrix push via Synapse→ntfy has no message body', () async {
     final password = Platform.environment['TW_TEST_PASSWORD'];
     final libPath = Platform.environment['TW_LIB'];
     final kidUser = Platform.environment['TW_KID_USER'] ?? 'kid';
@@ -53,12 +53,14 @@ void main() {
       deviceName: 'tw_push_lab_parent',
     );
     final push = PushEnrollmentConfig.fromBundle(parentBundle);
-    final topic = 'tw-lab-${Random.secure().nextInt(1 << 30)}';
-    final publicBase = push.publicBase ?? origin.replaceFirst('https://', 'https://push.');
-    final pollUrl = '${publicBase.replaceAll(RegExp(r'/+$'), '')}/$topic/json?poll=1';
+    final topic = _randomUpTopic();
+    final publicBase = push.expectedPublicPushOrigin();
+    expect(publicBase, isNotEmpty);
+    final pushkey = '$publicBase/$topic?up=1';
+    final pollUrl = '$publicBase/$topic/json?poll=1';
 
     await RustLib.init(externalLibrary: ExternalLibrary.open(libPath));
-    final storeDir = await Directory.systemTemp.createTemp('tw_push_kid_');
+    final storeDir = await Directory.systemTemp.createTemp('tw_push_parent_');
     final matrix = parentBundle.matrixEnrollment;
     expect(matrix.isOk, isTrue);
     final sessionParent = await restoreSession(
@@ -72,7 +74,7 @@ void main() {
     );
     await sessionParent.setHttpPusher(
       appId: push.androidAppId,
-      pushkey: topic,
+      pushkey: pushkey,
       gatewayUrl: push.unifiedGatewayUrl,
     );
 
@@ -97,69 +99,41 @@ void main() {
     await sessionKid.joinRoom(roomId: roomId);
 
     final secretBody = 'push-lab-secret-${DateTime.now().microsecondsSinceEpoch}';
-    final pollFuture = _pollNtfyOnce(httpClient, pollUrl, timeout: const Duration(seconds: 30));
+    final pollFuture = _pollNtfyOnce(
+      httpClient,
+      pollUrl,
+      timeout: const Duration(seconds: 45),
+    );
 
     final eventId = await sessionKid.sendText(roomId: roomId, body: secretBody);
-    var rawLine = await pollFuture;
-    if (rawLine == null) {
-      // Synapse→ntfy delivery is exercised on the box in pytest; ensure the gateway
-      // path and privacy shape work when a push-shaped notify arrives.
-      await _postEventIdOnlyNotify(
-        httpClient,
-        push: push,
-        topic: topic,
-        eventId: eventId,
-        roomId: roomId,
-      );
-      rawLine = await _pollNtfyOnce(
-        httpClient,
-        pollUrl,
-        timeout: const Duration(seconds: 15),
-      );
-    }
-    expect(rawLine, isNotNull, reason: 'expected ntfy notification on topic');
+    final rawLine = await pollFuture;
+    expect(rawLine, isNotNull, reason: 'expected Synapse→ntfy notification on topic');
     expect(rawLine!.contains(secretBody), isFalse,
         reason: 'push payload must not contain message body');
-    // ntfy wraps the payload in a `message` field (stringified JSON).
+
     final ntfyJson = jsonDecode(rawLine) as Map<String, dynamic>;
     final inner = ntfyJson['message'] as String? ?? rawLine;
     final hint = MatrixPushHint.tryParse(inner);
     expect(hint, isNotNull);
-    expect(hint!.eventId, isNotEmpty);
-    expect(inner.contains(secretBody), isFalse);
-    expect(MatrixPushHint.containsForbiddenMessageContent(
-      jsonDecode(inner) as Map<String, dynamic>,
-    ), isFalse);
+    expect(hint!.eventId, eventId);
+    final parsedInner = jsonDecode(inner) as Map<String, dynamic>;
+    expect(
+      MatrixPushHint.containsForbiddenMessageContent(parsedInner),
+      isFalse,
+    );
 
     await sessionParent.deleteHttpPusher(
       appId: push.androidAppId,
-      pushkey: topic,
+      pushkey: pushkey,
     );
     httpClient.close();
   }, timeout: const Timeout(Duration(minutes: 2)));
 }
 
-Future<void> _postEventIdOnlyNotify(
-  dynamic client, {
-  required PushEnrollmentConfig push,
-  required String topic,
-  required String eventId,
-  required String roomId,
-}) async {
-  final base = (push.publicBase ?? '').replaceAll(RegExp(r'/+$'), '');
-  final topicUrl = '$base/$topic';
-  final payload = jsonEncode({
-    'event_id': eventId,
-    'room_id': roomId,
-    'counts': {'unread': 1},
-    'prio': 'high',
-  });
-  final resp = await client.post(
-    Uri.parse(topicUrl),
-    headers: {'Content-Type': 'application/json'},
-    body: payload,
-  );
-  expect(resp.statusCode, lessThan(300));
+String _randomUpTopic() {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  final r = Random.secure();
+  return 'up${List.generate(16, (_) => chars[r.nextInt(chars.length)]).join()}';
 }
 
 Future<String?> _pollNtfyOnce(

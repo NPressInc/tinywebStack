@@ -16,7 +16,6 @@ def _family_permission_urls(main_domain: str | None) -> tuple[str, str, list[str
                 f"{main_domain}/.well-known/tinywebstack-family.json",
                 f"{main_domain}/family/api/app/enroll",
                 f"{main_domain}/family/api/",
-                f"{main_domain}/push/",
             ],
         )
     return (
@@ -26,9 +25,14 @@ def _family_permission_urls(main_domain: str | None) -> tuple[str, str, list[str
             "/.well-known/tinywebstack-family.json",
             "/family/api/app/enroll",
             "/family/api/",
-            "/push/",
         ],
     )
+
+
+def _push_public_permission_url(main_domain: str | None) -> str | None:
+    if not main_domain:
+        return None
+    return f"push.{main_domain}/"
 
 
 def ensure_permission(
@@ -91,6 +95,17 @@ def setup_family_dashboard_permissions(
         protected=True,
         additional_urls=pub_extra,
     )
+    push_url = _push_public_permission_url(main_domain)
+    if push_url:
+        push_perm = f"{synapse_app}.family_push_public"
+        ensure_permission(
+            push_perm,
+            url=push_url,
+            allowed=["visitors"],
+            auth_header=False,
+            show_tile=False,
+            protected=True,
+        )
     if create_owntracks_pub:
         try:
             ensure_permission(

@@ -43,9 +43,8 @@ def enroll_push_section(server_name: str) -> Optional[Dict[str, Any]]:
     sygnal_port = _local_sygnal_port()
     unified_local = f"http://127.0.0.1:{ntfy_port}/_matrix/push/v1/notify"
     sygnal_local = f"http://127.0.0.1:{sygnal_port}/_matrix/push/v1/notify"
-    # Main-domain path avoids YunoHost SSO on a dedicated push vhost; subdomain still serves Matrix notify.
     public_base = os.environ.get("TWS_PUSH_PUBLIC_BASE_URL", "").strip() or (
-        f"https://{server_name}/push"
+        f"https://{host}"
     )
     return {
         "unifiedpush": {

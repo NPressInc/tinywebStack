@@ -15,6 +15,15 @@ class PushEnrollmentConfig {
   final String androidAppId;
   final String? publicBase;
 
+  /// HTTPS origin for UnifiedPush / Matrix pushkeys (`https://push.<domain>`).
+  String expectedPublicPushOrigin() {
+    final base = publicBase?.trim();
+    if (base != null && base.isNotEmpty) {
+      return base.replaceAll(RegExp(r'/+$'), '');
+    }
+    return '';
+  }
+
   factory PushEnrollmentConfig.fromBundle(EnrollmentBundle bundle) {
     final push = bundle.rawJson?['push'] as Map<String, dynamic>?;
     if (push == null) {

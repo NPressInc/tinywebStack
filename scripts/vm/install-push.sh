@@ -48,6 +48,10 @@ PUSH_D="$(push_domain "$MAIN_DOMAIN")"
 TWS_ETC_DIR="${TWS_ETC_DIR:-/etc/tinywebstack}"
 NTFY_PORT="${TWS_NTFY_PORT:-8090}"
 SYGNAL_PORT="${TWS_SYGNAL_PORT:-5000}"
+NTFY_USER="${TWS_NTFY_USER:-tinywebstack-ntfy}"
+NTFY_STATE="${TWS_NTFY_STATE_DIR:-/var/lib/tinywebstack-ntfy}"
+NTFY_AUTH_DB="${NTFY_STATE}/user.db"
+SYGNAL_USER="${TWS_SYGNAL_USER:-tinywebstack-sygnal}"
 CSRF_FILE="${TWS_DASHBOARD_ENV_FILE:-${TWS_ETC_DIR}/dashboard.env}"
 APNS_BUNDLE="${TWS_APNS_BUNDLE_ID:-win.tinyweb.tinyweb}"
 APNS_KEY_ID="${TWS_APNS_KEY_ID:-}"
@@ -108,6 +112,19 @@ install_ntfy_binary() {
   log "Installed ntfy ${TWS_NTFY_VERSION} to /usr/local/bin/ntfy"
 }
 
+ensure_ntfy_system_user() {
+  if dry_run_is_active; then
+    log "DRY_RUN: ensure system user ${NTFY_USER} and state ${NTFY_STATE}"
+    return 0
+  fi
+  if ! id -u "$NTFY_USER" &>/dev/null; then
+    useradd --system --home "$NTFY_STATE" --shell /usr/sbin/nologin "$NTFY_USER"
+  fi
+  mkdir -p "$NTFY_STATE"
+  chown "${NTFY_USER}:${NTFY_USER}" "$NTFY_STATE"
+  chmod 750 "$NTFY_STATE"
+}
+
 write_ntfy_config() {
   local cfg="${TWS_ETC_DIR}/ntfy/server.yml"
   if dry_run_is_active; then
@@ -120,13 +137,36 @@ write_ntfy_config() {
 base-url: "https://${PUSH_D}"
 listen-http: "127.0.0.1:${NTFY_PORT}"
 behind-proxy: true
-# Subscribers need read on unguessable topics; Matrix notify path is always allowed by ntfy.
-auth-default-access: read-only
+auth-file: "${NTFY_AUTH_DB}"
+auth-default-access: deny-all
+enable-signup: false
 enable-login: false
 attachment-cache-dir: ""
 upstream-base-url: ""
+cache-duration: "12h"
+visitor-attachment-total-size-limit: "0"
+visitor-request-limit-burst: 30
+visitor-request-limit-replenish: "5s"
 EOF
+  chown "${NTFY_USER}:${NTFY_USER}" "$cfg"
   chmod 640 "$cfg"
+}
+
+configure_ntfy_topic_acl() {
+  local cfg="${TWS_ETC_DIR}/ntfy/server.yml"
+  if dry_run_is_active; then
+    log "DRY_RUN: ntfy access everyone up* rw"
+    return 0
+  fi
+  local n=0
+  while (( n < 15 )) && [[ ! -f "$NTFY_AUTH_DB" ]]; do
+    n=$((n + 1))
+    sleep 1
+  done
+  [[ -f "$NTFY_AUTH_DB" ]] || die "ntfy auth db not created at ${NTFY_AUTH_DB}"
+  /usr/local/bin/ntfy access --config="$cfg" everyone 'up*' read-write 2>/dev/null \
+    || /usr/local/bin/ntfy access --config="$cfg" everyone 'up*' rw \
+    || die "ntfy access grant for up* failed"
 }
 
 install_ntfy_unit() {
@@ -143,6 +183,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=${NTFY_USER}
+Group=${NTFY_USER}
 ExecStart=/usr/local/bin/ntfy serve --config ${TWS_ETC_DIR}/ntfy/server.yml
 Restart=on-failure
 RestartSec=3
@@ -201,7 +243,7 @@ EOF
 write_sygnal_config() {
   local cfg="${TWS_ETC_DIR}/sygnal.yaml"
   local apns_enabled=0
-  if [[ -f "$APNS_KEY_PATH" && -n "$APNS_KEY_ID" && -n "$APNS_TEAM_ID" ]]; then
+  if sygnal_apns_enabled; then
     apns_enabled=1
   fi
   if dry_run_is_active; then
@@ -286,14 +328,60 @@ install_sygnal_venv() {
   "${venv}/bin/pip" install -q "git+https://github.com/element-hq/sygnal.git@${TWS_SYGNAL_GIT_REF}"
 }
 
+ensure_sygnal_system_user() {
+  if dry_run_is_active; then
+    log "DRY_RUN: ensure system user ${SYGNAL_USER}"
+    return 0
+  fi
+  if ! id -u "$SYGNAL_USER" &>/dev/null; then
+    useradd --system --home /var/lib/tinywebstack-sygnal --shell /usr/sbin/nologin "$SYGNAL_USER"
+  fi
+  mkdir -p /var/lib/tinywebstack-sygnal
+  chown "${SYGNAL_USER}:${SYGNAL_USER}" /var/lib/tinywebstack-sygnal
+  chmod 750 /var/lib/tinywebstack-sygnal
+  local sec="${TWS_ETC_DIR}/secrets"
+  mkdir -p "${sec}/apns" "${sec}/fcm"
+  chown root:"${SYGNAL_USER}" "$sec" "${sec}/apns" "${sec}/fcm"
+  chmod 750 "$sec" "${sec}/apns" "${sec}/fcm"
+  if [[ -f "$APNS_KEY_PATH" ]]; then
+    chown root:"${SYGNAL_USER}" "$APNS_KEY_PATH"
+    chmod 640 "$APNS_KEY_PATH"
+  fi
+  local cfg="${TWS_ETC_DIR}/sygnal.yaml"
+  if [[ -f "$cfg" ]]; then
+    chown root:"${SYGNAL_USER}" "$cfg"
+    chmod 640 "$cfg"
+  fi
+}
+
+install_sygnal_stub() {
+  local dest=/usr/local/sbin/tws-sygnal-health-stub
+  local stub_src="${_script_dir}/sygnal-health-stub.py"
+  [[ -f "$stub_src" ]] || stub_src="${TW_STACK_ROOT}/scripts/vm/sygnal-health-stub.py"
+  if dry_run_is_active; then
+    log "DRY_RUN: install ${dest}"
+    return 0
+  fi
+  install -m 755 "$stub_src" "$dest"
+}
+
+sygnal_apns_enabled() {
+  [[ -f "$APNS_KEY_PATH" && -n "$APNS_KEY_ID" && -n "$APNS_TEAM_ID" ]]
+}
+
 install_sygnal_unit() {
   local unit=/etc/systemd/system/tinywebstack-sygnal.service
   local venv="/opt/tinywebstack/push/sygnal/venv"
+  local use_sygnal=0
+  if sygnal_apns_enabled; then
+    use_sygnal=1
+  fi
   if dry_run_is_active; then
-    log "DRY_RUN: write ${unit}"
+    log "DRY_RUN: write ${unit} (sygnal=${use_sygnal})"
     return 0
   fi
-  cat >"$unit" <<EOF
+  if [[ "$use_sygnal" -eq 1 ]]; then
+    cat >"$unit" <<EOF
 [Unit]
 Description=tinywebStack Sygnal (Matrix push gateway for APNs/FCM)
 After=network-online.target
@@ -301,14 +389,39 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User=${SYGNAL_USER}
+Group=${SYGNAL_USER}
 WorkingDirectory=/opt/tinywebstack/push/sygnal
-ExecStart=${venv}/bin/sygnal --config ${TWS_ETC_DIR}/sygnal.yaml
+Environment=SYGNAL_CONF=${TWS_ETC_DIR}/sygnal.yaml
+ExecStart=${venv}/bin/sygnal
 Restart=on-failure
 RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
 EOF
+  else
+    install_sygnal_stub
+    cat >"$unit" <<EOF
+[Unit]
+Description=tinywebStack Sygnal health stub (APNs not configured)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${SYGNAL_USER}
+Group=${SYGNAL_USER}
+Environment=TWS_SYGNAL_PORT=${SYGNAL_PORT}
+ExecStart=/usr/local/sbin/tws-sygnal-health-stub
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+    log "Sygnal APNs disabled — running loopback health stub on 127.0.0.1:${SYGNAL_PORT} (re-run after AuthKey.p8)"
+  fi
   systemctl daemon-reload
   systemctl enable tinywebstack-sygnal.service
   systemctl restart tinywebstack-sygnal.service
@@ -329,6 +442,8 @@ write_synapse_push_snippet() {
     cat >"$snip" <<'EOF'
 ip_range_whitelist:
   - "127.0.0.1"
+push:
+  include_content: false
 EOF
   fi
   if systemctl is-active --quiet synapse 2>/dev/null; then
@@ -352,8 +467,8 @@ update_dashboard_env() {
     && sed -i "s|^TWS_PUSH_PUBLIC_HOST=.*|TWS_PUSH_PUBLIC_HOST=${PUSH_D}|" "$CSRF_FILE" \
     || printf 'TWS_PUSH_PUBLIC_HOST=%s\n' "$PUSH_D" >>"$CSRF_FILE"
   grep -q '^TWS_PUSH_PUBLIC_BASE_URL=' "$CSRF_FILE" \
-    && sed -i "s|^TWS_PUSH_PUBLIC_BASE_URL=.*|TWS_PUSH_PUBLIC_BASE_URL=https://${MAIN_DOMAIN}/push|" "$CSRF_FILE" \
-    || printf 'TWS_PUSH_PUBLIC_BASE_URL=https://%s/push\n' "$MAIN_DOMAIN" >>"$CSRF_FILE"
+    && sed -i "s|^TWS_PUSH_PUBLIC_BASE_URL=.*|TWS_PUSH_PUBLIC_BASE_URL=https://${PUSH_D}|" "$CSRF_FILE" \
+    || printf 'TWS_PUSH_PUBLIC_BASE_URL=https://%s\n' "$PUSH_D" >>"$CSRF_FILE"
   grep -q '^TWS_NTFY_PORT=' "$CSRF_FILE" \
     && sed -i "s|^TWS_NTFY_PORT=.*|TWS_NTFY_PORT=${NTFY_PORT}|" "$CSRF_FILE" \
     || printf 'TWS_NTFY_PORT=%s\n' "$NTFY_PORT" >>"$CSRF_FILE"
@@ -366,14 +481,46 @@ update_dashboard_env() {
 }
 
 install_ntfy_binary
+ensure_ntfy_system_user
 write_ntfy_config
+wait_ntfy_health() {
+  if dry_run_is_active; then
+    return 0
+  fi
+  local url="http://127.0.0.1:${NTFY_PORT}/v1/health"
+  local n=0
+  while (( n < 20 )); do
+    if curl -fsS -m 2 "$url" >/dev/null 2>&1; then
+      return 0
+    fi
+    n=$((n + 1))
+    sleep 1
+  done
+  die "ntfy health check failed on ${url}"
+}
+
 install_ntfy_unit
+if ! dry_run_is_active; then
+  wait_ntfy_health
+  configure_ntfy_topic_acl
+fi
 ensure_push_domain
 write_push_nginx
 install_sygnal_venv
+ensure_sygnal_system_user
 write_sygnal_config
+ensure_sygnal_system_user
 install_sygnal_unit
 write_synapse_push_snippet
 update_dashboard_env
+
+if ! dry_run_is_active; then
+  if systemctl is-active --quiet tinywebstack-sygnal; then
+    curl -fsS -m 5 "http://127.0.0.1:${SYGNAL_PORT}/health" >/dev/null \
+      || die "Sygnal/stub health check failed on 127.0.0.1:${SYGNAL_PORT}"
+  else
+    die "tinywebstack-sygnal is not active"
+  fi
+fi
 
 log "Push stack ready: ntfy 127.0.0.1:${NTFY_PORT}, Sygnal 127.0.0.1:${SYGNAL_PORT}, public https://${PUSH_D}/"

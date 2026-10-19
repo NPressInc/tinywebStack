@@ -140,6 +140,15 @@ class _NotificationsToggleState extends State<_NotificationsToggle> {
         _loading = false;
       });
     }
+    if (on) {
+      final bundle = await widget.session.credentialStore.read();
+      if (bundle != null) {
+        await widget.session.pushService.syncFromEnrollment(bundle);
+        if (mounted) {
+          setState(() {});
+        }
+      }
+    }
   }
 
   Future<void> _onChanged(bool value) async {
@@ -155,9 +164,13 @@ class _NotificationsToggleState extends State<_NotificationsToggle> {
 
   @override
   Widget build(BuildContext context) {
+    final detail = widget.session.pushService.pushSetupDetail;
+    final subtitle = detail != null && detail.isNotEmpty
+        ? detail
+        : 'Wake for new messages; text loaded on device only';
     return SwitchListTile(
       title: const Text('Notifications'),
-      subtitle: const Text('Wake for new messages; text loaded on device only'),
+      subtitle: Text(subtitle),
       value: _enabled,
       onChanged: _loading ? null : _onChanged,
     );
