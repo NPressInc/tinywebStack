@@ -120,15 +120,11 @@ write_ntfy_config() {
 base-url: "https://${PUSH_D}"
 listen-http: "127.0.0.1:${NTFY_PORT}"
 behind-proxy: true
-auth-default-access: deny-all
+# Subscribers need read on unguessable topics; Matrix notify path is always allowed by ntfy.
+auth-default-access: read-only
 enable-login: false
 attachment-cache-dir: ""
 upstream-base-url: ""
-cache-duration: "45s"
-visitor-subscription-limit: 0
-visitor-attachment-total-size-limit: 0
-visitor-request-limit-burst: 30
-visitor-request-limit-replenish: "5s"
 EOF
   chmod 640 "$cfg"
 }
@@ -167,7 +163,9 @@ ensure_push_domain() {
   if ! yunohost domain list 2>/dev/null | grep -qw "$PUSH_D"; then
     yunohost domain add "$PUSH_D"
   fi
-  if [[ "${TWS_MODE:-lab}" == "lab" ]]; then
+  if [[ -f "${TW_STACK_ROOT}/lab-certs/${PUSH_D}/fullchain.pem" ]]; then
+    "${TW_STACK_ROOT}/vm/yunohost-lab-tls.sh" "$PUSH_D" || true
+  elif [[ "${TWS_MODE:-lab}" == "lab" ]]; then
     yunohost domain cert install "$PUSH_D" --self-signed 2>/dev/null || \
       yunohost domain cert install "$PUSH_D" --self-signed || true
   fi
@@ -183,17 +181,18 @@ write_push_nginx() {
   mkdir -p "$dir"
   cat >"$snip" <<EOF
 # Managed by tinywebStack install-push.sh
-location /_matrix/push/v1/notify {
-    proxy_pass http://127.0.0.1:${NTFY_PORT};
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-}
 location /sygnal/ {
     proxy_pass http://127.0.0.1:${SYGNAL_PORT}/;
     proxy_set_header Host \$host;
     proxy_set_header X-Real-IP \$remote_addr;
     proxy_set_header X-Forwarded-Proto \$scheme;
+}
+location / {
+    proxy_pass http://127.0.0.1:${NTFY_PORT};
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_read_timeout 3600s;
 }
 EOF
   yunohost service reload nginx || systemctl reload nginx
@@ -352,6 +351,9 @@ update_dashboard_env() {
   grep -q '^TWS_PUSH_PUBLIC_HOST=' "$CSRF_FILE" \
     && sed -i "s|^TWS_PUSH_PUBLIC_HOST=.*|TWS_PUSH_PUBLIC_HOST=${PUSH_D}|" "$CSRF_FILE" \
     || printf 'TWS_PUSH_PUBLIC_HOST=%s\n' "$PUSH_D" >>"$CSRF_FILE"
+  grep -q '^TWS_PUSH_PUBLIC_BASE_URL=' "$CSRF_FILE" \
+    && sed -i "s|^TWS_PUSH_PUBLIC_BASE_URL=.*|TWS_PUSH_PUBLIC_BASE_URL=https://${MAIN_DOMAIN}/push|" "$CSRF_FILE" \
+    || printf 'TWS_PUSH_PUBLIC_BASE_URL=https://%s/push\n' "$MAIN_DOMAIN" >>"$CSRF_FILE"
   grep -q '^TWS_NTFY_PORT=' "$CSRF_FILE" \
     && sed -i "s|^TWS_NTFY_PORT=.*|TWS_NTFY_PORT=${NTFY_PORT}|" "$CSRF_FILE" \
     || printf 'TWS_NTFY_PORT=%s\n' "$NTFY_PORT" >>"$CSRF_FILE"

@@ -295,11 +295,21 @@ configure_family_home_tile "$DASH_PERM" \
 NGINX_DIR="/etc/nginx/conf.d/${MAIN_DOMAIN}.d"
 install -d "$NGINX_DIR"
 NGINX_SNIP="${NGINX_DIR}/tinywebstack-family.conf"
+rm -f "${NGINX_DIR}/tinywebstack-ntfy-proxy.conf"
 TMP="$(mktemp)"
 cat >"$TMP" <<EOF
 # Managed by tinywebStack family dashboard
 location = / {
     return 302 /family/;
+}
+location /push/ {
+    proxy_pass http://127.0.0.1:${TWS_NTFY_PORT:-8090}/;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Remote-User "";
+    proxy_set_header YNH_USER "";
+    proxy_read_timeout 3600s;
 }
 location /.well-known/tinywebstack-family.json {
     proxy_pass http://127.0.0.1:8765/.well-known/tinywebstack-family.json;

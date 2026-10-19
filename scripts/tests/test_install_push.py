@@ -14,7 +14,7 @@ def test_install_push_script_exists() -> None:
     text = INSTALL_PUSH.read_text(encoding="utf-8")
     assert "tinywebstack-ntfy" in text
     assert "tinywebstack-sygnal" in text
-    assert "auth-default-access: deny-all" in text
+    assert "auth-default-access: read-only" in text
 
 
 def test_install_tinyweb_calls_push_step() -> None:

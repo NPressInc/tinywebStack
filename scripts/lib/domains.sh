@@ -18,6 +18,9 @@ events_domain() { printf 'mobilizon.%s' "$1"; }
 node_all_domains() {
   local main=$1
   printf '%s\n' "$main" "$(matrix_domain "$main")" "$(element_domain "$main")" "$(location_domain "$main")" "$(nextcloud_domain "$main")"
+  if [[ "${TWS_PUSH_ENABLE:-1}" != "0" ]]; then
+    printf '%s\n' "$(push_domain "$main")"
+  fi
   if [[ "${EVENTS_APP:-mobilizon}" == "mobilizon" ]]; then
     printf '%s\n' "$(events_domain "$main")"
   fi

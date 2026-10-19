@@ -6,9 +6,9 @@ import 'dart:math';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:http/http.dart' as http;
 import 'package:tinyweb/src/api/discovery.dart';
 import 'package:tinyweb/src/api/family_api.dart';
+import 'package:tinyweb/src/api/tls_http_client.dart';
 import 'package:tinyweb/src/api/models.dart';
 import 'package:tinyweb/src/push/matrix_push_payload.dart';
 import 'package:tinyweb/src/push/push_config.dart';
@@ -41,7 +41,7 @@ void main() {
         ? await File(caFile).readAsString()
         : null;
 
-    final httpClient = http.Client();
+    final httpClient = tlsHttpClientFromEnvironment();
     final discovery = await DiscoveryClient(client: httpClient).fetch(origin);
     final api = FamilyApiClient(client: httpClient);
 
@@ -89,7 +89,11 @@ void main() {
     await sessionParent.syncOnce();
     await sessionKid.syncOnce();
     final mxidKid = kidBundle.mxid;
-    final roomId = await sessionParent.createDirectChat(userId: mxidKid);
+    final roomId = await sessionParent.createRoom(
+      name: 'tw-push-lab',
+      inviteUserIds: [mxidKid],
+      encrypted: false,
+    );
     await sessionKid.joinRoom(roomId: roomId);
 
     final secretBody = 'push-lab-secret-${DateTime.now().microsecondsSinceEpoch}';
@@ -111,11 +115,11 @@ void main() {
       pushkey: topic,
     );
     httpClient.close();
-  });
+  }, timeout: const Timeout(Duration(minutes: 2)));
 }
 
 Future<String?> _pollNtfyOnce(
-  http.Client client,
+  dynamic client,
   String pollUrl, {
   required Duration timeout,
 }) async {
