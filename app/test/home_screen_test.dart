@@ -67,7 +67,12 @@ void main() {
 
   testWidgets('parent sees family controls tile', (tester) async {
     await tester.pumpWidget(
-      MaterialApp(home: HomeScreen(session: _session(role: 'parent', quietActive: false))),
+      MaterialApp(
+        home: HomeScreen(
+          session: _session(role: 'parent', quietActive: false),
+          onOpenFamily: () {},
+        ),
+      ),
     );
     expect(find.text('Family controls'), findsOneWidget);
     expect(find.text('Family map'), findsNothing);

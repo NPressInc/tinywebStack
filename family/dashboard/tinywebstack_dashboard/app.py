@@ -770,6 +770,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         return RedirectResponse(url=dash_url("/", root_path), status_code=303)
 
     app.include_router(create_permissions_router(cfg))
+    app.include_router(create_permissions_router(cfg, prefix="/api"))
     return app
 
 

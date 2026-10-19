@@ -12,12 +12,14 @@ class HomeScreen extends StatelessWidget {
     this.onOpenChat,
     this.onOpenCalendar,
     this.onOpenEvents,
+    this.onOpenFamily,
   });
 
   final AppSession session;
   final VoidCallback? onOpenChat;
   final VoidCallback? onOpenCalendar;
   final VoidCallback? onOpenEvents;
+  final VoidCallback? onOpenFamily;
 
   @override
   Widget build(BuildContext context) {
@@ -94,12 +96,12 @@ class HomeScreen extends StatelessWidget {
                 subtitle: 'Family & federated RSVPs',
                 onTap: onOpenEvents!,
               ),
-            if (isParent)
+            if (isParent && onOpenFamily != null)
               _HomeTile(
                 icon: Icons.family_restroom_outlined,
                 title: 'Family controls',
-                subtitle: 'Coming soon',
-                onTap: () => _showComingSoon(context, 'Family controls'),
+                subtitle: 'Kids: chat rules, quiet hours, events',
+                onTap: onOpenFamily!,
               ),
           ],
         ),
@@ -107,11 +109,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature — coming soon')),
-    );
-  }
 }
 
 class _LocationSharingCard extends StatelessWidget {

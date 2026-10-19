@@ -53,6 +53,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Locations'), findsOneWidget);
+    expect(find.text('Family'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byType(NavigationBar),

@@ -1,6 +1,7 @@
 """Parent JSON API for members, invites, and permissions bearer auth."""
 
 import json
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -252,27 +253,65 @@ def test_invites_kid_forbidden(parent_api_env):
 def test_permissions_parent_bearer(parent_api_env):
     client, _, _ = parent_api_env
     token = _parent_bearer(client)
-    r = client.get("/permissions/kid1", headers=_auth(token=token))
-    assert r.status_code == 200
-    assert r.json()["role"] == "kid"
-    r2 = client.put(
-        "/permissions/kid1",
-        headers=_auth(token=token),
-        json={"events_enabled": False},
-    )
-    assert r2.status_code == 200
-    assert r2.json()["events_enabled"] is False
+    for path in ("/permissions/kid1", "/api/permissions/kid1"):
+        r = client.get(path, headers=_auth(token=token))
+        assert r.status_code == 200
+        assert r.json()["role"] == "kid"
+        r2 = client.put(
+            path,
+            headers=_auth(token=token),
+            json={"events_enabled": False},
+        )
+        assert r2.status_code == 200
+        assert r2.json()["events_enabled"] is False
 
 
 def test_permissions_kid_bearer_denied(parent_api_env):
     client, _, _ = parent_api_env
     t_kid = _kid_bearer(client)
-    assert client.get("/permissions/kid1", headers=_auth(token=t_kid)).status_code == 403
-    assert (
-        client.put(
-            "/permissions/kid1",
-            headers=_auth(token=t_kid),
-            json={"events_enabled": False},
-        ).status_code
-        == 403
+    for path in ("/permissions/kid1", "/api/permissions/kid1"):
+        assert client.get(path, headers=_auth(token=t_kid)).status_code == 403
+        assert (
+            client.put(
+                path,
+                headers=_auth(token=t_kid),
+                json={"events_enabled": False},
+            ).status_code
+            == 403
+        )
+
+
+def test_federation_parent_bearer(parent_api_env):
+    client, _, _ = parent_api_env
+    token = _parent_bearer(client)
+    r = client.get("/api/federation", headers=_auth(token=token))
+    assert r.status_code == 200
+    body = r.json()
+    assert "trusted_domains" in body
+    assert "peer_nodes" in body
+
+
+def test_federation_kid_forbidden(parent_api_env):
+    client, _, _ = parent_api_env
+    t_kid = _kid_bearer(client)
+    assert client.get("/api/federation", headers=_auth(token=t_kid)).status_code == 403
+
+
+def test_federation_api_read_only(parent_api_env, tmp_path, monkeypatch):
+    """GET /api/federation must not rewrite federation-state or policy files."""
+    client, _, _ = parent_api_env
+    state = tmp_path / "federation-state.json"
+    state.write_text(
+        json.dumps({"version": 1, "trusted_domains": ["peer-a.test"]}),
+        encoding="utf-8",
     )
+    policy_path = tmp_path / "family-policy.json"
+    policy_before = policy_path.read_text(encoding="utf-8")
+    state_before = state.read_text(encoding="utf-8")
+    monkeypatch.setenv("TWS_FEDERATION_STATE_PATH", str(state))
+    token = _parent_bearer(client)
+    r = client.get("/api/federation", headers=_auth(token=token))
+    assert r.status_code == 200
+    assert "peer-a.test" in r.json()["trusted_domains"]
+    assert state.read_text(encoding="utf-8") == state_before
+    assert policy_path.read_text(encoding="utf-8") == policy_before

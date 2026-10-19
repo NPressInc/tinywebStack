@@ -522,6 +522,155 @@ class KidTrackResponse {
   }
 }
 
+class QuietHoursConfig {
+  QuietHoursConfig({
+    required this.start,
+    required this.end,
+    required this.timezone,
+    this.days = const [0, 1, 2, 3, 4, 5, 6],
+  });
+
+  final String start;
+  final String end;
+  final String timezone;
+  final List<int> days;
+
+  bool get isConfigured => start.isNotEmpty && end.isNotEmpty;
+
+  factory QuietHoursConfig.fromJson(Map<String, dynamic>? json) {
+    if (json == null) {
+      return QuietHoursConfig(start: '', end: '', timezone: 'UTC');
+    }
+    final daysRaw = json['days'] as List<dynamic>?;
+    final days = daysRaw != null
+        ? daysRaw.map((d) => (d as num).toInt()).toList()
+        : const [0, 1, 2, 3, 4, 5, 6];
+    return QuietHoursConfig(
+      start: json['start'] as String? ?? '',
+      end: json['end'] as String? ?? '',
+      timezone: json['timezone'] as String? ?? 'UTC',
+      days: days,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+        'start': start,
+        'end': end,
+        'timezone': timezone,
+        'days': days,
+      };
+
+  QuietHoursConfig copyWith({
+    String? start,
+    String? end,
+    String? timezone,
+    List<int>? days,
+  }) {
+    return QuietHoursConfig(
+      start: start ?? this.start,
+      end: end ?? this.end,
+      timezone: timezone ?? this.timezone,
+      days: days ?? this.days,
+    );
+  }
+}
+
+class KidPermissions {
+  KidPermissions({
+    required this.mxid,
+    required this.username,
+    required this.role,
+    required this.eventsEnabled,
+    required this.allowlistMxids,
+    required this.allowlistDomains,
+    this.quietHours,
+  });
+
+  final String mxid;
+  final String username;
+  final String role;
+  final bool eventsEnabled;
+  final List<String> allowlistMxids;
+  final List<String> allowlistDomains;
+  final QuietHoursConfig? quietHours;
+
+  bool get quietHoursEnabled =>
+      quietHours != null && quietHours!.isConfigured;
+
+  factory KidPermissions.fromJson(Map<String, dynamic> json) {
+    final qh = json['quiet_hours'];
+    return KidPermissions(
+      mxid: json['mxid'] as String? ?? '',
+      username: json['username'] as String? ?? '',
+      role: json['role'] as String? ?? 'kid',
+      eventsEnabled: json['events_enabled'] as bool? ?? true,
+      allowlistMxids: (json['allowlist_mxids'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList(),
+      allowlistDomains: (json['allowlist_domains'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList(),
+      quietHours: qh is Map<String, dynamic>
+          ? QuietHoursConfig.fromJson(qh)
+          : null,
+    );
+  }
+
+  KidPermissions copyWith({
+    bool? eventsEnabled,
+    List<String>? allowlistMxids,
+    List<String>? allowlistDomains,
+    QuietHoursConfig? quietHours,
+    bool clearQuietHours = false,
+  }) {
+    return KidPermissions(
+      mxid: mxid,
+      username: username,
+      role: role,
+      eventsEnabled: eventsEnabled ?? this.eventsEnabled,
+      allowlistMxids: allowlistMxids ?? this.allowlistMxids,
+      allowlistDomains: allowlistDomains ?? this.allowlistDomains,
+      quietHours: clearQuietHours ? null : (quietHours ?? this.quietHours),
+    );
+  }
+}
+
+class FederationPeersResponse {
+  FederationPeersResponse({
+    required this.trustedDomains,
+    required this.peerNodes,
+  });
+
+  final List<String> trustedDomains;
+  final List<FederationPeerNode> peerNodes;
+
+  factory FederationPeersResponse.fromJson(Map<String, dynamic> json) {
+    final peers = json['peer_nodes'] as List<dynamic>? ?? [];
+    return FederationPeersResponse(
+      trustedDomains: (json['trusted_domains'] as List<dynamic>? ?? [])
+          .map((e) => e.toString())
+          .toList(),
+      peerNodes: peers
+          .map((e) => FederationPeerNode.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class FederationPeerNode {
+  FederationPeerNode({required this.name, required this.domain});
+
+  final String name;
+  final String domain;
+
+  factory FederationPeerNode.fromJson(Map<String, dynamic> json) {
+    return FederationPeerNode(
+      name: json['name'] as String? ?? '',
+      domain: json['domain'] as String? ?? '',
+    );
+  }
+}
+
 class AppMeProfile {
   AppMeProfile({
     required this.username,

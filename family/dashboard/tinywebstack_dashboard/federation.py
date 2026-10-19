@@ -142,8 +142,13 @@ def reconcile_state_with_policy(
     server_name: str,
     synapse_snippet_path: Optional[Path] = None,
     include_synapse_snippet: bool = True,
+    read_only: bool = False,
 ) -> List[str]:
-    """Ensure federation-state.json and family-policy trusted_domains stay in sync."""
+    """Ensure federation-state.json and family-policy trusted_domains stay in sync.
+
+    When ``read_only`` is true, compute the merged domain list without writing files
+    (for app JSON endpoints that must not mutate VM state).
+    """
     state = load_state(state_path)
     state_domains = _domain_list(state.get("trusted_domains"))
     policy_domains: List[str] = []
@@ -161,6 +166,8 @@ def reconcile_state_with_policy(
         policy_domains,
         server_name=server_name,
     )
+    if read_only:
+        return merged
     if merged != sorted(set(state_domains)):
         save_state(state_path, merged)
     if policy_path.is_file():
