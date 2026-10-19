@@ -131,6 +131,75 @@ class FamilyApiClient {
     return '$base$path$tail';
   }
 
+  String _dashboardUrl(EnrollmentBundle bundle, String suffix) {
+    final base = bundle.serverOrigin.endsWith('/')
+        ? bundle.serverOrigin.substring(0, bundle.serverOrigin.length - 1)
+        : bundle.serverOrigin;
+    final dash = bundle.discovery.dashboardBase.startsWith('/')
+        ? bundle.discovery.dashboardBase
+        : '/${bundle.discovery.dashboardBase}';
+    final tail = suffix.startsWith('/') ? suffix : '/$suffix';
+    return '$base$dash$tail';
+  }
+
+  Future<KidPermissions> fetchKidPermissions(
+    EnrollmentBundle bundle,
+    String username,
+  ) async {
+    final url = _dashboardUrl(
+      bundle,
+      '/permissions/${Uri.encodeComponent(username)}',
+    );
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return KidPermissions.fromJson(json);
+    }
+    _throwForStatus(response);
+  }
+
+  Future<KidPermissions> updateKidPermissions(
+    EnrollmentBundle bundle,
+    String username,
+    Map<String, dynamic> body,
+  ) async {
+    final url = _dashboardUrl(
+      bundle,
+      '/permissions/${Uri.encodeComponent(username)}',
+    );
+    final response = await _client.put(
+      Uri.parse(url),
+      headers: {
+        'Authorization': 'Bearer ${bundle.dashboardToken}',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(body),
+    );
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return KidPermissions.fromJson(json);
+    }
+    _throwForStatus(response);
+  }
+
+  Future<FederationPeersResponse> fetchFederationPeers(
+    EnrollmentBundle bundle,
+  ) async {
+    final url = _apiUrl(bundle, '/federation');
+    final response = await _client.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      return FederationPeersResponse.fromJson(json);
+    }
+    _throwForStatus(response);
+  }
+
   Future<AppMeProfile> fetchMe(EnrollmentBundle bundle) async {
     final url = bundle.meUrl(bundle.serverOrigin);
     final response = await _client.get(

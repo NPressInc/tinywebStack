@@ -111,7 +111,7 @@ Single **provisioning** flow so families sign in once:
 | **Calendar** | CalDAV on `TWS_CALDAV_ROOT` | Month/agenda; shared + personal calendars ([CALENDAR.md](CALENDAR.md)) | **Built** — read/write events; accept/decline iTIP invites |
 | **Events** | Mobilizon **GraphQL** at `mobilizon.<domain>` | List/detail, RSVP; show **PUBLIC** federated events ([EVENTS.md](EVENTS.md)) | **Built** — read + RSVP; **create event parents-only** (Mobilizon tokens from password enrollment) |
 | **Location** | OwnTracks Recorder **HTTP API** (`/api/0/...`) for parents; publish `POST .../recorder/pub` | Parents: family map in-app (read-only); kids: no map | Parents read-only; kids **publish in-app** (background, OwnTracks-format JSON — no OwnTracks app) |
-| **Parent controls** | `GET/PUT /family/permissions/{user}`; federation JSON exists | Allowlists, quiet hours, events toggle — mirror dashboard kid edit | Parents: read/write via API; needs JSON for **members / invites** (proposed) |
+| **Parent controls** | `GET/PUT /family/permissions/{user}`; `GET /family/api/federation` | Allowlists, quiet hours, events toggle — mirror dashboard kid edit | **Built** in app (Family tab); members list via `GET /family/api/members` |
 | **Chat** | `matrix-rust-sdk` (via `tinyweb_core`, frb) + Synapse | In-app room list, timeline, send, new DM; show `M_FORBIDDEN` from the module as friendly copy; rooms are created **encrypted**; recovery key / key backup set up at enrollment | Read/write (**in-app from Stage 1**) |
 
 ---
@@ -122,7 +122,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Stage 1 — Shell app (“everything” navigation)
 
-**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, **CalDAV calendar — built** (agenda list, create/edit/delete, family invites, accept/decline), **Mobilizon events — built** (list/detail, RSVP, parent create PUBLIC), parent location list + track API (map deferred), **in-app background location publishing — built** (OwnTracks-format JSON to `/recorder/pub`), parent controls (permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Chat is **end-to-end encrypted**: sqlite crypto store, cross-signing and key backup, with a recovery key shown at enrollment so a new phone can read history. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Native simplified sliding sync was confirmed on lab Synapse by the spike.
+**Deliverables:** Enrollment (proposed API or interim manual secret paste for dev), home, **CalDAV calendar — built** (agenda list, create/edit/delete, family invites, accept/decline), **Mobilizon events — built** (list/detail, RSVP, parent create PUBLIC), parent location list + track API (map deferred), **in-app background location publishing — built** (OwnTracks-format JSON to `/recorder/pub`), **parent controls — built** (Family tab + permissions API), and **in-app chat** (matrix-rust-sdk: room list, timeline, send). Chat is **end-to-end encrypted**: sqlite crypto store, cross-signing and key backup, with a recovery key shown at enrollment so a new phone can read history. Parent-key oversight is deferred; parents read a kid's chats only on the kid's device for now. Native simplified sliding sync was confirmed on lab Synapse by the spike.
 
 | Test | Pass criteria |
 |------|----------------|

@@ -276,3 +276,19 @@ def test_permissions_kid_bearer_denied(parent_api_env):
         ).status_code
         == 403
     )
+
+
+def test_federation_parent_bearer(parent_api_env):
+    client, _, _ = parent_api_env
+    token = _parent_bearer(client)
+    r = client.get("/api/federation", headers=_auth(token=token))
+    assert r.status_code == 200
+    body = r.json()
+    assert "trusted_domains" in body
+    assert "peer_nodes" in body
+
+
+def test_federation_kid_forbidden(parent_api_env):
+    client, _, _ = parent_api_env
+    t_kid = _kid_bearer(client)
+    assert client.get("/api/federation", headers=_auth(token=t_kid)).status_code == 403

@@ -7,6 +7,7 @@ import '../chat/chat_service.dart';
 import '../home/home_screen.dart';
 import '../calendar/calendar_screen.dart';
 import '../events/events_screen.dart';
+import '../family/kid_controls_screen.dart';
 import '../location/locations_screen.dart';
 
 class MainShell extends StatefulWidget {
@@ -107,7 +108,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   int _chatTabIndex() {
     if (_isParent) {
-      return _showEventsTab ? 4 : 3;
+      return _showEventsTab ? 5 : 4;
     }
     return _showEventsTab ? 3 : 2;
   }
@@ -115,6 +116,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _calendarTabIndex() => 1;
 
   int _eventsTabIndex() => 2;
+
+  int _familyTabIndex() => _showEventsTab ? 4 : 3;
 
   @override
   Widget build(BuildContext context) {
@@ -125,10 +128,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         onOpenCalendar: () => _selectTab(_calendarTabIndex()),
         onOpenEvents:
             _showEventsTab ? () => _selectTab(_eventsTabIndex()) : null,
+        onOpenFamily:
+            _isParent ? () => _selectTab(_familyTabIndex()) : null,
       ),
       CalendarScreen(session: widget.session),
       if (_showEventsTab) EventsScreen(session: widget.session),
       if (_isParent) LocationsScreen(session: widget.session),
+      if (_isParent) KidControlsScreen(session: widget.session),
       ChatListScreen(session: widget.session, chat: _chat),
     ];
 
@@ -154,6 +160,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           icon: Icon(Icons.location_on_outlined),
           selectedIcon: Icon(Icons.location_on),
           label: 'Locations',
+        ),
+      if (_isParent)
+        const NavigationDestination(
+          icon: Icon(Icons.family_restroom_outlined),
+          selectedIcon: Icon(Icons.family_restroom),
+          label: 'Family',
         ),
       const NavigationDestination(
         icon: Icon(Icons.chat_bubble_outline),

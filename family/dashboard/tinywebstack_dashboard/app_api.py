@@ -48,6 +48,11 @@ from tinywebstack_dashboard.member_ops import (
     reset_member_password,
     revoke_member_app_device,
 )
+from tinywebstack_dashboard.federation import (
+    read_nodes_conf,
+    reconcile_state_with_policy,
+    state_path_from_env,
+)
 from tinywebstack_dashboard.members import list_members
 from tinywebstack_dashboard.owntracks_recorder import (
     fetch_all_last,
@@ -606,6 +611,27 @@ def create_app_api_router(
                 "display_name": kid,
                 "hours": max(1, min(hours, 168)),
                 "points": track_points(rows),
+            }
+        )
+
+    @router.get("/api/federation")
+    async def api_federation(request: Request):
+        """Parent-only: trusted domains and linked peer nodes for allowlist UI."""
+        require_parent_user(api_user(request, cfg), cfg)
+        state_file = state_path_from_env()
+        policy_file = Path(cfg.policy_path)
+        domains = reconcile_state_with_policy(
+            state_file,
+            policy_file,
+            server_name=cfg.server_name,
+            include_synapse_snippet=False,
+        )
+        nodes_conf = Path(os.environ.get("TWS_NODES_CONF", "/etc/tinywebstack/nodes.conf"))
+        peer_nodes = [n for n in read_nodes_conf(nodes_conf) if n["domain"] != cfg.server_name]
+        return _no_store(
+            {
+                "trusted_domains": sorted(set(domains)),
+                "peer_nodes": peer_nodes,
             }
         )
 
