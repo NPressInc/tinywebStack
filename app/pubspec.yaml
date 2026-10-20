@@ -18,6 +18,9 @@ dependencies:
   flutter_secure_storage: ^9.2.4
   mobile_scanner: ^7.0.1
   url_launcher: ^6.3.1
+  image_picker: ^1.1.2
+  video_player: ^2.9.5
+  flutter_linkify: ^6.0.0
   path_provider: ^2.1.5
   freezed_annotation: ^3.0.0
   geolocator: ^14.0.2

@@ -27,7 +27,18 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan a QR code to enroll this device with your family TinyWeb box.</string>
+	<string>TinyWeb uses the camera to scan enrollment QR codes and to take photos and videos in family chat.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>TinyWeb lets you pick photos and videos from your library to share in family chat.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>TinyWeb can save images you receive in chat to your photo library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>TinyWeb uses the microphone when you record videos to send in family chat.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>https</string>
+		<string>http</string>
+	</array>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>TinyWeb shares this phone's location with your family's parents on your family's own server.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

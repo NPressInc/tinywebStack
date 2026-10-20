@@ -1,3 +1,6 @@
+#[path = "matrix_media_util.rs"]
+mod media_util;
+
 use std::{
     path::Path,
     sync::{
@@ -9,6 +12,9 @@ use std::{
 
 use anyhow::{anyhow, Context as _};
 use crate::frb_generated::StreamSink;
+use matrix_sdk::attachment::AttachmentConfig;
+use matrix_sdk::media::MediaThumbnailSettings;
+use mime::Mime;
 use matrix_sdk::{
     authentication::matrix::MatrixSession as AuthMatrixSession,
     config::SyncSettings,
@@ -71,6 +77,14 @@ pub struct TimelineMessage {
     pub ts_ms: i64,
     pub is_own: bool,
     pub utd: bool,
+    /// Matrix msgtype when this is media (`m.image`, `m.video`), else None for text-like.
+    pub msgtype: Option<String>,
+    pub filename: Option<String>,
+    pub mime_type: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    /// Video duration in milliseconds when known.
+    pub duration_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -106,6 +120,12 @@ pub struct IncomingMessage {
     pub ts_ms: i64,
     pub is_own: bool,
     pub utd: bool,
+    pub msgtype: Option<String>,
+    pub filename: Option<String>,
+    pub mime_type: Option<String>,
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    pub duration_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -117,6 +137,7 @@ pub enum SyncEvent {
 #[flutter_rust_bridge::frb(opaque)]
 pub struct MatrixSession {
     client: Option<Client>,
+    store_dir: String,
     sync_stop: Arc<AtomicBool>,
     sync_task: Mutex<Option<JoinHandle<()>>>,
     handler_handles: Mutex<Vec<matrix_sdk::event_handler::EventHandlerHandle>>,
@@ -191,6 +212,81 @@ fn body_from_msgtype(msgtype: &MessageType) -> Option<String> {
     }
 }
 
+fn empty_media_fields() -> (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<u32>,
+    Option<u32>,
+    Option<i64>,
+) {
+    (None, None, None, None, None, None)
+}
+
+fn media_fields_from_msgtype(msgtype: &MessageType) -> Option<(
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<u32>,
+    Option<u32>,
+    Option<i64>,
+)> {
+    match msgtype {
+        MessageType::Image(img) => {
+            let filename = img.filename().to_owned();
+            let body = img
+                .caption()
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| media_util::preview_body_for_filename(&filename, None));
+            let info = img.info.as_deref();
+            let mime_type = info.and_then(|i| i.mimetype.clone());
+            let width = info.and_then(|i| i.width).map(media_util::uint_to_u32);
+            let height = info.and_then(|i| i.height).map(media_util::uint_to_u32);
+            Some((
+                "m.image".to_owned(),
+                body,
+                Some(filename),
+                mime_type,
+                width,
+                height,
+                None,
+            ))
+        }
+        MessageType::Video(vid) => {
+            let filename = vid.filename().to_owned();
+            let body = vid
+                .caption()
+                .map(|s| s.to_owned())
+                .unwrap_or_else(|| media_util::preview_body_for_filename(&filename, None));
+            let info = vid.info.as_deref();
+            let mime_type = info.and_then(|i| i.mimetype.clone());
+            let width = info.and_then(|i| i.width).map(media_util::uint_to_u32);
+            let height = info.and_then(|i| i.height).map(media_util::uint_to_u32);
+            let duration_ms = info
+                .and_then(|i| i.duration)
+                .map(media_util::duration_ms_from_std);
+            Some((
+                "m.video".to_owned(),
+                body,
+                Some(filename),
+                mime_type,
+                width,
+                height,
+                duration_ms,
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn timeline_body_from_msgtype(msgtype: &MessageType) -> Option<String> {
+    if let Some((_, body, ..)) = media_fields_from_msgtype(msgtype) {
+        return Some(body);
+    }
+    body_from_msgtype(msgtype)
+}
+
 fn timeline_ts_ms(event: &TimelineEvent) -> i64 {
     event
         .timestamp
@@ -218,6 +314,7 @@ fn parse_timeline_message(
             .map(|u| u.to_string())
             .unwrap_or_default();
         let is_own = sender == own_user_id.to_string();
+        let (msgtype, filename, mime_type, width, height, duration_ms) = empty_media_fields();
         return Some(TimelineMessage {
             event_id,
             sender,
@@ -227,6 +324,12 @@ fn parse_timeline_message(
             ts_ms,
             is_own,
             utd: true,
+            msgtype,
+            filename,
+            mime_type,
+            width,
+            height,
+            duration_ms,
         });
     }
 
@@ -242,7 +345,15 @@ fn parse_timeline_message(
                     }
                     SyncMessageLikeEvent::Redacted(_) => return None,
                 };
-                let body = body_from_msgtype(&content.msgtype)?;
+                let body = timeline_body_from_msgtype(&content.msgtype)?;
+                let (msgtype, filename, mime_type, width, height, duration_ms) =
+                    if let Some((mt, _, fname, mime, w, h, dur)) =
+                        media_fields_from_msgtype(&content.msgtype)
+                    {
+                        (Some(mt), fname, mime, w, h, dur)
+                    } else {
+                        empty_media_fields()
+                    };
                 Some(TimelineMessage {
                     event_id,
                     sender: sender.to_string(),
@@ -251,6 +362,12 @@ fn parse_timeline_message(
                     ts_ms,
                     is_own: sender == *own_user_id,
                     utd: false,
+                    msgtype,
+                    filename,
+                    mime_type,
+                    width,
+                    height,
+                    duration_ms,
                 })
             }
             _ => None,
@@ -305,6 +422,7 @@ pub async fn restore_session(
 
     Ok(MatrixSession {
         client: Some(client),
+        store_dir,
         sync_stop: Arc::new(AtomicBool::new(false)),
         sync_task: Mutex::new(None),
         handler_handles: Mutex::new(Vec::new()),
@@ -336,6 +454,7 @@ pub async fn login(
 
     Ok(MatrixSession {
         client: Some(client),
+        store_dir,
         sync_stop: Arc::new(AtomicBool::new(false)),
         sync_task: Mutex::new(None),
         handler_handles: Mutex::new(Vec::new()),
@@ -544,6 +663,167 @@ impl MatrixSession {
         Ok(result.response.event_id.to_string())
     }
 
+    pub async fn send_media(
+        &self,
+        room_id: String,
+        file_path: String,
+        mime_type: String,
+        caption: Option<String>,
+    ) -> anyhow::Result<String> {
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+
+        let path = Path::new(&file_path);
+        let data = std::fs::read(path).context("read media file")?;
+        let filename = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("attachment")
+            .to_owned();
+        let content_type: Mime = mime_type.parse().context("parse mime_type")?;
+        let is_video = content_type.type_() == mime::VIDEO;
+
+        let mut config = AttachmentConfig::new().info(
+            media_util::attachment_info_for_mime(&content_type, &data, is_video),
+        );
+        if let Some(cap) = caption.filter(|c| !c.is_empty()) {
+            config = config.caption(Some(
+                matrix_sdk::ruma::events::room::message::TextMessageEventContent::plain(cap),
+            ));
+        }
+        if !is_video && content_type.type_() == mime::IMAGE {
+            if let Some(thumb) = media_util::make_image_thumbnail(&data) {
+                config = config.thumbnail(Some(thumb));
+            }
+        }
+
+        let result = room
+            .send_attachment(filename, &content_type, data, config)
+            .await
+            .map_err(map_send_error)?;
+        Ok(result.event_id.to_string())
+    }
+
+    pub async fn download_media(
+        &self,
+        room_id: String,
+        event_id: String,
+    ) -> anyhow::Result<String> {
+        let (filename, bytes) = self.fetch_media_bytes(&room_id, &event_id, false).await?;
+        self.write_media_cache_file(&event_id, &filename, bytes)
+    }
+
+    pub async fn download_thumbnail(
+        &self,
+        room_id: String,
+        event_id: String,
+    ) -> anyhow::Result<String> {
+        let (filename, bytes) = self.fetch_media_bytes(&room_id, &event_id, true).await?;
+        let thumb_name = format!("thumb_{}", filename);
+        self.write_media_cache_file(&event_id, &thumb_name, bytes)
+    }
+
+    async fn fetch_media_bytes(
+        &self,
+        room_id: &str,
+        event_id: &str,
+        thumbnail: bool,
+    ) -> anyhow::Result<(String, Vec<u8>)> {
+        let id = RoomId::parse(room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+        let eid = matrix_sdk::ruma::EventId::parse(event_id).context("parse event_id")?;
+        let event = room
+            .load_or_fetch_event(&eid, None)
+            .await
+            .context("load event")?;
+
+        let Ok(parsed) = event.raw().deserialize() else {
+            return Err(anyhow!("event is not a room message"));
+        };
+        let AnySyncTimelineEvent::MessageLike(like) = parsed else {
+            return Err(anyhow!("event is not message-like"));
+        };
+        let AnySyncMessageLikeEvent::RoomMessage(msg) = like else {
+            return Err(anyhow!("event is not m.room.message"));
+        };
+        let content = match msg {
+            SyncMessageLikeEvent::Original(o) => o.content,
+            SyncMessageLikeEvent::Redacted(_) => return Err(anyhow!("redacted message")),
+        };
+
+        let media = self.client().media();
+        match content.msgtype {
+            MessageType::Image(img) => {
+                let filename = img.filename().to_owned();
+                let bytes = if thumbnail {
+                    let settings = MediaThumbnailSettings::new(
+                        matrix_sdk::ruma::uint!(320),
+                        matrix_sdk::ruma::uint!(240),
+                    );
+                    media
+                        .get_thumbnail(&img, settings, true)
+                        .await
+                        .context("download thumbnail")?
+                        .ok_or_else(|| anyhow!("no thumbnail for image"))?
+                } else {
+                    media
+                        .get_file(&img, true)
+                        .await
+                        .context("download image")?
+                        .ok_or_else(|| anyhow!("no image file"))?
+                };
+                Ok((filename, bytes))
+            }
+            MessageType::Video(vid) => {
+                let filename = vid.filename().to_owned();
+                if thumbnail {
+                    let settings = MediaThumbnailSettings::new(
+                        matrix_sdk::ruma::uint!(320),
+                        matrix_sdk::ruma::uint!(240),
+                    );
+                    let bytes = media
+                        .get_thumbnail(&vid, settings, true)
+                        .await
+                        .context("download video thumbnail")?
+                        .ok_or_else(|| anyhow!("no thumbnail for video"))?;
+                    Ok((filename, bytes))
+                } else {
+                    let bytes = media
+                        .get_file(&vid, true)
+                        .await
+                        .context("download video")?
+                        .ok_or_else(|| anyhow!("no video file"))?;
+                    Ok((filename, bytes))
+                }
+            }
+            _ => Err(anyhow!("event is not image or video")),
+        }
+    }
+
+    fn write_media_cache_file(
+        &self,
+        event_id: &str,
+        filename: &str,
+        bytes: Vec<u8>,
+    ) -> anyhow::Result<String> {
+        let dir = Path::new(&self.store_dir).join("media_cache");
+        std::fs::create_dir_all(&dir).context("create media_cache")?;
+        let safe_event = event_id.replace('/', "_");
+        let safe_name = filename
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' { c } else { '_' })
+            .collect::<String>();
+        let path = dir.join(format!("{}_{}", safe_event, safe_name));
+        std::fs::write(&path, &bytes).context("write media cache")?;
+        Ok(path.to_string_lossy().into_owned())
+    }
+
     pub fn start_sync(&self, sink: StreamSink<SyncEvent>) {
         self.stop_sync();
 
@@ -566,12 +846,18 @@ impl MatrixSession {
                         return;
                     };
                     let was_encrypted = encryption_info.is_some();
-                    let body = match &original.content.msgtype {
-                        MessageType::Text(text) => text.body.clone(),
-                        MessageType::Notice(n) => n.body.clone(),
-                        MessageType::Emote(e) => format!("*{}*", e.body),
-                        _ => return,
+                    let body = match timeline_body_from_msgtype(&original.content.msgtype) {
+                        Some(b) => b,
+                        None => return,
                     };
+                    let (msgtype, filename, mime_type, width, height, duration_ms) =
+                        if let Some((mt, _, fname, mime, w, h, dur)) =
+                            media_fields_from_msgtype(&original.content.msgtype)
+                        {
+                            (Some(mt), fname, mime, w, h, dur)
+                        } else {
+                            empty_media_fields()
+                        };
                     let sender = original.sender.clone();
                     let display = member_display_name(&room, &sender).await;
                     let is_own = own_user == sender.to_string();
@@ -586,6 +872,12 @@ impl MatrixSession {
                         ts_ms,
                         is_own,
                         utd: false,
+                        msgtype,
+                        filename,
+                        mime_type,
+                        width,
+                        height,
+                        duration_ms,
                     };
                     let _ = sink.add(SyncEvent::Message(msg));
                 }

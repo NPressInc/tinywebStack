@@ -9,8 +9,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'matrix.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `body_from_msgtype`, `bootstrap_cross_signing`, `build_client`, `direct_room_display_name`, `encryption_initial_state`, `enrich_display_names`, `map_send_error`, `member_display_name`, `mxid_from_username`, `parse_timeline_message`, `recovery_state_label`, `runtime`, `server_name_from_homeserver`, `timeline_ts_ms`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `body_from_msgtype`, `bootstrap_cross_signing`, `build_client`, `client`, `direct_room_display_name`, `empty_media_fields`, `encryption_initial_state`, `enrich_display_names`, `fetch_media_bytes`, `map_send_error`, `media_fields_from_msgtype`, `member_display_name`, `mxid_from_username`, `parse_timeline_message`, `recovery_state_label`, `runtime`, `server_name_from_homeserver`, `timeline_body_from_msgtype`, `timeline_ts_ms`, `write_media_cache_file`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `drop`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 Future<MatrixSession> restoreSession({
   required String homeserverUrl,
@@ -63,7 +63,17 @@ abstract class MatrixSession implements RustOpaqueInterface {
     required String pushkey,
   });
 
+  Future<String> downloadMedia({
+    required String roomId,
+    required String eventId,
+  });
+
   Future<void> downloadRoomKeyBackup({required String roomId});
+
+  Future<String> downloadThumbnail({
+    required String roomId,
+    required String eventId,
+  });
 
   Future<EncryptionStatus> encryptionStatus();
 
@@ -86,6 +96,13 @@ abstract class MatrixSession implements RustOpaqueInterface {
   Future<List<TimelineMessage>> roomTimeline({
     required String roomId,
     required int limit,
+  });
+
+  Future<String> sendMedia({
+    required String roomId,
+    required String filePath,
+    required String mimeType,
+    String? caption,
   });
 
   Future<String> sendText({required String roomId, required String body});
@@ -153,6 +170,12 @@ class IncomingMessage {
   final PlatformInt64 tsMs;
   final bool isOwn;
   final bool utd;
+  final String? msgtype;
+  final String? filename;
+  final String? mimeType;
+  final int? width;
+  final int? height;
+  final PlatformInt64? durationMs;
 
   const IncomingMessage({
     required this.roomId,
@@ -164,6 +187,12 @@ class IncomingMessage {
     required this.tsMs,
     required this.isOwn,
     required this.utd,
+    this.msgtype,
+    this.filename,
+    this.mimeType,
+    this.width,
+    this.height,
+    this.durationMs,
   });
 
   @override
@@ -176,7 +205,13 @@ class IncomingMessage {
       wasEncrypted.hashCode ^
       tsMs.hashCode ^
       isOwn.hashCode ^
-      utd.hashCode;
+      utd.hashCode ^
+      msgtype.hashCode ^
+      filename.hashCode ^
+      mimeType.hashCode ^
+      width.hashCode ^
+      height.hashCode ^
+      durationMs.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -191,7 +226,13 @@ class IncomingMessage {
           wasEncrypted == other.wasEncrypted &&
           tsMs == other.tsMs &&
           isOwn == other.isOwn &&
-          utd == other.utd;
+          utd == other.utd &&
+          msgtype == other.msgtype &&
+          filename == other.filename &&
+          mimeType == other.mimeType &&
+          width == other.width &&
+          height == other.height &&
+          durationMs == other.durationMs;
 }
 
 class OwnDeviceInfo {
@@ -307,6 +348,16 @@ class TimelineMessage {
   final bool isOwn;
   final bool utd;
 
+  /// Matrix msgtype when this is media (`m.image`, `m.video`), else None for text-like.
+  final String? msgtype;
+  final String? filename;
+  final String? mimeType;
+  final int? width;
+  final int? height;
+
+  /// Video duration in milliseconds when known.
+  final PlatformInt64? durationMs;
+
   const TimelineMessage({
     required this.eventId,
     required this.sender,
@@ -315,6 +366,12 @@ class TimelineMessage {
     required this.tsMs,
     required this.isOwn,
     required this.utd,
+    this.msgtype,
+    this.filename,
+    this.mimeType,
+    this.width,
+    this.height,
+    this.durationMs,
   });
 
   @override
@@ -325,7 +382,13 @@ class TimelineMessage {
       body.hashCode ^
       tsMs.hashCode ^
       isOwn.hashCode ^
-      utd.hashCode;
+      utd.hashCode ^
+      msgtype.hashCode ^
+      filename.hashCode ^
+      mimeType.hashCode ^
+      width.hashCode ^
+      height.hashCode ^
+      durationMs.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -338,5 +401,11 @@ class TimelineMessage {
           body == other.body &&
           tsMs == other.tsMs &&
           isOwn == other.isOwn &&
-          utd == other.utd;
+          utd == other.utd &&
+          msgtype == other.msgtype &&
+          filename == other.filename &&
+          mimeType == other.mimeType &&
+          width == other.width &&
+          height == other.height &&
+          durationMs == other.durationMs;
 }

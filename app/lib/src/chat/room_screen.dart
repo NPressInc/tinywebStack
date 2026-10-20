@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../api/models.dart';
 import '../brand.dart';
 import '../widgets/quiet_hours_banner.dart';
 import 'chat_models.dart';
 import 'chat_service.dart';
+import 'message_bubble.dart';
 
 class RoomScreen extends StatefulWidget {
   const RoomScreen({
@@ -29,6 +31,7 @@ class RoomScreen extends StatefulWidget {
 class _RoomScreenState extends State<RoomScreen> {
   final _composer = TextEditingController();
   final _scroll = ScrollController();
+  final _picker = ImagePicker();
   List<ChatMessage> _messages = [];
   String? _errorBanner;
   StreamSubscription<ChatSyncEvent>? _syncSub;
@@ -105,15 +108,116 @@ class _RoomScreenState extends State<RoomScreen> {
       setState(() => _messages = [..._messages, msg]);
       _scrollToBottom();
     } on ChatSendException catch (e) {
-      final text = e.message;
-      if (text.startsWith('forbidden:')) {
-        setState(() {
-          _errorBanner = 'Not allowed: ${text.substring('forbidden:'.length).trim()}';
-        });
-      } else {
-        setState(() => _errorBanner = text);
-      }
+      _showSendError(e.message);
     }
+  }
+
+  void _showSendError(String text) {
+    if (text.startsWith('forbidden:')) {
+      setState(() {
+        _errorBanner = 'Not allowed: ${text.substring('forbidden:'.length).trim()}';
+      });
+    } else {
+      setState(() => _errorBanner = text);
+    }
+  }
+
+  Future<void> _pickAttachment(ImageSource source, {required bool video}) async {
+    setState(() => _errorBanner = null);
+    final caption = _composer.text.trim();
+    if (caption.isNotEmpty) {
+      _composer.clear();
+    }
+    try {
+      final XFile? file = video
+          ? await _picker.pickVideo(source: source)
+          : await _picker.pickImage(source: source);
+      if (file == null) {
+        return;
+      }
+      final mime = video ? 'video/mp4' : _guessImageMime(file.path);
+      final eventId = await widget.chat.sendMedia(
+        widget.roomId,
+        file.path,
+        mime,
+        caption: caption.isEmpty ? null : caption,
+      );
+      if (_messages.any((m) => m.eventId == eventId)) {
+        return;
+      }
+      final name = file.name;
+      final body = caption.isNotEmpty ? caption : '[$name]';
+      final msg = ChatMessage(
+        eventId: eventId,
+        body: body,
+        senderId: widget.profile.mxid,
+        senderDisplayName: widget.profile.username,
+        tsMs: DateTime.now().millisecondsSinceEpoch,
+        isOwn: true,
+        msgtype: video ? 'm.video' : 'm.image',
+        filename: name,
+        mimeType: mime,
+      );
+      setState(() => _messages = [..._messages, msg]);
+      _scrollToBottom();
+    } on ChatSendException catch (e) {
+      _showSendError(e.message);
+    } catch (e) {
+      setState(() => _errorBanner = e.toString());
+    }
+  }
+
+  String _guessImageMime(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.png')) return 'image/png';
+    if (lower.endsWith('.gif')) return 'image/gif';
+    if (lower.endsWith('.webp')) return 'image/webp';
+    return 'image/jpeg';
+  }
+
+  Future<void> _showAttachSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Photo from gallery'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAttachment(ImageSource.gallery, video: false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.video_library_outlined),
+              title: const Text('Video from gallery'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAttachment(ImageSource.gallery, video: true);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take photo'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAttachment(ImageSource.camera, video: false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Record video'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAttachment(ImageSource.camera, video: true);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -144,7 +248,11 @@ class _RoomScreenState extends State<RoomScreen> {
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final m = _messages[index];
-                      return _MessageBubble(message: m);
+                      return MessageBubble(
+                        message: m,
+                        roomId: widget.roomId,
+                        chat: widget.chat,
+                      );
                     },
                   ),
           ),
@@ -153,6 +261,10 @@ class _RoomScreenState extends State<RoomScreen> {
               padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
               child: Row(
                 children: [
+                  IconButton(
+                    icon: const Icon(Icons.attach_file),
+                    onPressed: _showAttachSheet,
+                  ),
                   Expanded(
                     child: TextField(
                       controller: _composer,
@@ -170,89 +282,6 @@ class _RoomScreenState extends State<RoomScreen> {
                   ),
                 ],
               ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
-
-  final ChatMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final time = DateTime.fromMillisecondsSinceEpoch(message.tsMs);
-    final timeLabel =
-        '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
-
-    final align = message.isOwn ? CrossAxisAlignment.end : CrossAxisAlignment.start;
-    final utd = message.utd;
-    final color = utd
-        ? Colors.grey.shade200
-        : (message.isOwn ? TinyWebColors.blueDeep : Colors.white);
-    final textColor = utd
-        ? Colors.grey.shade700
-        : (message.isOwn ? Colors.white : TinyWebColors.text);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Column(
-        crossAxisAlignment: align,
-        children: [
-          if (!message.isOwn)
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 2),
-              child: Text(
-                message.senderLabel,
-                style: Theme.of(context).textTheme.labelSmall,
-              ),
-            ),
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(12),
-              border: message.isOwn
-                  ? null
-                  : Border.all(color: TinyWebColors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (utd) ...[
-                      Icon(Icons.lock_outline, size: 14, color: textColor),
-                      const SizedBox(width: 6),
-                    ],
-                    Flexible(
-                      child: Text(
-                        message.body,
-                        style: TextStyle(
-                          color: textColor,
-                          fontStyle: utd ? FontStyle.italic : FontStyle.normal,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  timeLabel,
-                  style: TextStyle(
-                    color: textColor.withValues(alpha: 0.75),
-                    fontSize: 11,
-                  ),
-                ),
-              ],
             ),
           ),
         ],

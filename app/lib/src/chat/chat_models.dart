@@ -27,6 +27,12 @@ class ChatMessage {
     required this.tsMs,
     required this.isOwn,
     this.utd = false,
+    this.msgtype,
+    this.filename,
+    this.mimeType,
+    this.width,
+    this.height,
+    this.durationMs,
   });
 
   final String eventId;
@@ -36,6 +42,33 @@ class ChatMessage {
   final int tsMs;
   final bool isOwn;
   final bool utd;
+  final String? msgtype;
+  final String? filename;
+  final String? mimeType;
+  final int? width;
+  final int? height;
+  final int? durationMs;
 
   String get senderLabel => senderDisplayName ?? senderId;
+
+  bool get isImage => msgtype == 'm.image';
+
+  bool get isVideo => msgtype == 'm.video';
+
+  bool get isMedia => isImage || isVideo;
+
+  /// User-written caption for media, if any (excludes filename placeholder bodies).
+  String? get mediaCaption {
+    if (!isMedia) {
+      return null;
+    }
+    final fname = filename;
+    if (fname != null && body == '[$fname]') {
+      return null;
+    }
+    if (body.startsWith('[') && body.endsWith(']')) {
+      return null;
+    }
+    return body;
+  }
 }

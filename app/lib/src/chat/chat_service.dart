@@ -5,6 +5,7 @@ import '../api/models.dart';
 import '../matrix/matrix_session_opener.dart';
 import '../rust/api/matrix.dart' as rust;
 import '../storage/credential_store.dart';
+import 'chat_message_mapper.dart';
 import 'chat_models.dart';
 
 abstract class ChatService {
@@ -23,6 +24,17 @@ abstract class ChatService {
   Future<List<ChatMember>> loadMembers(String roomId);
 
   Future<String> sendMessage(String roomId, String body);
+
+  Future<String> sendMedia(
+    String roomId,
+    String filePath,
+    String mimeType, {
+    String? caption,
+  });
+
+  Future<String> downloadMedia(String roomId, String eventId);
+
+  Future<String> downloadThumbnail(String roomId, String eventId);
 
   Future<String> createDirectChat(String userId);
 
@@ -83,6 +95,26 @@ class UnconfiguredChatService implements ChatService {
   }
 
   @override
+  Future<String> sendMedia(
+    String roomId,
+    String filePath,
+    String mimeType, {
+    String? caption,
+  }) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
+  Future<String> downloadMedia(String roomId, String eventId) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
+  Future<String> downloadThumbnail(String roomId, String eventId) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
   Future<String> createDirectChat(String userId) async {
     throw StateError('Chat not configured');
   }
@@ -112,6 +144,10 @@ class FakeChatService implements ChatService {
   final Map<String, List<ChatMessage>> _timelines = {};
   final _sync = StreamController<ChatSyncEvent>.broadcast();
   bool forbiddenSend;
+
+  /// Local paths returned by [downloadMedia] / [downloadThumbnail] for fakes.
+  final Map<String, String> mediaPaths = {};
+  final Map<String, String> thumbnailPaths = {};
 
   @override
   bool get isConfigured => true;
@@ -167,6 +203,59 @@ class FakeChatService implements ChatService {
     _updateRoomPreview(roomId, body, msg.tsMs);
     _sync.add(ChatSyncEvent.message(roomId, msg));
     return id;
+  }
+
+  @override
+  Future<String> sendMedia(
+    String roomId,
+    String filePath,
+    String mimeType, {
+    String? caption,
+  }) async {
+    if (forbiddenSend) {
+      throw ChatSendException('forbidden: Not allowed during quiet hours');
+    }
+    final id = 'evt_${DateTime.now().microsecondsSinceEpoch}';
+    final name = filePath.split('/').last;
+    final isVideo = mimeType.startsWith('video/');
+    final body = (caption != null && caption.isNotEmpty)
+        ? caption
+        : '[$name]';
+    final msg = ChatMessage(
+      eventId: id,
+      body: body,
+      senderId: '@me:family.test',
+      senderDisplayName: 'Me',
+      tsMs: DateTime.now().millisecondsSinceEpoch,
+      isOwn: true,
+      msgtype: isVideo ? 'm.video' : 'm.image',
+      filename: name,
+      mimeType: mimeType,
+    );
+    mediaPaths[id] = filePath;
+    thumbnailPaths[id] = filePath;
+    _timelines.putIfAbsent(roomId, () => []).add(msg);
+    _updateRoomPreview(roomId, body, msg.tsMs);
+    _sync.add(ChatSyncEvent.message(roomId, msg));
+    return id;
+  }
+
+  @override
+  Future<String> downloadMedia(String roomId, String eventId) async {
+    final path = mediaPaths[eventId];
+    if (path == null) {
+      throw StateError('no fake media for $eventId');
+    }
+    return path;
+  }
+
+  @override
+  Future<String> downloadThumbnail(String roomId, String eventId) async {
+    final path = thumbnailPaths[eventId] ?? mediaPaths[eventId];
+    if (path == null) {
+      throw StateError('no fake thumbnail for $eventId');
+    }
+    return path;
   }
 
   void _updateRoomPreview(String roomId, String body, int tsMs) {
@@ -295,19 +384,7 @@ class RustChatService implements ChatService {
   @override
   Future<List<ChatMessage>> loadTimeline(String roomId, {int limit = 50}) async {
     final raw = await _s.roomTimeline(roomId: roomId, limit: limit);
-    return raw
-        .map(
-          (m) => ChatMessage(
-            eventId: m.eventId,
-            body: m.body,
-            senderId: m.sender,
-            senderDisplayName: m.senderDisplayName,
-            tsMs: m.tsMs.toInt(),
-            isOwn: m.isOwn,
-            utd: m.utd,
-          ),
-        )
-        .toList();
+    return raw.map(chatMessageFromTimeline).toList();
   }
 
   @override
@@ -332,6 +409,39 @@ class RustChatService implements ChatService {
   }
 
   @override
+  Future<String> sendMedia(
+    String roomId,
+    String filePath,
+    String mimeType, {
+    String? caption,
+  }) async {
+    try {
+      return await _s.sendMedia(
+        roomId: roomId,
+        filePath: filePath,
+        mimeType: mimeType,
+        caption: caption,
+      );
+    } catch (e) {
+      final text = e.toString();
+      if (text.contains('forbidden:')) {
+        throw ChatSendException(text);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String> downloadMedia(String roomId, String eventId) async {
+    return _s.downloadMedia(roomId: roomId, eventId: eventId);
+  }
+
+  @override
+  Future<String> downloadThumbnail(String roomId, String eventId) async {
+    return _s.downloadThumbnail(roomId: roomId, eventId: eventId);
+  }
+
+  @override
   Future<String> createDirectChat(String userId) async {
     return _s.createDirectChat(userId: userId);
   }
@@ -344,16 +454,7 @@ class RustChatService implements ChatService {
       event.map(
         message: (wrapped) {
           final msg = wrapped.field0;
-          final chatMsg = ChatMessage(
-            eventId: msg.eventId,
-            body: msg.body,
-            senderId: msg.sender,
-            senderDisplayName: msg.senderDisplayName,
-            tsMs: msg.tsMs.toInt(),
-            isOwn: msg.isOwn,
-            utd: msg.utd,
-          );
-          _sync.add(ChatSyncEvent.message(msg.roomId, chatMsg));
+          _sync.add(ChatSyncEvent.message(msg.roomId, chatMessageFromIncoming(msg)));
         },
         roomsChanged: (_) {
           refreshRooms();
