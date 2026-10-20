@@ -20,7 +20,7 @@ class MobilizonClient {
     http.Client? client,
   })  : _apiUrl = apiUrl.replaceAll(RegExp(r'/+$'), ''),
         _client = client ?? defaultTlsHttpClient(),
-        _ownsClient = client == null;
+        _ownsClient = client != null;
 
   final String _apiUrl;
   final String accessToken;

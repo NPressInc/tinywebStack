@@ -23,9 +23,11 @@ String enrollPlatformLabel() {
 
 class FamilyApiClient {
   FamilyApiClient({http.Client? client})
-      : _client = client ?? defaultTlsHttpClient();
+      : _client = client ?? defaultTlsHttpClient(),
+        _ownsClient = client != null;
 
   final http.Client _client;
+  final bool _ownsClient;
 
   Future<EnrollmentBundle> enroll({
     required FamilyDiscovery discovery,
@@ -530,6 +532,8 @@ class FamilyApiClient {
   }
 
   void close() {
-    _client.close();
+    if (_ownsClient) {
+      _client.close();
+    }
   }
 }

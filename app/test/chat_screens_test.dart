@@ -184,7 +184,8 @@ void main() {
       '!r1',
       ChatMessage(
         eventId: 'e1',
-        body: 'Unable to decrypt this message',
+        body:
+            'Unable to decrypt — sent before this device joined, or restore your recovery key',
         senderId: '@bob:family.test',
         tsMs: 1,
         isOwn: false,
@@ -204,7 +205,12 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Unable to decrypt this message'), findsOneWidget);
+    expect(
+      find.text(
+        'Unable to decrypt — sent before this device joined, or restore your recovery key',
+      ),
+      findsOneWidget,
+    );
     expect(find.byIcon(Icons.lock_outline), findsOneWidget);
   });
 

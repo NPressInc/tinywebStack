@@ -34,3 +34,9 @@ Future<rust.MatrixSession> openMatrixSession({
   await session.syncOnce();
   return session;
 }
+
+/// Stops sync and releases the native session (drops the Matrix SDK client on the Rust runtime).
+Future<void> releaseMatrixSession(rust.MatrixSession session) async {
+  await session.stopSync();
+  session.dispose();
+}

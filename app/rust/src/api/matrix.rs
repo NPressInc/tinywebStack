@@ -116,7 +116,7 @@ pub enum SyncEvent {
 
 #[flutter_rust_bridge::frb(opaque)]
 pub struct MatrixSession {
-    client: Client,
+    client: Option<Client>,
     sync_stop: Arc<AtomicBool>,
     sync_task: Mutex<Option<JoinHandle<()>>>,
     handler_handles: Mutex<Vec<matrix_sdk::event_handler::EventHandlerHandle>>,
@@ -222,7 +222,8 @@ fn parse_timeline_message(
             event_id,
             sender,
             sender_display_name: None,
-            body: "Unable to decrypt this message".to_owned(),
+            body: "Unable to decrypt — sent before this device joined, or restore your recovery key"
+                .to_owned(),
             ts_ms,
             is_own,
             utd: true,
@@ -303,7 +304,7 @@ pub async fn restore_session(
     client.restore_session(session).await.context("restore_session")?;
 
     Ok(MatrixSession {
-        client,
+        client: Some(client),
         sync_stop: Arc::new(AtomicBool::new(false)),
         sync_task: Mutex::new(None),
         handler_handles: Mutex::new(Vec::new()),
@@ -334,7 +335,7 @@ pub async fn login(
         .context("matrix login")?;
 
     Ok(MatrixSession {
-        client,
+        client: Some(client),
         sync_stop: Arc::new(AtomicBool::new(false)),
         sync_task: Mutex::new(None),
         handler_handles: Mutex::new(Vec::new()),
@@ -342,15 +343,21 @@ pub async fn login(
 }
 
 impl MatrixSession {
-    pub fn user_id(&self) -> String {
+    fn client(&self) -> &Client {
         self.client
+            .as_ref()
+            .expect("matrix session client already released")
+    }
+
+    pub fn user_id(&self) -> String {
+        self.client()
             .user_id()
             .map(|u| u.to_string())
             .unwrap_or_default()
     }
 
     pub async fn sync_once(&self) -> anyhow::Result<()> {
-        self.client
+        self.client()
             .sync_once(SyncSettings::default().timeout(Duration::from_secs(30)))
             .await
             .context("sync_once")?;
@@ -358,13 +365,11 @@ impl MatrixSession {
     }
 
     pub async fn list_rooms(&self) -> anyhow::Result<Vec<RoomSummary>> {
-        let own_user = self
-            .client
-            .user_id()
+        let own_user =         self.client().user_id()
             .ok_or_else(|| anyhow!("not logged in"))?;
 
         let mut out = Vec::new();
-        for room in self.client.joined_rooms() {
+        for room in self.client().joined_rooms() {
             let room_id = room.room_id().to_string();
             let is_direct = room.is_direct().await.unwrap_or(false);
             let name = if is_direct {
@@ -419,14 +424,10 @@ impl MatrixSession {
         room_id: String,
         limit: u32,
     ) -> anyhow::Result<Vec<TimelineMessage>> {
-        let own_user = self
-            .client
-            .user_id()
+        let own_user =         self.client().user_id()
             .ok_or_else(|| anyhow!("not logged in"))?;
         let id = RoomId::parse(&room_id).context("parse room_id")?;
-        let room = self
-            .client
-            .get_room(&id)
+        let room =         self.client().get_room(&id)
             .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
 
         let mut options = MessagesOptions::backward();
@@ -444,9 +445,7 @@ impl MatrixSession {
 
     pub async fn room_members(&self, room_id: String) -> anyhow::Result<Vec<RoomMemberInfo>> {
         let id = RoomId::parse(&room_id).context("parse room_id")?;
-        let room = self
-            .client
-            .get_room(&id)
+        let room =         self.client().get_room(&id)
             .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
         let members = room.members(RoomMemberships::ACTIVE).await.context("room members")?;
         Ok(members
@@ -460,7 +459,7 @@ impl MatrixSession {
 
     pub async fn create_direct_chat(&self, user_id: String) -> anyhow::Result<String> {
         let uid = UserId::parse(&user_id).context("parse user_id")?;
-        for room in self.client.get_dm_rooms(&uid) {
+        for room in self.client().get_dm_rooms(&uid) {
             let encrypted = room
                 .latest_encryption_state()
                 .await
@@ -477,7 +476,7 @@ impl MatrixSession {
             preset: Some(create_room::v3::RoomPreset::TrustedPrivateChat),
             initial_state: vec![encryption_initial_state()],
         });
-        let room = self.client.create_room(request).await.context("create_direct_chat")?;
+        let room = self.client().create_room(request).await.context("create_direct_chat")?;
         Ok(room.room_id().to_string())
     }
 
@@ -514,20 +513,20 @@ impl MatrixSession {
             initial_state,
         });
 
-        let room = self.client.create_room(request).await.context("create_room")?;
+        let room = self.client().create_room(request).await.context("create_room")?;
         Ok(room.room_id().to_string())
     }
 
     pub async fn join_room(&self, room_id: String) -> anyhow::Result<()> {
         let id = RoomId::parse(&room_id).context("parse room_id")?;
-        if let Some(room) = self.client.get_room(&id) {
+        if let Some(room) = self.client().get_room(&id) {
             if room.state() == RoomState::Joined {
                 return Ok(());
             }
             room.join().await.context("join via invited room")?;
             return Ok(());
         }
-        self.client
+        self.client()
             .join_room_by_id(&id)
             .await
             .context("join_room_by_id")?;
@@ -536,9 +535,7 @@ impl MatrixSession {
 
     pub async fn send_text(&self, room_id: String, body: String) -> anyhow::Result<String> {
         let id = RoomId::parse(&room_id).context("parse room_id")?;
-        let room = self
-            .client
-            .get_room(&id)
+        let room =         self.client().get_room(&id)
             .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
         let result = room
             .send(RoomMessageEventContent::text_plain(body))
@@ -551,7 +548,7 @@ impl MatrixSession {
         self.stop_sync();
 
         let own_user = self.user_id();
-        let client = self.client.clone();
+        let client = self.client().clone();
         let stop = self.sync_stop.clone();
         stop.store(false, Ordering::SeqCst);
 
@@ -646,12 +643,12 @@ impl MatrixSession {
         let mut guard = self.handler_handles.lock().expect("handler lock");
         let handles: Vec<_> = guard.drain(..).collect();
         for h in handles {
-            self.client.remove_event_handler(h);
+            self.client().remove_event_handler(h);
         }
     }
 
     pub async fn try_sliding_sync(&self) -> String {
-        let versions = self.client.available_sliding_sync_versions().await;
+        let versions = self.client().available_sliding_sync_versions().await;
         let native_supported = versions
             .iter()
             .any(|v| matches!(v, SlidingSyncVersion::Native));
@@ -663,9 +660,7 @@ impl MatrixSession {
         }
 
         let sync_result = async {
-            let sliding = self
-                .client
-                .sliding_sync("spike-ss")?
+            let sliding =         self.client().sliding_sync("spike-ss")?
                 .version(SlidingSyncVersion::Native)
                 .add_list(
                     SlidingSyncList::builder("rooms").sync_mode(
@@ -691,7 +686,7 @@ impl MatrixSession {
 
     pub async fn logout(&self) -> anyhow::Result<()> {
         self.stop_sync();
-        self.client
+        self.client()
             .matrix_auth()
             .logout()
             .await
@@ -700,24 +695,20 @@ impl MatrixSession {
     }
 
     pub async fn encryption_status(&self) -> anyhow::Result<EncryptionStatus> {
-        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
-        let _ = self.client.sync_once(SyncSettings::default()).await;
+        self.client().encryption().wait_for_e2ee_initialization_tasks().await;
+        let _ = self.client().sync_once(SyncSettings::default()).await;
 
-        let recovery = self.client.encryption().recovery();
+        let recovery = self.client().encryption().recovery();
         let state = recovery.state();
         let recovery_state = recovery_state_label(state);
 
-        let backup_enabled = self.client.encryption().backups().are_enabled().await;
-        let cross_signing_ready = self
-            .client
-            .encryption()
+        let backup_enabled = self.client().encryption().backups().are_enabled().await;
+        let cross_signing_ready =         self.client().encryption()
             .cross_signing_status()
             .await
             .map(|s| s.is_complete())
             .unwrap_or(false);
-        let device_verified = self
-            .client
-            .encryption()
+        let device_verified =         self.client().encryption()
             .get_own_device()
             .await
             .ok()
@@ -734,18 +725,16 @@ impl MatrixSession {
     }
 
     pub async fn reset_recovery(&self, password: Option<String>) -> anyhow::Result<String> {
-        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        self.client().encryption().wait_for_e2ee_initialization_tasks().await;
         let pwd = password
             .as_deref()
             .ok_or_else(|| anyhow!("password required for reset_recovery"))?;
 
-        let recovery = self.client.encryption().recovery();
+        let recovery = self.client().encryption().recovery();
         if let Some(handle) = recovery.reset_identity().await.context("reset_identity")? {
             match handle.auth_type() {
                 CrossSigningResetAuthType::Uiaa(uiaa) => {
-                    let user_id = self
-                        .client
-                        .user_id()
+                    let user_id =         self.client().user_id()
                         .ok_or_else(|| anyhow!("not logged in"))?;
                     let mut password_auth =
                         uiaa::Password::new(user_id.to_owned().into(), pwd.to_owned());
@@ -770,8 +759,8 @@ impl MatrixSession {
     }
 
     pub async fn flush_key_backup(&self) -> anyhow::Result<()> {
-        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
-        let backups = self.client.encryption().backups();
+        self.client().encryption().wait_for_e2ee_initialization_tasks().await;
+        let backups = self.client().encryption().backups();
         let wait = backups.wait_for_steady_state();
         match tokio::time::timeout(Duration::from_secs(300), wait).await {
             Ok(Ok(())) => Ok(()),
@@ -784,9 +773,9 @@ impl MatrixSession {
     }
 
     pub async fn download_room_key_backup(&self, room_id: String) -> anyhow::Result<()> {
-        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
+        self.client().encryption().wait_for_e2ee_initialization_tasks().await;
         let id = RoomId::parse(&room_id).context("parse room_id")?;
-        self.client
+        self.client()
             .encryption()
             .backups()
             .download_room_keys_for_room(&id)
@@ -796,10 +785,10 @@ impl MatrixSession {
     }
 
     pub async fn setup_recovery(&self, password: Option<String>) -> anyhow::Result<String> {
-        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
-        bootstrap_cross_signing(&self.client, password.as_deref()).await?;
+        self.client().encryption().wait_for_e2ee_initialization_tasks().await;
+        bootstrap_cross_signing(self.client(), password.as_deref()).await?;
 
-        let recovery = self.client.encryption().recovery();
+        let recovery = self.client().encryption().recovery();
         if recovery.state() == RecoveryState::Enabled {
             return Err(anyhow!("recovery already enabled on this device"));
         }
@@ -815,8 +804,8 @@ impl MatrixSession {
     }
 
     pub async fn recover(&self, recovery_key: String) -> anyhow::Result<()> {
-        self.client.encryption().wait_for_e2ee_initialization_tasks().await;
-        self.client
+        self.client().encryption().wait_for_e2ee_initialization_tasks().await;
+        self.client()
             .encryption()
             .recovery()
             .recover_and_fix_backup(&recovery_key)
@@ -826,23 +815,17 @@ impl MatrixSession {
     }
 
     pub async fn list_own_devices(&self) -> anyhow::Result<Vec<OwnDeviceInfo>> {
-        let own_user = self
-            .client
-            .user_id()
+        let own_user =         self.client().user_id()
             .ok_or_else(|| anyhow!("not logged in"))?;
-        let current_id = self
-            .client
-            .encryption()
+        let current_id =         self.client().encryption()
             .get_own_device()
             .await
             .ok()
             .flatten()
             .map(|d| d.device_id().to_string());
 
-        let response = self.client.devices().await.context("list devices")?;
-        let crypto_devices = self
-            .client
-            .encryption()
+        let response = self.client().devices().await.context("list devices")?;
+        let crypto_devices =         self.client().encryption()
             .get_user_devices(own_user)
             .await
             .context("crypto devices")?;
@@ -879,9 +862,7 @@ impl MatrixSession {
 
         let mut http_data = HttpPusherData::new(gateway_url);
         http_data.format = Some(PushFormat::EventIdOnly);
-        let device_name = self
-            .client
-            .device_id()
+        let device_name =         self.client().device_id()
             .map(|d| d.to_string())
             .unwrap_or_else(|| "TinyWeb device".to_owned());
         let pusher = Pusher::from(PusherInit {
@@ -892,7 +873,7 @@ impl MatrixSession {
             profile_tag: None,
             lang: lang.unwrap_or_else(|| "en".to_owned()),
         });
-        self.client
+        self.client()
             .send(v3::Request::post(pusher))
             .await
             .context("set_http_pusher")?;
@@ -906,7 +887,7 @@ impl MatrixSession {
     ) -> anyhow::Result<()> {
         use matrix_sdk::ruma::api::client::push::{PusherIds, set_pusher::v3};
 
-        self.client
+        self.client()
             .send(v3::Request::delete(PusherIds::new(pushkey, app_id)))
             .await
             .context("delete_http_pusher")?;
@@ -915,13 +896,26 @@ impl MatrixSession {
 
     pub async fn user_identity_verified(&self, user_id: String) -> anyhow::Result<bool> {
         let uid = UserId::parse(&user_id).context("parse user_id")?;
-        let identity = self
-            .client
-            .encryption()
+        let identity =         self.client().encryption()
             .get_user_identity(&uid)
             .await
             .context("get_user_identity")?;
         Ok(identity.map(|i| i.is_verified()).unwrap_or(false))
+    }
+}
+
+impl Drop for MatrixSession {
+    fn drop(&mut self) {
+        if self.client.is_some() {
+            self.stop_sync();
+        }
+        if let Some(client) = self.client.take() {
+            let rt = runtime();
+            let _guard = rt.enter();
+            rt.spawn(async move {
+                drop(client);
+            });
+        }
     }
 }
 

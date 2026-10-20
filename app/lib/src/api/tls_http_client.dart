@@ -44,6 +44,11 @@ void resetDefaultTlsHttpClientForTests() {
   resetSharedTlsSecurityContextForTests();
 }
 
+/// Installs a shared default client (unit tests only).
+void setDefaultTlsHttpClientForTests(http.Client client) {
+  _defaultTlsHttpClient = client;
+}
+
 http.Client tlsHttpClientFromEnvironment() {
   return createTlsHttpClient();
 }

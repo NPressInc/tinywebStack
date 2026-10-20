@@ -29,7 +29,7 @@ class MapBasemapConfig:
     def to_api_dict(self, public_base_url: str, assets_query: str) -> dict[str, Any]:
         base = _site_origin(public_base_url)
         q = f"?{assets_query}" if assets_query else ""
-        tiles_url = f"{base}/family/tiles/{self.tiles_path}"
+        tiles_url = f"{base}/family/tiles/{self.tiles_path}{q}"
         glyphs_url = f"{base}/family/tiles/{self.glyphs_path}{q}"
         sprites_url = f"{base}/family/tiles/{self.sprites_path}{q}"
         style_url = f"{base}/family/tiles/style.json{q}"

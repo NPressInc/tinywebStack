@@ -55,21 +55,24 @@ class _SecureRecoveryScreenState extends State<SecureRecoveryScreen> {
         store: widget.session.credentialStore,
         caCertPem: widget.caCertPem,
       );
-      final status = await matrix.encryptionStatus();
-      await matrix.stopSync();
+      try {
+        final status = await matrix.encryptionStatus();
 
-      if (status.recoveryState == 'enabled') {
-        await widget.session.finishE2eeSetup();
-        return;
+        if (status.recoveryState == 'enabled') {
+          await widget.session.finishE2eeSetup();
+          return;
+        }
+
+        final needsExistingKey = status.recoveryState == 'incomplete' ||
+            (status.backupEnabled && status.recoveryState != 'enabled');
+
+        setState(() {
+          _flow = needsExistingKey ? _Flow.enterKey : _Flow.createKey;
+          _busy = false;
+        });
+      } finally {
+        await releaseMatrixSession(matrix);
       }
-
-      final needsExistingKey = status.recoveryState == 'incomplete' ||
-          (status.backupEnabled && status.recoveryState != 'enabled');
-
-      setState(() {
-        _flow = needsExistingKey ? _Flow.enterKey : _Flow.createKey;
-        _busy = false;
-      });
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -90,16 +93,19 @@ class _SecureRecoveryScreenState extends State<SecureRecoveryScreen> {
         store: widget.session.credentialStore,
         caCertPem: widget.caCertPem,
       );
-      final key = await matrix.setupRecovery(
-        password: widget.session.pendingEnrollPassword,
-      );
-      await matrix.stopSync();
-      await widget.session.credentialStore.writeMatrixRecoveryKey(key);
-      setState(() {
-        _recoveryKey = key;
-        _flow = _Flow.showKey;
-        _busy = false;
-      });
+      try {
+        final key = await matrix.setupRecovery(
+          password: widget.session.pendingEnrollPassword,
+        );
+        await widget.session.credentialStore.writeMatrixRecoveryKey(key);
+        setState(() {
+          _recoveryKey = key;
+          _flow = _Flow.showKey;
+          _busy = false;
+        });
+      } finally {
+        await releaseMatrixSession(matrix);
+      }
     } catch (e) {
       final text = e.toString();
       if (text.contains('needs_recovery_key:')) {
@@ -135,10 +141,13 @@ class _SecureRecoveryScreenState extends State<SecureRecoveryScreen> {
         store: widget.session.credentialStore,
         caCertPem: widget.caCertPem,
       );
-      await matrix.recover(recoveryKey: key);
-      await matrix.stopSync();
-      await widget.session.credentialStore.writeMatrixRecoveryKey(key);
-      await widget.session.finishE2eeSetup();
+      try {
+        await matrix.recover(recoveryKey: key);
+        await widget.session.credentialStore.writeMatrixRecoveryKey(key);
+        await widget.session.finishE2eeSetup();
+      } finally {
+        await releaseMatrixSession(matrix);
+      }
     } catch (e) {
       setState(() {
         _error = 'Could not recover: $e';
