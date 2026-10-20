@@ -46,6 +46,7 @@ write_dnsmasq_conf() {
   cat >"$DNSMASQ_CONF" <<EOF
 # Managed by tinywebstack phone-access.sh
 bind-dynamic
+no-hosts
 listen-address=${ts_ip}
 port=53
 no-resolv
