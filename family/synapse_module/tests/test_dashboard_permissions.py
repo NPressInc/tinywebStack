@@ -84,6 +84,7 @@ def test_setup_with_main_domain_uses_absolute_urls_on_create():
         "home.example.com/.well-known/tinywebstack-family.json",
         "home.example.com/family/api/app/enroll",
         "home.example.com/family/api/",
+        "home.example.com/family/tiles/",
     ]
     push_pub = created["synapse.family_push_public"]
     assert push_pub["url"] == "push.home.example.com/"
@@ -128,6 +129,7 @@ def test_setup_with_main_domain_uses_absolute_urls_on_update():
         "home.example.com/.well-known/tinywebstack-family.json",
         "home.example.com/family/api/app/enroll",
         "home.example.com/family/api/",
+        "home.example.com/family/tiles/",
     ]
     push_pub = by_name["synapse.family_push_public"]
     assert push_pub["url"] == "push.home.example.com/"

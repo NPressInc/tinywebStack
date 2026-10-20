@@ -51,7 +51,7 @@ class _LocationsScreenState extends State<LocationsScreen> {
     if (widget.api == null) {
       _api.close();
     }
-    if (widget.httpClient == null) {
+    if (widget.httpClient != null) {
       _mapHttpClient.close();
     }
     super.dispose();

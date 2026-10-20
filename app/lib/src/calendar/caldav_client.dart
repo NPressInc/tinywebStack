@@ -59,7 +59,7 @@ class CalDavClient {
     http.Client? client,
     bool ownsClient = true,
   })  : _client = client ?? defaultTlsHttpClient(),
-        _ownsClient = client == null ? true : ownsClient;
+        _ownsClient = client != null && ownsClient;
 
   factory CalDavClient.withClient({
     required String root,

@@ -848,6 +848,7 @@ def test_map_available_with_pmtiles(app_env, monkeypatch, tmp_path):
     assert data["available"] is True
     assert data["bounds"] == [-109.0, 39.0, -104.0, 41.0]
     assert data["tiles_url"].startswith("https://family-a.test/family/tiles/")
+    assert "t=" in data["tiles_url"]
     assert "t=" in data["glyphs_url"]
 
 

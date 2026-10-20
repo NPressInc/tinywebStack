@@ -26,11 +26,13 @@ class LocationPublisher {
     Future<Directory> Function()? queueDirectory,
     DateTime Function()? clock,
   })  : _client = httpClient ?? defaultTlsHttpClient(),
+        _ownsClient = httpClient != null,
         _queueDirectory = queueDirectory ?? _defaultQueueDir,
         _clock = clock ?? DateTime.now;
 
   final OwnTracksCredentials _credentials;
   final http.Client _client;
+  final bool _ownsClient;
   final Future<Directory> Function() _queueDirectory;
   final DateTime Function() _clock;
 
@@ -286,7 +288,9 @@ class LocationPublisher {
   }
 
   void close() {
-    _client.close();
+    if (_ownsClient) {
+      _client.close();
+    }
   }
 }
 

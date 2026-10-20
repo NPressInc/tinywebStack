@@ -354,6 +354,34 @@ class EnrollmentBundle {
     return raw.isEmpty ? null : raw;
   }
 
+  EnrollmentBundle withMobilizonTokens({
+    required String accessToken,
+    String? refreshToken,
+  }) {
+    final raw = Map<String, dynamic>.from(rawJson ?? {});
+    final mob = Map<String, dynamic>.from(
+      (raw['mobilizon'] as Map<String, dynamic>?) ?? {},
+    );
+    mob['access_token'] = accessToken;
+    if (refreshToken != null) {
+      mob['refresh_token'] = refreshToken;
+    }
+    raw['mobilizon'] = mob;
+    return EnrollmentBundle(
+      deviceId: deviceId,
+      username: username,
+      role: role,
+      mxid: mxid,
+      serverName: serverName,
+      dashboardToken: dashboardToken,
+      apiBase: apiBase,
+      serverOrigin: serverOrigin,
+      discovery: discovery,
+      matrixHomeserverUrl: matrixHomeserverUrl,
+      rawJson: raw,
+    );
+  }
+
   OwnTracksCredentials? get owntracksCredentials =>
       OwnTracksCredentials.fromEnrollment(this);
 }

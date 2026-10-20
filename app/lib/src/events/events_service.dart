@@ -1,6 +1,7 @@
 import 'package:http/http.dart' as http;
 
 import '../api/models.dart';
+import '../storage/credential_store.dart';
 import 'events_models.dart';
 import 'mobilizon_client.dart';
 
@@ -103,12 +104,16 @@ class EventsService {
   EventsService({
     required this._bundle,
     http.Client? httpClient,
+    this._credentialStore,
+    this._onEnrollmentUpdated,
   })  : _httpClient = httpClient,
         _ownsHttp = httpClient == null;
 
-  final EnrollmentBundle _bundle;
+  EnrollmentBundle _bundle;
   final http.Client? _httpClient;
   final bool _ownsHttp;
+  final CredentialStore? _credentialStore;
+  final void Function(EnrollmentBundle bundle)? _onEnrollmentUpdated;
 
   MobilizonClient? _client;
   String? _defaultActorId;
@@ -125,9 +130,23 @@ class EventsService {
     _client ??= MobilizonClient(
       apiUrl: creds.apiUrl,
       accessToken: creds.accessToken,
+      refreshToken: creds.refreshToken,
+      onTokensRefreshed: _persistMobilizonTokens,
       client: _httpClient,
     );
     return _client!;
+  }
+
+  Future<void> _persistMobilizonTokens(
+    String accessToken,
+    String? refreshToken,
+  ) async {
+    _bundle = _bundle.withMobilizonTokens(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    );
+    await _credentialStore?.write(_bundle);
+    _onEnrollmentUpdated?.call(_bundle);
   }
 
   Future<String> defaultActorId() async {

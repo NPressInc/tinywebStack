@@ -8,9 +8,11 @@ import 'models.dart';
 
 class DiscoveryClient {
   DiscoveryClient({http.Client? client})
-      : _client = client ?? defaultTlsHttpClient();
+      : _client = client ?? defaultTlsHttpClient(),
+        _ownsClient = client != null;
 
   final http.Client _client;
+  final bool _ownsClient;
 
   static String wellKnownUrl(String serverOrigin) {
     final base = serverOrigin.endsWith('/')
@@ -32,6 +34,8 @@ class DiscoveryClient {
   }
 
   void close() {
-    _client.close();
+    if (_ownsClient) {
+      _client.close();
+    }
   }
 }
