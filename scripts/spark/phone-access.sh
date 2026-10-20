@@ -63,7 +63,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/dnsmasq --keep-in-cache --conf-file=${DNSMASQ_CONF}
+ExecStart=/usr/sbin/dnsmasq --conf-file=${DNSMASQ_CONF}
 Restart=on-failure
 
 [Install]
