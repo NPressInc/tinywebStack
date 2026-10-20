@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../api/tls_http_client.dart';
+
 import 'caldav_xml.dart';
 import 'ics.dart';
 
@@ -56,7 +58,7 @@ class CalDavClient {
     required this.password,
     http.Client? client,
     bool ownsClient = true,
-  })  : _client = client ?? http.Client(),
+  })  : _client = client ?? defaultTlsHttpClient(),
         _ownsClient = client == null ? true : ownsClient;
 
   factory CalDavClient.withClient({

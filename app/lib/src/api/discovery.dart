@@ -2,10 +2,13 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import 'tls_http_client.dart';
+
 import 'models.dart';
 
 class DiscoveryClient {
-  DiscoveryClient({http.Client? client}) : _client = client ?? http.Client();
+  DiscoveryClient({http.Client? client})
+      : _client = client ?? defaultTlsHttpClient();
 
   final http.Client _client;
 

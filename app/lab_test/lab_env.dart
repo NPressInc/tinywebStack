@@ -1,6 +1,6 @@
-import 'dart:convert';
 import 'dart:io';
 
+import 'package:tinyweb/src/api/lab_ca_config.dart';
 import 'package:tinyweb/src/api/tls_http_client.dart';
 
 String? _resolveIp;
@@ -55,31 +55,16 @@ void installLabTestHttpOverrides() {
     _labHostSuffix = Uri.parse(hs).host;
   }
 
-  final caFile = Platform.environment['TW_CA_FILE'];
-  HttpOverrides.global = _LabHttpOverrides(caFile: caFile);
+  HttpOverrides.global = _LabHttpOverrides();
 
   // HttpClient() already routes through the global override above.
   registerLabHttpClientFactory((SecurityContext context) => HttpClient(context: context));
 }
 
 class _LabHttpOverrides extends HttpOverrides {
-  _LabHttpOverrides({this.caFile});
-
-  final String? caFile;
-
   @override
   HttpClient createHttpClient(SecurityContext? context) {
-    final SecurityContext ctx;
-    if (context != null) {
-      ctx = context;
-    } else if (caFile != null && caFile!.isNotEmpty) {
-      ctx = SecurityContext(withTrustedRoots: true)
-        ..setTrustedCertificatesBytes(
-          utf8.encode(File(caFile!).readAsStringSync()),
-        );
-    } else {
-      ctx = SecurityContext(withTrustedRoots: true);
-    }
+    final ctx = context ?? sharedTlsSecurityContext();
     final client = super.createHttpClient(ctx);
     _applyLabConnectionFactory(client, ctx);
     return client;

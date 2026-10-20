@@ -29,7 +29,7 @@ class LocationsScreen extends StatefulWidget {
 class _LocationsScreenState extends State<LocationsScreen> {
   late final FamilyApiClient _api = widget.api ?? FamilyApiClient();
   late final http.Client _mapHttpClient =
-      widget.httpClient ?? tlsHttpClientFromEnvironment();
+      widget.httpClient ?? defaultTlsHttpClient();
   List<KidLocationSnapshot> _kids = [];
   String? _status;
   bool _loading = true;

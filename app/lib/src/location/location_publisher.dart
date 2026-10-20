@@ -4,6 +4,8 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:http/http.dart' as http;
+
+import '../api/tls_http_client.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../api/models.dart';
@@ -23,7 +25,7 @@ class LocationPublisher {
     http.Client? httpClient,
     Future<Directory> Function()? queueDirectory,
     DateTime Function()? clock,
-  })  : _client = httpClient ?? http.Client(),
+  })  : _client = httpClient ?? defaultTlsHttpClient(),
         _queueDirectory = queueDirectory ?? _defaultQueueDir,
         _clock = clock ?? DateTime.now;
 

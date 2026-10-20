@@ -52,6 +52,15 @@ flutter test lab_test/
 
 Lab tests in `lab_test/` run **one at a time** (`dart_test.yaml` sets `concurrency: 1`) because they use the same lab accounts and `e2ee_bridge_test` resets cross-signing identity.
 
+### Lab APK for a physical phone (spark)
+
+```bash
+./scripts/spark/build-lab-apk.sh
+# → ~/tinyweb-phone/tinyweb-lab.apk (release if possible, else debug)
+```
+
+Uses `TW_LAB_CA_FILE` (default `~/.tinywebstack-secrets/lab-ca/lab-ca.crt.pem`) and embeds the CA via `TW_LAB_CA_PEM_B64`. See [docs/PHONE_TESTING.md](../docs/PHONE_TESTING.md).
+
 ### Debug APK on spark
 
 Google ships no linux-arm64 NDK, aapt2 or Android `gen_snapshot`, so **release APKs and iOS builds come from CI** (`.github/workflows/app.yml`). On spark, `flutter build apk --debug --target-platform android-arm64` works (about 190 s cold) once these user-space swaps are in place under `~/sdk/android`:
@@ -101,7 +110,17 @@ GraphQL client in `lib/src/events/` talks to `mobilizon.<domain>/api` with the `
 
 ## Lab TLS
 
-Lab family boxes use a **private CA**. Install the lab CA on a physical device for HTTPS enrollment — the app does **not** disable TLS verification. Pass the lab CA PEM into the Matrix Rust facade when testing on the host (`TW_CA_FILE` above).
+Lab family boxes use a **private CA**. The app **never** disables TLS verification (`badCertificateCallback` is not used).
+
+| Context | How the lab CA is supplied |
+|---------|----------------------------|
+| **Phone / release APK** | Build-time `--dart-define=TW_LAB_CA_PEM_B64=<base64 PEM>` (see `scripts/spark/build-lab-apk.sh`) |
+| **Host `lab_test/`** | `TW_CA_FILE` pointing at the lab CA PEM (plus optional `TW_RESOLVE_IP`) |
+| **Matrix (Rust)** | Same PEM as above via `labCaPemForMatrix()` → `caCertPem` on login/restore |
+
+Dart HTTP clients share `sharedTlsSecurityContext(withTrustedRoots: true)` and add the lab CA with `setTrustedCertificatesBytes` when configured. Android **debug** builds also trust user-installed CAs via `network_security_config` (release manifest unchanged).
+
+Physical phone testing: [docs/PHONE_TESTING.md](../docs/PHONE_TESTING.md).
 
 ### Lab DNS on spark (`TW_RESOLVE_IP`)
 

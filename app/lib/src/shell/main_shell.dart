@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/family_api.dart';
+import '../api/lab_ca_config.dart';
 import '../api/models.dart';
 import '../app_session.dart';
 import '../chat/chat_list_screen.dart';
@@ -46,6 +47,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _chat = RustChatService(
           bundle: bundle,
           credentialStore: widget.session.credentialStore,
+          caCertPem: labCaPemForMatrix(),
         );
         _bootstrapRustChat();
       } else {

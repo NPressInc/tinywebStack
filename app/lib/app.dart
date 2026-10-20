@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'src/api/lab_ca_config.dart';
 import 'src/app_session.dart';
 import 'src/brand.dart';
 import 'src/enroll/enroll_screen.dart';
@@ -55,7 +56,10 @@ class _TinyWebAppState extends State<TinyWebApp> {
           bannerMessage: _session.enrollBannerMessage,
         );
       case AppRoute.secureChats:
-        return SecureRecoveryScreen(session: _session);
+        return SecureRecoveryScreen(
+          session: _session,
+          caCertPem: labCaPemForMatrix(),
+        );
       case AppRoute.locationExplainer:
         return LocationExplainerScreen(session: _session);
       case AppRoute.home:
