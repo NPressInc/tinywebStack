@@ -21,6 +21,7 @@ dependencies:
   image_picker: ^1.1.2
   video_player: ^2.9.5
   flutter_linkify: ^6.0.0
+  linkify: ^5.0.0
   path_provider: ^2.1.5
   freezed_annotation: ^3.0.0
   geolocator: ^14.0.2
