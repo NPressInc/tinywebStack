@@ -69,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.13.0';
 
   @override
-  int get rustContentHash => -1072040662;
+  int get rustContentHash => 1931887862;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -99,9 +99,21 @@ abstract class RustLibApi extends BaseApi {
     required String pushkey,
   });
 
+  Future<String> crateApiMatrixMatrixSessionDownloadMedia({
+    required MatrixSession that,
+    required String roomId,
+    required String eventId,
+  });
+
   Future<void> crateApiMatrixMatrixSessionDownloadRoomKeyBackup({
     required MatrixSession that,
     required String roomId,
+  });
+
+  Future<String> crateApiMatrixMatrixSessionDownloadThumbnail({
+    required MatrixSession that,
+    required String roomId,
+    required String eventId,
   });
 
   Future<EncryptionStatus> crateApiMatrixMatrixSessionEncryptionStatus({
@@ -146,6 +158,14 @@ abstract class RustLibApi extends BaseApi {
     required MatrixSession that,
     required String roomId,
     required int limit,
+  });
+
+  Future<String> crateApiMatrixMatrixSessionSendMedia({
+    required MatrixSession that,
+    required String roomId,
+    required String filePath,
+    required String mimeType,
+    String? caption,
   });
 
   Future<String> crateApiMatrixMatrixSessionSendText({
@@ -353,6 +373,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiMatrixMatrixSessionDownloadMedia({
+    required MatrixSession that,
+    required String roomId,
+    required String eventId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(roomId, serializer);
+          sse_encode_String(eventId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionDownloadMediaConstMeta,
+        argValues: [that, roomId, eventId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionDownloadMediaConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_download_media",
+        argNames: ["that", "roomId", "eventId"],
+      );
+
+  @override
   Future<void> crateApiMatrixMatrixSessionDownloadRoomKeyBackup({
     required MatrixSession that,
     required String roomId,
@@ -369,7 +429,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 5,
             port: port_,
           );
         },
@@ -392,6 +452,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiMatrixMatrixSessionDownloadThumbnail({
+    required MatrixSession that,
+    required String roomId,
+    required String eventId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(roomId, serializer);
+          sse_encode_String(eventId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 6,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionDownloadThumbnailConstMeta,
+        argValues: [that, roomId, eventId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionDownloadThumbnailConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_download_thumbnail",
+        argNames: ["that", "roomId", "eventId"],
+      );
+
+  @override
   Future<EncryptionStatus> crateApiMatrixMatrixSessionEncryptionStatus({
     required MatrixSession that,
   }) {
@@ -406,7 +506,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 7,
             port: port_,
           );
         },
@@ -442,7 +542,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 8,
             port: port_,
           );
         },
@@ -480,7 +580,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 9,
             port: port_,
           );
         },
@@ -516,7 +616,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 10,
             port: port_,
           );
         },
@@ -552,7 +652,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 11,
             port: port_,
           );
         },
@@ -588,7 +688,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 12,
             port: port_,
           );
         },
@@ -626,7 +726,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 11,
+            funcId: 13,
             port: port_,
           );
         },
@@ -664,7 +764,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 12,
+            funcId: 14,
             port: port_,
           );
         },
@@ -702,7 +802,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 13,
+            funcId: 15,
             port: port_,
           );
         },
@@ -742,7 +842,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 14,
+            funcId: 16,
             port: port_,
           );
         },
@@ -764,6 +864,50 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<String> crateApiMatrixMatrixSessionSendMedia({
+    required MatrixSession that,
+    required String roomId,
+    required String filePath,
+    required String mimeType,
+    String? caption,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_Auto_Ref_RustOpaque_flutter_rust_bridgefor_generatedRustAutoOpaqueInnerMatrixSession(
+            that,
+            serializer,
+          );
+          sse_encode_String(roomId, serializer);
+          sse_encode_String(filePath, serializer);
+          sse_encode_String(mimeType, serializer);
+          sse_encode_opt_String(caption, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 17,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_AnyhowException,
+        ),
+        constMeta: kCrateApiMatrixMatrixSessionSendMediaConstMeta,
+        argValues: [that, roomId, filePath, mimeType, caption],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiMatrixMatrixSessionSendMediaConstMeta =>
+      const TaskConstMeta(
+        debugName: "MatrixSession_send_media",
+        argNames: ["that", "roomId", "filePath", "mimeType", "caption"],
+      );
+
+  @override
   Future<String> crateApiMatrixMatrixSessionSendText({
     required MatrixSession that,
     required String roomId,
@@ -782,7 +926,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 15,
+            funcId: 18,
             port: port_,
           );
         },
@@ -826,7 +970,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 16,
+            funcId: 19,
             port: port_,
           );
         },
@@ -864,7 +1008,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 17,
+            funcId: 20,
             port: port_,
           );
         },
@@ -903,7 +1047,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             pdeCallFfi(
               generalizedFrbRustBinding,
               serializer,
-              funcId: 18,
+              funcId: 21,
               port: port_,
             );
           },
@@ -941,7 +1085,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 19,
+            funcId: 22,
             port: port_,
           );
         },
@@ -977,7 +1121,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 20,
+            funcId: 23,
             port: port_,
           );
         },
@@ -1013,7 +1157,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 21,
+            funcId: 24,
             port: port_,
           );
         },
@@ -1049,7 +1193,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 22,
+            funcId: 25,
             port: port_,
           );
         },
@@ -1087,7 +1231,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 23,
+            funcId: 26,
             port: port_,
           );
         },
@@ -1117,7 +1261,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 24,
+            funcId: 27,
             port: port_,
           );
         },
@@ -1159,7 +1303,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 25,
+            funcId: 28,
             port: port_,
           );
         },
@@ -1220,7 +1364,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 26,
+            funcId: 29,
             port: port_,
           );
         },
@@ -1330,6 +1474,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
   EncryptionStatus dco_decode_encryption_status(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
@@ -1353,8 +1503,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   IncomingMessage dco_decode_incoming_message(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 9)
-      throw Exception('unexpected arr length: expect 9 but see ${arr.length}');
+    if (arr.length != 15)
+      throw Exception('unexpected arr length: expect 15 but see ${arr.length}');
     return IncomingMessage(
       roomId: dco_decode_String(arr[0]),
       sender: dco_decode_String(arr[1]),
@@ -1365,6 +1515,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       tsMs: dco_decode_i_64(arr[6]),
       isOwn: dco_decode_bool(arr[7]),
       utd: dco_decode_bool(arr[8]),
+      msgtype: dco_decode_opt_String(arr[9]),
+      filename: dco_decode_opt_String(arr[10]),
+      mimeType: dco_decode_opt_String(arr[11]),
+      width: dco_decode_opt_box_autoadd_u_32(arr[12]),
+      height: dco_decode_opt_box_autoadd_u_32(arr[13]),
+      durationMs: dco_decode_opt_box_autoadd_i_64(arr[14]),
     );
   }
 
@@ -1414,6 +1570,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_i_64(raw);
+  }
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
   }
 
   @protected
@@ -1479,8 +1641,8 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TimelineMessage dco_decode_timeline_message(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 7)
-      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
+    if (arr.length != 13)
+      throw Exception('unexpected arr length: expect 13 but see ${arr.length}');
     return TimelineMessage(
       eventId: dco_decode_String(arr[0]),
       sender: dco_decode_String(arr[1]),
@@ -1489,6 +1651,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       tsMs: dco_decode_i_64(arr[4]),
       isOwn: dco_decode_bool(arr[5]),
       utd: dco_decode_bool(arr[6]),
+      msgtype: dco_decode_opt_String(arr[7]),
+      filename: dco_decode_opt_String(arr[8]),
+      mimeType: dco_decode_opt_String(arr[9]),
+      width: dco_decode_opt_box_autoadd_u_32(arr[10]),
+      height: dco_decode_opt_box_autoadd_u_32(arr[11]),
+      durationMs: dco_decode_opt_box_autoadd_i_64(arr[12]),
     );
   }
 
@@ -1601,6 +1769,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_u_32(deserializer));
+  }
+
+  @protected
   EncryptionStatus sse_decode_encryption_status(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_crossSigningReady = sse_decode_bool(deserializer);
@@ -1633,6 +1807,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_tsMs = sse_decode_i_64(deserializer);
     var var_isOwn = sse_decode_bool(deserializer);
     var var_utd = sse_decode_bool(deserializer);
+    var var_msgtype = sse_decode_opt_String(deserializer);
+    var var_filename = sse_decode_opt_String(deserializer);
+    var var_mimeType = sse_decode_opt_String(deserializer);
+    var var_width = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_height = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_durationMs = sse_decode_opt_box_autoadd_i_64(deserializer);
     return IncomingMessage(
       roomId: var_roomId,
       sender: var_sender,
@@ -1643,6 +1823,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       tsMs: var_tsMs,
       isOwn: var_isOwn,
       utd: var_utd,
+      msgtype: var_msgtype,
+      filename: var_filename,
+      mimeType: var_mimeType,
+      width: var_width,
+      height: var_height,
+      durationMs: var_durationMs,
     );
   }
 
@@ -1742,6 +1928,17 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_u_32(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   OwnDeviceInfo sse_decode_own_device_info(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_deviceId = sse_decode_String(deserializer);
@@ -1813,6 +2010,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_tsMs = sse_decode_i_64(deserializer);
     var var_isOwn = sse_decode_bool(deserializer);
     var var_utd = sse_decode_bool(deserializer);
+    var var_msgtype = sse_decode_opt_String(deserializer);
+    var var_filename = sse_decode_opt_String(deserializer);
+    var var_mimeType = sse_decode_opt_String(deserializer);
+    var var_width = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_height = sse_decode_opt_box_autoadd_u_32(deserializer);
+    var var_durationMs = sse_decode_opt_box_autoadd_i_64(deserializer);
     return TimelineMessage(
       eventId: var_eventId,
       sender: var_sender,
@@ -1821,6 +2024,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       tsMs: var_tsMs,
       isOwn: var_isOwn,
       utd: var_utd,
+      msgtype: var_msgtype,
+      filename: var_filename,
+      mimeType: var_mimeType,
+      width: var_width,
+      height: var_height,
+      durationMs: var_durationMs,
     );
   }
 
@@ -1955,6 +2164,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self, serializer);
+  }
+
+  @protected
   void sse_encode_encryption_status(
     EncryptionStatus self,
     SseSerializer serializer,
@@ -1987,6 +2202,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_64(self.tsMs, serializer);
     sse_encode_bool(self.isOwn, serializer);
     sse_encode_bool(self.utd, serializer);
+    sse_encode_opt_String(self.msgtype, serializer);
+    sse_encode_opt_String(self.filename, serializer);
+    sse_encode_opt_String(self.mimeType, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.width, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.height, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.durationMs, serializer);
   }
 
   @protected
@@ -2080,6 +2301,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_u_32(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_own_device_info(
     OwnDeviceInfo self,
     SseSerializer serializer,
@@ -2139,6 +2370,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_i_64(self.tsMs, serializer);
     sse_encode_bool(self.isOwn, serializer);
     sse_encode_bool(self.utd, serializer);
+    sse_encode_opt_String(self.msgtype, serializer);
+    sse_encode_opt_String(self.filename, serializer);
+    sse_encode_opt_String(self.mimeType, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.width, serializer);
+    sse_encode_opt_box_autoadd_u_32(self.height, serializer);
+    sse_encode_opt_box_autoadd_i_64(self.durationMs, serializer);
   }
 
   @protected
@@ -2221,11 +2458,29 @@ class MatrixSessionImpl extends RustOpaque implements MatrixSession {
     pushkey: pushkey,
   );
 
+  Future<String> downloadMedia({
+    required String roomId,
+    required String eventId,
+  }) => RustLib.instance.api.crateApiMatrixMatrixSessionDownloadMedia(
+    that: this,
+    roomId: roomId,
+    eventId: eventId,
+  );
+
   Future<void> downloadRoomKeyBackup({required String roomId}) =>
       RustLib.instance.api.crateApiMatrixMatrixSessionDownloadRoomKeyBackup(
         that: this,
         roomId: roomId,
       );
+
+  Future<String> downloadThumbnail({
+    required String roomId,
+    required String eventId,
+  }) => RustLib.instance.api.crateApiMatrixMatrixSessionDownloadThumbnail(
+    that: this,
+    roomId: roomId,
+    eventId: eventId,
+  );
 
   Future<EncryptionStatus> encryptionStatus() => RustLib.instance.api
       .crateApiMatrixMatrixSessionEncryptionStatus(that: this);
@@ -2263,6 +2518,19 @@ class MatrixSessionImpl extends RustOpaque implements MatrixSession {
     that: this,
     roomId: roomId,
     limit: limit,
+  );
+
+  Future<String> sendMedia({
+    required String roomId,
+    required String filePath,
+    required String mimeType,
+    String? caption,
+  }) => RustLib.instance.api.crateApiMatrixMatrixSessionSendMedia(
+    that: this,
+    roomId: roomId,
+    filePath: filePath,
+    mimeType: mimeType,
+    caption: caption,
   );
 
   Future<String> sendText({required String roomId, required String body}) =>
