@@ -45,7 +45,7 @@ write_dnsmasq_conf() {
   mkdir -p "$CONF_DIR"
   cat >"$DNSMASQ_CONF" <<EOF
 # Managed by tinywebstack phone-access.sh
-bind-interfaces
+bind-dynamic
 listen-address=${ts_ip}
 port=53
 no-resolv
@@ -63,7 +63,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/sbin/dnsmasq --conf-file=${DNSMASQ_CONF}
+ExecStart=/usr/sbin/dnsmasq --keep-in-foreground --conf-file=${DNSMASQ_CONF}
 Restart=on-failure
 
 [Install]
