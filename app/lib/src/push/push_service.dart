@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:unifiedpush/unifiedpush.dart';
 
+import '../api/lab_ca_config.dart';
 import '../api/models.dart';
 import '../matrix/matrix_session_opener.dart';
 import '../rust/api/matrix.dart' as rust;
@@ -56,7 +57,7 @@ class PushService {
       return;
     }
 
-    final ca = await _caPem();
+    final ca = labCaPemForMatrix();
     final session = await openMatrixSession(
       bundle: bundle,
       store: store,
@@ -87,7 +88,7 @@ class PushService {
             await openMatrixSession(
               bundle: bundle,
               store: store,
-              caCertPem: await _caPem(),
+              caCertPem: labCaPemForMatrix(),
             );
         await session.deleteHttpPusher(
           appId: reg.appId,
@@ -138,7 +139,7 @@ class PushService {
           await openMatrixSession(
             bundle: bundle,
             store: store,
-            caCertPem: await _caPem(),
+            caCertPem: labCaPemForMatrix(),
           );
       _matrix = session;
       final messages =
@@ -324,15 +325,4 @@ class PushService {
     );
   }
 
-  Future<String?> _caPem() async {
-    final pem = Platform.environment['TW_CA_FILE'];
-    if (pem == null || pem.isEmpty) {
-      return null;
-    }
-    try {
-      return await File(pem).readAsString();
-    } catch (_) {
-      return null;
-    }
-  }
 }

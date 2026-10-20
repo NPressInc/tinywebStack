@@ -4,6 +4,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import 'tls_http_client.dart';
+
 import 'models.dart';
 
 String enrollPlatformLabel() {
@@ -20,7 +22,8 @@ String enrollPlatformLabel() {
 }
 
 class FamilyApiClient {
-  FamilyApiClient({http.Client? client}) : _client = client ?? http.Client();
+  FamilyApiClient({http.Client? client})
+      : _client = client ?? defaultTlsHttpClient();
 
   final http.Client _client;
 

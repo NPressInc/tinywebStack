@@ -109,7 +109,7 @@ class LocationService extends ChangeNotifier {
 
     _publisher ??= LocationPublisher(
       credentials: creds,
-      httpClient: _httpClient ?? createTlsHttpClient(),
+      httpClient: _httpClient ?? defaultTlsHttpClient(),
     );
     await _publisher!.loadPersistedState();
 

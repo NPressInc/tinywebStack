@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../api/tls_http_client.dart';
+
 class MobilizonException implements Exception {
   MobilizonException(this.message);
 
@@ -17,7 +19,7 @@ class MobilizonClient {
     required this.accessToken,
     http.Client? client,
   })  : _apiUrl = apiUrl.replaceAll(RegExp(r'/+$'), ''),
-        _client = client ?? http.Client(),
+        _client = client ?? defaultTlsHttpClient(),
         _ownsClient = client == null;
 
   final String _apiUrl;
