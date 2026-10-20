@@ -20,7 +20,7 @@ sudo ./scripts/spark/phone-access.sh --down
 
 This script:
 
-1. Runs **dnsmasq** bound only to the host Tailscale IPv4 (`tailscale ip -4`), config in `/etc/tinywebstack-phone/dnsmasq.conf`, systemd unit `tws-phone-dns.service`. It answers `family-b.family.test` (override with `TW_PHONE_LAB_NODE` / `TW_PHONE_LAB_DOMAIN`) with the Tailscale IP.
+1. Runs **dnsmasq** bound only to the host Tailscale IPv4 (`tailscale ip -4`), config in `/etc/tinywebstack-phone/dnsmasq.conf`, systemd unit `tws-phone-dns.service`. It answers `family-b.family.test` and all other names under `*.family.test` (override domain/node with `TW_PHONE_LAB_DOMAIN` / `TW_PHONE_LAB_NODE`) with the Tailscale IP.
 2. Installs **DNAT** on `tailscale0` for TCP 80 and 443 to the VM, FORWARD accept, and MASQUERADE to `virbr0` via oneshot `tws-phone-nat.service` (rules inserted at high priority so libvirt FORWARD rules do not block).
 
 ### Tailscale DNS (split DNS)

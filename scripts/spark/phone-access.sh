@@ -49,7 +49,8 @@ bind-interfaces
 listen-address=${ts_ip}
 port=53
 no-resolv
-address=/${fqdn}/${ts_ip}
+# ${fqdn} and all *.${LAB_DOMAIN} (split DNS on Tailscale)
+address=/${LAB_DOMAIN}/${ts_ip}
 EOF
 }
 
@@ -139,7 +140,7 @@ do_up() {
   systemctl enable --now "${DNS_UNIT}"
   systemctl enable --now "${NAT_UNIT}"
 
-  log "Phone access UP: DNS on ${ts_ip} for ${LAB_NODE}.${LAB_DOMAIN}; HTTPS DNAT to ${TW_VM_IP}"
+  log "Phone access UP: DNS on ${ts_ip} for *.${LAB_DOMAIN} (incl. ${LAB_NODE}.${LAB_DOMAIN}); HTTPS DNAT to ${TW_VM_IP}"
   log "Tailscale admin: DNS -> Add nameserver -> Custom ${ts_ip}, restrict to *.${LAB_DOMAIN}"
 }
 
