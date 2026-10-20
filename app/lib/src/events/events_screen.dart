@@ -49,7 +49,13 @@ class _EventsScreenState extends State<EventsScreen> {
     if (widget.service != null) {
       return widget.service!;
     }
-    _service ??= EventsService(bundle: widget.session.enrollment!);
+    _service ??= EventsService(
+      bundle: widget.session.enrollment!,
+      credentialStore: widget.session.credentialStore,
+      onEnrollmentUpdated: (bundle) {
+        widget.session.enrollment = bundle;
+      },
+    );
     return _service!;
   }
 
