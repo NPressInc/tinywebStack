@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_linkify/flutter_linkify.dart';
-import 'package:linkify/linkify.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tinyweb/src/chat/chat_linkify.dart';
 
