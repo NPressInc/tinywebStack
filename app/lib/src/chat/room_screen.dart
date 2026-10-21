@@ -8,6 +8,7 @@ import '../brand.dart';
 import '../widgets/quiet_hours_banner.dart';
 import 'chat_models.dart';
 import 'chat_service.dart';
+import 'app_media_saver.dart';
 import 'message_bubble.dart';
 
 class RoomScreen extends StatefulWidget {
@@ -252,6 +253,7 @@ class _RoomScreenState extends State<RoomScreen> {
                         message: m,
                         roomId: widget.roomId,
                         chat: widget.chat,
+                        mediaSaver: appMediaSaver,
                       );
                     },
                   ),
