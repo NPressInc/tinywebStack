@@ -1,12 +1,14 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
 
 import '../brand.dart';
+import 'chat_fullscreen_media.dart';
 import 'chat_linkify.dart';
 import 'chat_models.dart';
 import 'chat_service.dart';
+import 'media_save_button.dart';
+import 'media_saver.dart';
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -14,11 +16,17 @@ class MessageBubble extends StatelessWidget {
     required this.message,
     required this.roomId,
     required this.chat,
+    this.mediaSaver,
+    this.previewMedia = true,
   });
 
   final ChatMessage message;
   final String roomId;
   final ChatService chat;
+  final MediaSaver? mediaSaver;
+
+  /// When false, skips decoding media in the bubble (widget tests).
+  final bool previewMedia;
 
   @override
   Widget build(BuildContext context) {
@@ -35,6 +43,76 @@ class MessageBubble extends StatelessWidget {
         ? Colors.grey.shade700
         : (message.isOwn ? Colors.white : TinyWebColors.text);
     final linkColor = message.isOwn ? Colors.white : TinyWebColors.blueDeep;
+    final showMediaSave = !utd && message.isMedia && mediaSaver != null;
+
+    final bubble = Container(
+      key: showMediaSave ? ValueKey('chat-bubble-${message.eventId}') : null,
+      constraints: BoxConstraints(
+        maxWidth: MediaQuery.sizeOf(context).width * 0.78,
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(12),
+        border: message.isOwn ? null : Border.all(color: TinyWebColors.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (utd)
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.lock_outline, size: 14, color: textColor),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    message.body,
+                    style: TextStyle(
+                      color: textColor,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (message.isImage)
+            _ImageMessageBody(
+              message: message,
+              roomId: roomId,
+              chat: chat,
+              textColor: textColor,
+              linkColor: linkColor,
+              mediaSaver: mediaSaver,
+              previewMedia: previewMedia,
+            )
+          else if (message.isVideo)
+            _VideoMessageBody(
+              message: message,
+              roomId: roomId,
+              chat: chat,
+              textColor: textColor,
+              linkColor: linkColor,
+              mediaSaver: mediaSaver,
+              previewMedia: previewMedia,
+            )
+          else
+            ChatLinkifyText(
+              text: message.body,
+              style: TextStyle(color: textColor),
+              linkColor: linkColor,
+            ),
+          const SizedBox(height: 4),
+          Text(
+            timeLabel,
+            style: TextStyle(
+              color: textColor.withValues(alpha: 0.75),
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
+    );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
@@ -49,70 +127,30 @@ class MessageBubble extends StatelessWidget {
                 style: Theme.of(context).textTheme.labelSmall,
               ),
             ),
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.sizeOf(context).width * 0.78,
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(12),
-              border: message.isOwn
-                  ? null
-                  : Border.all(color: TinyWebColors.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (utd)
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.lock_outline, size: 14, color: textColor),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text(
-                          message.body,
-                          style: TextStyle(
-                            color: textColor,
-                            fontStyle: FontStyle.italic,
-                          ),
-                        ),
-                      ),
-                    ],
-                  )
-                else if (message.isImage)
-                  _ImageMessageBody(
-                    message: message,
-                    roomId: roomId,
-                    chat: chat,
-                    textColor: textColor,
-                    linkColor: linkColor,
-                  )
-                else if (message.isVideo)
-                  _VideoMessageBody(
-                    message: message,
-                    roomId: roomId,
-                    chat: chat,
-                    textColor: textColor,
-                    linkColor: linkColor,
-                  )
-                else
-                  ChatLinkifyText(
-                    text: message.body,
-                    style: TextStyle(color: textColor),
-                    linkColor: linkColor,
-                  ),
-                const SizedBox(height: 4),
-                Text(
-                  timeLabel,
-                  style: TextStyle(
-                    color: textColor.withValues(alpha: 0.75),
-                    fontSize: 11,
-                  ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (showMediaSave && message.isOwn)
+                MediaSaveButton(
+                  key: ValueKey('media-save-${message.eventId}'),
+                  eventId: message.eventId,
+                  roomId: roomId,
+                  chat: chat,
+                  isVideo: message.isVideo,
+                  mediaSaver: mediaSaver!,
                 ),
-              ],
-            ),
+              bubble,
+              if (showMediaSave && !message.isOwn)
+                MediaSaveButton(
+                  key: ValueKey('media-save-${message.eventId}'),
+                  eventId: message.eventId,
+                  roomId: roomId,
+                  chat: chat,
+                  isVideo: message.isVideo,
+                  mediaSaver: mediaSaver!,
+                ),
+            ],
           ),
         ],
       ),
@@ -127,6 +165,8 @@ class _ImageMessageBody extends StatefulWidget {
     required this.chat,
     required this.textColor,
     required this.linkColor,
+    this.mediaSaver,
+    this.previewMedia = true,
   });
 
   final ChatMessage message;
@@ -134,6 +174,8 @@ class _ImageMessageBody extends StatefulWidget {
   final ChatService chat;
   final Color textColor;
   final Color linkColor;
+  final MediaSaver? mediaSaver;
+  final bool previewMedia;
 
   @override
   State<_ImageMessageBody> createState() => _ImageMessageBodyState();
@@ -147,6 +189,10 @@ class _ImageMessageBodyState extends State<_ImageMessageBody> {
   @override
   void initState() {
     super.initState();
+    if (!widget.previewMedia) {
+      _loading = false;
+      return;
+    }
     _load();
   }
 
@@ -175,14 +221,12 @@ class _ImageMessageBodyState extends State<_ImageMessageBody> {
     if (path == null) return;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(backgroundColor: Colors.black),
-          body: Center(
-            child: InteractiveViewer(
-              child: Image.file(File(path), fit: BoxFit.contain),
-            ),
-          ),
+        builder: (_) => ChatFullscreenImagePage(
+          imagePath: path,
+          eventId: widget.message.eventId,
+          roomId: widget.roomId,
+          chat: widget.chat,
+          mediaSaver: widget.mediaSaver!,
         ),
       ),
     );
@@ -234,6 +278,8 @@ class _VideoMessageBody extends StatefulWidget {
     required this.chat,
     required this.textColor,
     required this.linkColor,
+    this.mediaSaver,
+    this.previewMedia = true,
   });
 
   final ChatMessage message;
@@ -241,29 +287,27 @@ class _VideoMessageBody extends StatefulWidget {
   final ChatService chat;
   final Color textColor;
   final Color linkColor;
+  final MediaSaver? mediaSaver;
+  final bool previewMedia;
 
   @override
   State<_VideoMessageBody> createState() => _VideoMessageBodyState();
 }
 
 class _VideoMessageBodyState extends State<_VideoMessageBody> {
-  VideoPlayerController? _controller;
   String? _thumbPath;
-  String? _videoPath;
   String? _error;
   bool _loading = true;
-  bool _playing = false;
+  bool _opening = false;
 
   @override
   void initState() {
     super.initState();
+    if (!widget.previewMedia) {
+      _loading = false;
+      return;
+    }
     _load();
-  }
-
-  @override
-  void dispose() {
-    _controller?.dispose();
-    super.dispose();
   }
 
   Future<void> _load() async {
@@ -283,25 +327,39 @@ class _VideoMessageBodyState extends State<_VideoMessageBody> {
     }
   }
 
-  Future<void> _togglePlay() async {
-    if (_playing) {
-      await _controller?.pause();
-      setState(() => _playing = false);
+  Future<void> _openFullscreen() async {
+    if (_opening) {
       return;
     }
+    setState(() => _opening = true);
     try {
-      _videoPath ??= await widget.chat.downloadMedia(
+      final videoPath = await widget.chat.downloadMedia(
         widget.roomId,
         widget.message.eventId,
       );
-      _controller ??= VideoPlayerController.file(File(_videoPath!));
-      await _controller!.initialize();
-      await _controller!.play();
-      if (!mounted) return;
-      setState(() => _playing = true);
+      if (!mounted) {
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ChatFullscreenVideoPage(
+            eventId: widget.message.eventId,
+            roomId: widget.roomId,
+            chat: widget.chat,
+            videoPath: videoPath,
+            mediaSaver: widget.mediaSaver!,
+          ),
+        ),
+      );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() => _error = e.toString());
+    } finally {
+      if (mounted) {
+        setState(() => _opening = false);
+      }
     }
   }
 
@@ -312,19 +370,11 @@ class _VideoMessageBodyState extends State<_VideoMessageBody> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
-          onTap: _togglePlay,
+          onTap: widget.mediaSaver != null ? _openFullscreen : null,
           child: Stack(
             alignment: Alignment.center,
             children: [
-              if (_playing && _controller != null && _controller!.value.isInitialized)
-                SizedBox(
-                  width: 220,
-                  child: AspectRatio(
-                    aspectRatio: _controller!.value.aspectRatio,
-                    child: VideoPlayer(_controller!),
-                  ),
-                )
-              else if (_loading)
+              if (_loading || _opening)
                 const SizedBox(
                   height: 120,
                   width: 200,
@@ -347,7 +397,7 @@ class _VideoMessageBodyState extends State<_VideoMessageBody> {
                   color: Colors.black26,
                   child: Icon(Icons.videocam, color: widget.textColor, size: 40),
                 ),
-              if (!_playing)
+              if (!_loading && !_opening)
                 Icon(Icons.play_circle_fill, color: Colors.white.withValues(alpha: 0.9), size: 48),
             ],
           ),
