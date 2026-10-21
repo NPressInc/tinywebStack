@@ -1,6 +1,9 @@
 #[path = "matrix_media_util.rs"]
 mod media_util;
 
+#[path = "matrix_chat_features.rs"]
+mod matrix_chat_features;
+
 use std::{
     path::Path,
     sync::{
@@ -31,6 +34,7 @@ use matrix_sdk::{
             member::{MembershipState, StrippedRoomMemberEvent, SyncRoomMemberEvent},
             message::{MessageType, RoomMessageEventContent, SyncRoomMessageEvent},
         },
+        events::{reaction::SyncReactionEvent, typing::SyncTypingEvent},
         events::{AnySyncMessageLikeEvent, AnySyncTimelineEvent, InitialStateEvent, SyncMessageLikeEvent},
         serde::Raw,
         OwnedDeviceId, OwnedUserId, RoomId, UserId, uint,
@@ -85,6 +89,44 @@ pub struct TimelineMessage {
     pub height: Option<u32>,
     /// Video duration in milliseconds when known.
     pub duration_ms: Option<i64>,
+    pub reactions: Vec<MessageReaction>,
+    pub in_reply_to: Option<ReplyPreview>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MessageReaction {
+    pub emoji: String,
+    pub user_id: String,
+    pub reaction_event_id: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReplyPreview {
+    pub event_id: String,
+    pub sender: String,
+    pub sender_display_name: Option<String>,
+    pub body: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct UrlPreview {
+    pub url: String,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub image_mxc: Option<String>,
+    pub site_name: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct RoomTypingUpdate {
+    pub room_id: String,
+    pub user_ids: Vec<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct UserReadReceipt {
+    pub user_id: String,
+    pub ts_ms: Option<i64>,
 }
 
 #[derive(Clone, Debug)]
@@ -126,12 +168,23 @@ pub struct IncomingMessage {
     pub width: Option<u32>,
     pub height: Option<u32>,
     pub duration_ms: Option<i64>,
+    pub reactions: Vec<MessageReaction>,
+    pub in_reply_to: Option<ReplyPreview>,
 }
 
 #[derive(Clone, Debug)]
 pub enum SyncEvent {
     Message(IncomingMessage),
     RoomsChanged,
+    Typing(RoomTypingUpdate),
+    ReactionUpdated {
+        room_id: String,
+        target_event_id: String,
+        emoji: String,
+        sender: String,
+        reaction_event_id: String,
+        removed: bool,
+    },
 }
 
 #[flutter_rust_bridge::frb(opaque)]
@@ -195,7 +248,7 @@ fn map_send_error(err: SdkError) -> anyhow::Error {
     anyhow!(err)
 }
 
-async fn member_display_name(room: &Room, user_id: &UserId) -> Option<String> {
+pub(crate) async fn member_display_name(room: &Room, user_id: &UserId) -> Option<String> {
     room.get_member(user_id)
         .await
         .ok()
@@ -330,6 +383,8 @@ fn parse_timeline_message(
             width,
             height,
             duration_ms,
+            reactions: vec![],
+            in_reply_to: None,
         });
     }
 
@@ -368,29 +423,14 @@ fn parse_timeline_message(
                     width,
                     height,
                     duration_ms,
+                    reactions: vec![],
+                    in_reply_to: None,
                 })
             }
             _ => None,
         },
         _ => None,
     }
-}
-
-async fn enrich_display_names(room: &Room, messages: Vec<TimelineMessage>) -> Vec<TimelineMessage> {
-    let mut out = Vec::with_capacity(messages.len());
-    for m in messages {
-        let sender_id = UserId::parse(&m.sender).ok();
-        let display = if let Some(uid) = sender_id.as_ref() {
-            member_display_name(room, uid).await
-        } else {
-            None
-        };
-        out.push(TimelineMessage {
-            sender_display_name: display,
-            ..m
-        });
-    }
-    out
 }
 
 pub async fn restore_session(
@@ -553,13 +593,9 @@ impl MatrixSession {
         options.limit = matrix_sdk::ruma::UInt::new(limit as u64).unwrap_or(uint!(50));
         let msgs = room.messages(options).await.context("room messages")?;
 
-        let mut parsed: Vec<TimelineMessage> = msgs
-            .chunk
-            .iter()
-            .filter_map(|ev| parse_timeline_message(ev, &own_user, &room))
-            .collect();
-        parsed.reverse();
-        Ok(enrich_display_names(&room, parsed).await)
+        let parsed =
+            matrix_chat_features::build_timeline_messages(&msgs.chunk, &own_user, &room);
+        Ok(matrix_chat_features::enrich_timeline_display_names(&room, parsed).await)
     }
 
     pub async fn room_members(&self, room_id: String) -> anyhow::Result<Vec<RoomMemberInfo>> {
@@ -661,6 +697,87 @@ impl MatrixSession {
             .await
             .map_err(map_send_error)?;
         Ok(result.response.event_id.to_string())
+    }
+
+    pub async fn send_text_reply(
+        &self,
+        room_id: String,
+        body: String,
+        reply_to_event_id: String,
+    ) -> anyhow::Result<String> {
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+        matrix_chat_features::send_text_reply(&room, body, reply_to_event_id).await
+    }
+
+    pub async fn send_reaction(
+        &self,
+        room_id: String,
+        event_id: String,
+        emoji: String,
+    ) -> anyhow::Result<String> {
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+        matrix_chat_features::send_reaction(&room, &event_id, &emoji).await
+    }
+
+    pub async fn redact_event(
+        &self,
+        room_id: String,
+        event_id: String,
+        reason: Option<String>,
+    ) -> anyhow::Result<()> {
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+        matrix_chat_features::redact_event(&room, &event_id, reason).await
+    }
+
+    pub async fn set_typing(&self, room_id: String, typing: bool) -> anyhow::Result<()> {
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+        matrix_chat_features::send_typing_notice(&room, typing).await
+    }
+
+    pub async fn send_read_receipt(
+        &self,
+        room_id: String,
+        event_id: String,
+    ) -> anyhow::Result<()> {
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+        matrix_chat_features::send_read_receipt(&room, &event_id).await
+    }
+
+    pub async fn read_receipts_for_event(
+        &self,
+        room_id: String,
+        event_id: String,
+    ) -> anyhow::Result<Vec<UserReadReceipt>> {
+        let id = RoomId::parse(&room_id).context("parse room_id")?;
+        let room = self
+            .client()
+            .get_room(&id)
+            .ok_or_else(|| anyhow!("room not in local store: {room_id}"))?;
+        matrix_chat_features::read_receipts_for_event(&room, &event_id).await
+    }
+
+    pub async fn fetch_url_preview(&self, url: String) -> anyhow::Result<UrlPreview> {
+        matrix_chat_features::fetch_url_preview(self.client(), &url).await
     }
 
     pub async fn send_media(
@@ -834,13 +951,14 @@ impl MatrixSession {
 
         let sink_handler = sink.clone();
         let mut handles = Vec::new();
+        let own_user_msg = own_user.clone();
 
         handles.push(client.add_event_handler(
             move |ev: SyncRoomMessageEvent,
                   room: Room,
                   encryption_info: Option<EncryptionInfo>| {
                 let sink = sink_handler.clone();
-                let own_user = own_user.clone(); // mxid string
+                let own_user = own_user_msg.clone();
                 async move {
                     let Some(original) = ev.as_original() else {
                         return;
@@ -862,6 +980,11 @@ impl MatrixSession {
                     let display = member_display_name(&room, &sender).await;
                     let is_own = own_user == sender.to_string();
                     let ts_ms = u64::from(original.origin_server_ts.get()) as i64;
+                    let in_reply_to = matrix_chat_features::reply_preview_from_message_content(
+                        &original.content,
+                        &room,
+                    )
+                    .await;
                     let msg = IncomingMessage {
                         room_id: room.room_id().to_string(),
                         sender: sender.to_string(),
@@ -878,8 +1001,59 @@ impl MatrixSession {
                         width,
                         height,
                         duration_ms,
+                        reactions: vec![],
+                        in_reply_to,
                     };
                     let _ = sink.add(SyncEvent::Message(msg));
+                }
+            },
+        ));
+
+        let sink_reaction = sink.clone();
+        let own_user_reaction = own_user.clone();
+        handles.push(client.add_event_handler(
+            move |ev: SyncReactionEvent, room: Room| {
+                let sink = sink_reaction.clone();
+                let own_user = own_user_reaction.clone();
+                async move {
+                    let Some(original) = ev.as_original() else {
+                        return;
+                    };
+                    let sender = original.sender.to_string();
+                    let target = original.content.relates_to.event_id.to_string();
+                    let emoji = original.content.relates_to.key.clone();
+                    let reaction_event_id = original.event_id.to_string();
+                    let _ = sink.add(SyncEvent::ReactionUpdated {
+                        room_id: room.room_id().to_string(),
+                        target_event_id: target,
+                        emoji,
+                        sender,
+                        reaction_event_id,
+                        removed: false,
+                    });
+                    let _ = own_user;
+                }
+            },
+        ));
+
+        let sink_typing = sink.clone();
+        let own_user_typing = own_user.clone();
+        handles.push(client.add_event_handler(
+            move |ev: SyncTypingEvent, room: Room| {
+                let sink = sink_typing.clone();
+                let own_user = own_user_typing.clone();
+                async move {
+                    let user_ids: Vec<String> = ev
+                        .content
+                        .user_ids
+                        .iter()
+                        .filter(|u| u.to_string() != own_user)
+                        .map(|u| u.to_string())
+                        .collect();
+                    let _ = sink.add(SyncEvent::Typing(RoomTypingUpdate {
+                        room_id: room.room_id().to_string(),
+                        user_ids,
+                    }));
                 }
             },
         ));

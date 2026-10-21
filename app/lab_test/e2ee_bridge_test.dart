@@ -210,6 +210,8 @@ Future<IncomingMessage> _waitForBody(
       .map((e) => e.map(
             message: (m) => m.field0,
             roomsChanged: (_) => null,
+            typing: (_) => null,
+            reactionUpdated: (_) => null,
           ))
       .where((m) => m != null && m.body == body)
       .map((m) => m!)

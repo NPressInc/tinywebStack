@@ -64,6 +64,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   IncomingMessage dco_decode_box_autoadd_incoming_message(dynamic raw);
 
   @protected
+  ReplyPreview dco_decode_box_autoadd_reply_preview(dynamic raw);
+
+  @protected
+  RoomTypingUpdate dco_decode_box_autoadd_room_typing_update(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -77,6 +83,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
+  List<MessageReaction> dco_decode_list_message_reaction(dynamic raw);
 
   @protected
   List<OwnDeviceInfo> dco_decode_list_own_device_info(dynamic raw);
@@ -94,10 +103,19 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   List<TimelineMessage> dco_decode_list_timeline_message(dynamic raw);
 
   @protected
+  List<UserReadReceipt> dco_decode_list_user_read_receipt(dynamic raw);
+
+  @protected
+  MessageReaction dco_decode_message_reaction(dynamic raw);
+
+  @protected
   String? dco_decode_opt_String(dynamic raw);
 
   @protected
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  ReplyPreview? dco_decode_opt_box_autoadd_reply_preview(dynamic raw);
 
   @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
@@ -106,10 +124,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   OwnDeviceInfo dco_decode_own_device_info(dynamic raw);
 
   @protected
+  ReplyPreview dco_decode_reply_preview(dynamic raw);
+
+  @protected
   RoomMemberInfo dco_decode_room_member_info(dynamic raw);
 
   @protected
   RoomSummary dco_decode_room_summary(dynamic raw);
+
+  @protected
+  RoomTypingUpdate dco_decode_room_typing_update(dynamic raw);
 
   @protected
   SyncEvent dco_decode_sync_event(dynamic raw);
@@ -128,6 +152,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void dco_decode_unit(dynamic raw);
+
+  @protected
+  UrlPreview dco_decode_url_preview(dynamic raw);
+
+  @protected
+  UserReadReceipt dco_decode_user_read_receipt(dynamic raw);
 
   @protected
   BigInt dco_decode_usize(dynamic raw);
@@ -173,6 +203,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  ReplyPreview sse_decode_box_autoadd_reply_preview(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RoomTypingUpdate sse_decode_box_autoadd_room_typing_update(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -186,6 +226,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
+  List<MessageReaction> sse_decode_list_message_reaction(
+    SseDeserializer deserializer,
+  );
 
   @protected
   List<OwnDeviceInfo> sse_decode_list_own_device_info(
@@ -209,10 +254,23 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  List<UserReadReceipt> sse_decode_list_user_read_receipt(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  MessageReaction sse_decode_message_reaction(SseDeserializer deserializer);
+
+  @protected
   String? sse_decode_opt_String(SseDeserializer deserializer);
 
   @protected
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  ReplyPreview? sse_decode_opt_box_autoadd_reply_preview(
+    SseDeserializer deserializer,
+  );
 
   @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
@@ -221,10 +279,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   OwnDeviceInfo sse_decode_own_device_info(SseDeserializer deserializer);
 
   @protected
+  ReplyPreview sse_decode_reply_preview(SseDeserializer deserializer);
+
+  @protected
   RoomMemberInfo sse_decode_room_member_info(SseDeserializer deserializer);
 
   @protected
   RoomSummary sse_decode_room_summary(SseDeserializer deserializer);
+
+  @protected
+  RoomTypingUpdate sse_decode_room_typing_update(SseDeserializer deserializer);
 
   @protected
   SyncEvent sse_decode_sync_event(SseDeserializer deserializer);
@@ -243,6 +307,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_decode_unit(SseDeserializer deserializer);
+
+  @protected
+  UrlPreview sse_decode_url_preview(SseDeserializer deserializer);
+
+  @protected
+  UserReadReceipt sse_decode_user_read_receipt(SseDeserializer deserializer);
 
   @protected
   BigInt sse_decode_usize(SseDeserializer deserializer);
@@ -302,6 +372,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_reply_preview(
+    ReplyPreview self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_room_typing_update(
+    RoomTypingUpdate self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
@@ -321,6 +403,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_message_reaction(
+    List<MessageReaction> self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_list_own_device_info(
@@ -353,11 +441,29 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_user_read_receipt(
+    List<UserReadReceipt> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_message_reaction(
+    MessageReaction self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_String(String? self, SseSerializer serializer);
 
   @protected
   void sse_encode_opt_box_autoadd_i_64(
     PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_reply_preview(
+    ReplyPreview? self,
     SseSerializer serializer,
   );
 
@@ -368,6 +474,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_own_device_info(OwnDeviceInfo self, SseSerializer serializer);
 
   @protected
+  void sse_encode_reply_preview(ReplyPreview self, SseSerializer serializer);
+
+  @protected
   void sse_encode_room_member_info(
     RoomMemberInfo self,
     SseSerializer serializer,
@@ -375,6 +484,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_room_summary(RoomSummary self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_room_typing_update(
+    RoomTypingUpdate self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_sync_event(SyncEvent self, SseSerializer serializer);
@@ -396,6 +511,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_url_preview(UrlPreview self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_user_read_receipt(
+    UserReadReceipt self,
+    SseSerializer serializer,
+  );
 
   @protected
   void sse_encode_usize(BigInt self, SseSerializer serializer);

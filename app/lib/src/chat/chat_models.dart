@@ -1,3 +1,47 @@
+class ChatReaction {
+  ChatReaction({
+    required this.emoji,
+    required this.userId,
+    required this.reactionEventId,
+  });
+
+  final String emoji;
+  final String userId;
+  final String reactionEventId;
+}
+
+class ChatReplyPreview {
+  ChatReplyPreview({
+    required this.eventId,
+    required this.senderId,
+    this.senderDisplayName,
+    required this.body,
+  });
+
+  final String eventId;
+  final String senderId;
+  final String? senderDisplayName;
+  final String body;
+
+  String get senderLabel => senderDisplayName ?? senderId;
+}
+
+class ChatUrlPreview {
+  ChatUrlPreview({
+    required this.url,
+    this.title,
+    this.description,
+    this.imageMxc,
+    this.siteName,
+  });
+
+  final String url;
+  final String? title;
+  final String? description;
+  final String? imageMxc;
+  final String? siteName;
+}
+
 class ChatRoom {
   ChatRoom({
     required this.roomId,
@@ -33,6 +77,8 @@ class ChatMessage {
     this.width,
     this.height,
     this.durationMs,
+    this.reactions = const [],
+    this.inReplyTo,
   });
 
   final String eventId;
@@ -48,8 +94,42 @@ class ChatMessage {
   final int? width;
   final int? height;
   final int? durationMs;
+  final List<ChatReaction> reactions;
+  final ChatReplyPreview? inReplyTo;
 
   String get senderLabel => senderDisplayName ?? senderId;
+
+  ChatMessage copyWith({
+    List<ChatReaction>? reactions,
+    ChatReplyPreview? inReplyTo,
+  }) {
+    return ChatMessage(
+      eventId: eventId,
+      body: body,
+      senderId: senderId,
+      senderDisplayName: senderDisplayName,
+      tsMs: tsMs,
+      isOwn: isOwn,
+      utd: utd,
+      msgtype: msgtype,
+      filename: filename,
+      mimeType: mimeType,
+      width: width,
+      height: height,
+      durationMs: durationMs,
+      reactions: reactions ?? this.reactions,
+      inReplyTo: inReplyTo ?? this.inReplyTo,
+    );
+  }
+
+  /// First http(s) URL in plain text bodies.
+  String? get firstUrl {
+    if (isMedia || utd) {
+      return null;
+    }
+    final match = RegExp(r'https?://[^\s<>\]]+').firstMatch(body);
+    return match?.group(0);
+  }
 
   bool get isImage => msgtype == 'm.image';
 

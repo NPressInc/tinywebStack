@@ -2,15 +2,17 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
-import '../brand.dart';
+import 'chat_colors.dart';
 import 'chat_fullscreen_media.dart';
+import 'chat_link_preview.dart';
 import 'chat_linkify.dart';
 import 'chat_models.dart';
+import 'chat_reactions.dart';
 import 'chat_service.dart';
 import 'media_save_button.dart';
 import 'media_saver.dart';
 
-class MessageBubble extends StatelessWidget {
+class MessageBubble extends StatefulWidget {
   const MessageBubble({
     super.key,
     required this.message,
@@ -18,18 +20,101 @@ class MessageBubble extends StatelessWidget {
     required this.chat,
     this.mediaSaver,
     this.previewMedia = true,
+    this.showSenderName = true,
+    this.showTimestamp = true,
+    this.isLastInGroup = true,
+    this.isFirstInGroup = true,
+    this.elevated = false,
+    this.bubbleKey,
+    this.onLongPress,
+    this.onDoubleTap,
+    this.onSwipeReply,
+    this.onReplyQuoteTap,
+    this.onReactionStackTap,
   });
 
   final ChatMessage message;
   final String roomId;
   final ChatService chat;
   final MediaSaver? mediaSaver;
+  final bool showSenderName;
+  final bool showTimestamp;
+  final bool isLastInGroup;
+  final bool isFirstInGroup;
+  final bool elevated;
+  final GlobalKey? bubbleKey;
+  final VoidCallback? onLongPress;
+  final VoidCallback? onDoubleTap;
+  final VoidCallback? onSwipeReply;
+  final void Function(String eventId)? onReplyQuoteTap;
+  final void Function(String emoji, List<ChatReaction> reactors)? onReactionStackTap;
 
   /// When false, skips decoding media in the bubble (widget tests).
   final bool previewMedia;
 
   @override
+  State<MessageBubble> createState() => _MessageBubbleState();
+}
+
+class _MessageBubbleState extends State<MessageBubble> {
+  double _dragX = 0;
+  double _timestampDrag = 0;
+  ChatUrlPreview? _linkPreview;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreview();
+  }
+
+  @override
+  void didUpdateWidget(covariant MessageBubble oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.message.eventId != widget.message.eventId ||
+        oldWidget.message.body != widget.message.body) {
+      _loadPreview();
+    }
+  }
+
+  Future<void> _loadPreview() async {
+    final url = widget.message.firstUrl;
+    if (url == null) {
+      return;
+    }
+    final cached = cachedUrlPreview(url);
+    if (cached != null) {
+      setState(() => _linkPreview = cached);
+      return;
+    }
+    final preview = await loadUrlPreview(widget.chat, url);
+    if (!mounted) {
+      return;
+    }
+    setState(() => _linkPreview = preview);
+  }
+
+  BorderRadius _bubbleRadius() {
+    const r = 18.0;
+    const t = 4.0;
+    if (widget.message.isOwn) {
+      return BorderRadius.only(
+        topLeft: const Radius.circular(r),
+        topRight: Radius.circular(widget.isFirstInGroup ? r : t),
+        bottomLeft: const Radius.circular(r),
+        bottomRight: Radius.circular(widget.isLastInGroup ? r : t),
+      );
+    }
+    return BorderRadius.only(
+      topLeft: Radius.circular(widget.isFirstInGroup ? r : t),
+      topRight: const Radius.circular(r),
+      bottomLeft: Radius.circular(widget.isLastInGroup ? r : t),
+      bottomRight: const Radius.circular(r),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final message = widget.message;
     final time = DateTime.fromMillisecondsSinceEpoch(message.tsMs);
     final timeLabel =
         '${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
@@ -38,27 +123,49 @@ class MessageBubble extends StatelessWidget {
     final utd = message.utd;
     final color = utd
         ? Colors.grey.shade200
-        : (message.isOwn ? TinyWebColors.blueDeep : Colors.white);
+        : (message.isOwn ? ChatColors.ownBubble : ChatColors.otherBubble(context));
     final textColor = utd
         ? Colors.grey.shade700
-        : (message.isOwn ? Colors.white : TinyWebColors.text);
-    final linkColor = message.isOwn ? Colors.white : TinyWebColors.blueDeep;
-    final showMediaSave = !utd && message.isMedia && mediaSaver != null;
+        : (message.isOwn ? ChatColors.ownText : ChatColors.otherText(context));
+    final linkColor = message.isOwn ? Colors.white : ChatColors.ownBubble;
+    final showMediaSave = !utd && message.isMedia && widget.mediaSaver != null;
 
     final bubble = Container(
-      key: showMediaSave ? ValueKey('chat-bubble-${message.eventId}') : null,
+      key: widget.bubbleKey ??
+          (showMediaSave ? ValueKey('chat-bubble-${message.eventId}') : null),
       constraints: BoxConstraints(
         maxWidth: MediaQuery.sizeOf(context).width * 0.78,
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: color,
-        borderRadius: BorderRadius.circular(12),
-        border: message.isOwn ? null : Border.all(color: TinyWebColors.border),
+        borderRadius: _bubbleRadius(),
+        boxShadow: widget.elevated
+            ? [BoxShadow(color: Colors.black26, blurRadius: 12, offset: const Offset(0, 4))]
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (message.inReplyTo != null)
+            GestureDetector(
+              onTap: () => widget.onReplyQuoteTap?.call(message.inReplyTo!.eventId),
+              child: Container(
+                key: const Key('reply-quote'),
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  message.inReplyTo!.body,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: textColor.withValues(alpha: 0.9), fontSize: 12),
+                ),
+              ),
+            ),
           if (utd)
             Row(
               mainAxisSize: MainAxisSize.min,
@@ -79,22 +186,22 @@ class MessageBubble extends StatelessWidget {
           else if (message.isImage)
             _ImageMessageBody(
               message: message,
-              roomId: roomId,
-              chat: chat,
+              roomId: widget.roomId,
+              chat: widget.chat,
               textColor: textColor,
               linkColor: linkColor,
-              mediaSaver: mediaSaver,
-              previewMedia: previewMedia,
+              mediaSaver: widget.mediaSaver,
+              previewMedia: widget.previewMedia,
             )
           else if (message.isVideo)
             _VideoMessageBody(
               message: message,
-              roomId: roomId,
-              chat: chat,
+              roomId: widget.roomId,
+              chat: widget.chat,
               textColor: textColor,
               linkColor: linkColor,
-              mediaSaver: mediaSaver,
-              previewMedia: previewMedia,
+              mediaSaver: widget.mediaSaver,
+              previewMedia: widget.previewMedia,
             )
           else
             ChatLinkifyText(
@@ -102,24 +209,69 @@ class MessageBubble extends StatelessWidget {
               style: TextStyle(color: textColor),
               linkColor: linkColor,
             ),
-          const SizedBox(height: 4),
-          Text(
-            timeLabel,
-            style: TextStyle(
-              color: textColor.withValues(alpha: 0.75),
-              fontSize: 11,
+          if (_linkPreview != null)
+            ChatLinkPreviewCard(
+              preview: _linkPreview!,
+              onTap: () => openPreviewUrl(_linkPreview!),
             ),
-          ),
+          if (widget.showTimestamp) ...[
+            const SizedBox(height: 4),
+            Text(
+              timeLabel,
+              style: TextStyle(
+                color: textColor.withValues(alpha: 0.75),
+                fontSize: 11,
+              ),
+            ),
+          ],
         ],
       ),
     );
 
+    final bubbleWithReactions = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        bubble,
+        ReactionStacks(
+          reactions: message.reactions,
+          isOwn: message.isOwn,
+          onTapStack: widget.onReactionStackTap,
+        ),
+      ],
+    );
+
+    final interactive = GestureDetector(
+      onLongPress: widget.onLongPress,
+      onDoubleTap: widget.onDoubleTap,
+      onHorizontalDragUpdate: (d) {
+        setState(() {
+          _dragX += d.delta.dx;
+          _timestampDrag += d.delta.dx;
+        });
+      },
+      onHorizontalDragEnd: (_) {
+        if (_dragX > 48) {
+          widget.onSwipeReply?.call();
+        }
+        setState(() {
+          _dragX = 0;
+          _timestampDrag = 0;
+        });
+      },
+      child: Transform.translate(
+        offset: Offset(_dragX.clamp(-80.0, 80.0), 0),
+        child: bubbleWithReactions,
+      ),
+    );
+
+    final verticalPad = widget.isLastInGroup ? 4.0 : 1.0;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: verticalPad),
       child: Column(
         crossAxisAlignment: align,
         children: [
-          if (!message.isOwn)
+          if (widget.showSenderName && !message.isOwn)
             Padding(
               padding: const EdgeInsets.only(left: 4, bottom: 2),
               child: Text(
@@ -128,28 +280,43 @@ class MessageBubble extends StatelessWidget {
               ),
             ),
           Row(
-            mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+              if (message.isOwn) const Spacer(),
+              if (_timestampDrag < -8)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: Text(
+                    timeLabel,
+                    key: const Key('edge-timestamp'),
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
+                ),
               if (showMediaSave && message.isOwn)
                 MediaSaveButton(
                   key: ValueKey('media-save-${message.eventId}'),
                   eventId: message.eventId,
-                  roomId: roomId,
-                  chat: chat,
+                  roomId: widget.roomId,
+                  chat: widget.chat,
                   isVideo: message.isVideo,
-                  mediaSaver: mediaSaver!,
+                  mediaSaver: widget.mediaSaver!,
                 ),
-              bubble,
+              if (_dragX > 12)
+                const Padding(
+                  padding: EdgeInsets.only(right: 6),
+                  child: Icon(Icons.reply, size: 18, color: ChatColors.ownBubble),
+                ),
+              interactive,
               if (showMediaSave && !message.isOwn)
                 MediaSaveButton(
                   key: ValueKey('media-save-${message.eventId}'),
                   eventId: message.eventId,
-                  roomId: roomId,
-                  chat: chat,
+                  roomId: widget.roomId,
+                  chat: widget.chat,
                   isVideo: message.isVideo,
-                  mediaSaver: mediaSaver!,
+                  mediaSaver: widget.mediaSaver!,
                 ),
+              if (!message.isOwn) const Spacer(),
             ],
           ),
         ],
