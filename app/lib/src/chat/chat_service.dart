@@ -25,6 +25,20 @@ abstract class ChatService {
 
   Future<String> sendMessage(String roomId, String body);
 
+  Future<String> sendReply(String roomId, String body, String replyToEventId);
+
+  Future<String> sendReaction(String roomId, String eventId, String emoji);
+
+  Future<void> redactEvent(String roomId, String eventId, {String? reason});
+
+  Future<void> setTyping(String roomId, bool typing);
+
+  Future<void> sendReadReceipt(String roomId, String eventId);
+
+  Future<List<ChatReadReceipt>> readReceiptsForEvent(String roomId, String eventId);
+
+  Future<ChatUrlPreview> fetchUrlPreview(String url);
+
   Future<String> sendMedia(
     String roomId,
     String filePath,
@@ -46,12 +60,59 @@ abstract class ChatService {
 }
 
 class ChatSyncEvent {
-  ChatSyncEvent.message(this.roomId, this.message) : roomsChanged = false;
-  ChatSyncEvent.roomsChanged() : roomId = null, message = null, roomsChanged = true;
+  ChatSyncEvent.message(this.roomId, this.message)
+      : roomsChanged = false,
+        typingUserIds = null,
+        reactionUpdate = null;
+  ChatSyncEvent.roomsChanged()
+      : roomId = null,
+        message = null,
+        roomsChanged = true,
+        typingUserIds = null,
+        reactionUpdate = null;
+  ChatSyncEvent.typing(this.roomId, this.typingUserIds)
+      : message = null,
+        roomsChanged = false,
+        reactionUpdate = null;
+  ChatSyncEvent.reactionUpdated(
+    this.roomId,
+    String targetEventId,
+    String emoji,
+    String sender,
+    String reactionEventId,
+    bool removed,
+  )   : message = null,
+        roomsChanged = false,
+        typingUserIds = null,
+        reactionUpdate = ChatReactionUpdate(
+          targetEventId: targetEventId,
+          emoji: emoji,
+          sender: sender,
+          reactionEventId: reactionEventId,
+          removed: removed,
+        );
 
   final String? roomId;
   final ChatMessage? message;
   final bool roomsChanged;
+  final List<String>? typingUserIds;
+  final ChatReactionUpdate? reactionUpdate;
+}
+
+class ChatReactionUpdate {
+  ChatReactionUpdate({
+    required this.targetEventId,
+    required this.emoji,
+    required this.sender,
+    required this.reactionEventId,
+    required this.removed,
+  });
+
+  final String targetEventId;
+  final String emoji;
+  final String sender;
+  final String reactionEventId;
+  final bool removed;
 }
 
 class ChatMember {
@@ -59,6 +120,13 @@ class ChatMember {
 
   final String userId;
   final String? displayName;
+}
+
+class ChatReadReceipt {
+  ChatReadReceipt({required this.userId, this.tsMs});
+
+  final String userId;
+  final int? tsMs;
 }
 
 class UnconfiguredChatService implements ChatService {
@@ -91,6 +159,36 @@ class UnconfiguredChatService implements ChatService {
 
   @override
   Future<String> sendMessage(String roomId, String body) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
+  Future<String> sendReply(String roomId, String body, String replyToEventId) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
+  Future<String> sendReaction(String roomId, String eventId, String emoji) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
+  Future<void> redactEvent(String roomId, String eventId, {String? reason}) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
+  Future<void> setTyping(String roomId, bool typing) async {}
+
+  @override
+  Future<void> sendReadReceipt(String roomId, String eventId) async {}
+
+  @override
+  Future<List<ChatReadReceipt>> readReceiptsForEvent(String roomId, String eventId) async =>
+      [];
+
+  @override
+  Future<ChatUrlPreview> fetchUrlPreview(String url) async {
     throw StateError('Chat not configured');
   }
 
@@ -145,6 +243,8 @@ class FakeChatService implements ChatService {
   final _sync = StreamController<ChatSyncEvent>.broadcast();
   bool forbiddenSend;
 
+  final Map<String, Map<String, List<ChatReaction>>> _reactionsByRoom = {};
+
   /// Local paths returned by [downloadMedia] / [downloadThumbnail] for fakes.
   final Map<String, String> mediaPaths = {};
   final Map<String, String> thumbnailPaths = {};
@@ -172,7 +272,13 @@ class FakeChatService implements ChatService {
 
   @override
   Future<List<ChatMessage>> loadTimeline(String roomId, {int limit = 50}) async {
-    return List<ChatMessage>.from(_timelines[roomId] ?? const []);
+    final list = List<ChatMessage>.from(_timelines[roomId] ?? const []);
+    final reactions = _reactionsByRoom[roomId] ?? {};
+    return list
+        .map(
+          (m) => m.copyWith(reactions: reactions[m.eventId] ?? m.reactions),
+        )
+        .toList();
   }
 
   void injectMessage(String roomId, ChatMessage message) {
@@ -184,6 +290,70 @@ class FakeChatService implements ChatService {
         ChatMember(userId: '@alice:family.test', displayName: 'Alice'),
         ChatMember(userId: '@bob:family.test', displayName: 'Bob'),
       ];
+
+  @override
+  Future<String> sendReply(String roomId, String body, String replyToEventId) async {
+    final timeline = _timelines[roomId] ?? [];
+    ChatReplyPreview? replyPreview;
+    for (final m in timeline) {
+      if (m.eventId == replyToEventId) {
+        replyPreview = ChatReplyPreview(
+          eventId: replyToEventId,
+          senderId: m.senderId,
+          senderDisplayName: m.senderDisplayName,
+          body: m.body,
+        );
+        break;
+      }
+    }
+    replyPreview ??= ChatReplyPreview(eventId: replyToEventId, senderId: '', body: '…');
+    final id = await sendMessage(roomId, body);
+    final idx = _timelines[roomId]!.indexWhere((m) => m.eventId == id);
+    if (idx >= 0) {
+      _timelines[roomId]![idx] = _timelines[roomId]![idx].copyWith(inReplyTo: replyPreview);
+    }
+    return id;
+  }
+
+  @override
+  Future<String> sendReaction(String roomId, String eventId, String emoji) async {
+    final roomReactions = _reactionsByRoom.putIfAbsent(roomId, () => {});
+    final list = roomReactions.putIfAbsent(eventId, () => []);
+    list.removeWhere((r) => r.userId == '@me:family.test');
+    final id = 'rxn_${DateTime.now().microsecondsSinceEpoch}';
+    list.add(
+      ChatReaction(
+        emoji: emoji,
+        userId: '@me:family.test',
+        reactionEventId: id,
+      ),
+    );
+    return id;
+  }
+
+  @override
+  Future<void> redactEvent(String roomId, String eventId, {String? reason}) async {
+    final list = _timelines[roomId];
+    if (list == null) {
+      return;
+    }
+    _timelines[roomId] = list.where((m) => m.eventId != eventId).toList();
+  }
+
+  @override
+  Future<void> setTyping(String roomId, bool typing) async {}
+
+  @override
+  Future<void> sendReadReceipt(String roomId, String eventId) async {}
+
+  @override
+  Future<List<ChatReadReceipt>> readReceiptsForEvent(String roomId, String eventId) async =>
+      [];
+
+  @override
+  Future<ChatUrlPreview> fetchUrlPreview(String url) async {
+    return ChatUrlPreview(url: url, title: 'Example', siteName: 'example.com');
+  }
 
   @override
   Future<String> sendMessage(String roomId, String body) async {
@@ -409,6 +579,57 @@ class RustChatService implements ChatService {
   }
 
   @override
+  Future<String> sendReply(String roomId, String body, String replyToEventId) async {
+    try {
+      return await _s.sendTextReply(
+        roomId: roomId,
+        body: body,
+        replyToEventId: replyToEventId,
+      );
+    } catch (e) {
+      final text = e.toString();
+      if (text.contains('forbidden:')) {
+        throw ChatSendException(text);
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String> sendReaction(String roomId, String eventId, String emoji) async {
+    return _s.sendReaction(roomId: roomId, eventId: eventId, emoji: emoji);
+  }
+
+  @override
+  Future<void> redactEvent(String roomId, String eventId, {String? reason}) async {
+    await _s.redactEvent(roomId: roomId, eventId: eventId, reason: reason);
+  }
+
+  @override
+  Future<void> setTyping(String roomId, bool typing) async {
+    await _s.setTyping(roomId: roomId, typing: typing);
+  }
+
+  @override
+  Future<void> sendReadReceipt(String roomId, String eventId) async {
+    await _s.sendReadReceipt(roomId: roomId, eventId: eventId);
+  }
+
+  @override
+  Future<List<ChatReadReceipt>> readReceiptsForEvent(String roomId, String eventId) async {
+    final raw = await _s.readReceiptsForEvent(roomId: roomId, eventId: eventId);
+    return raw
+        .map((r) => ChatReadReceipt(userId: r.userId, tsMs: r.tsMs?.toInt()))
+        .toList();
+  }
+
+  @override
+  Future<ChatUrlPreview> fetchUrlPreview(String url) async {
+    final raw = await _s.fetchUrlPreview(url: url);
+    return chatUrlPreviewFromRust(raw);
+  }
+
+  @override
   Future<String> sendMedia(
     String roomId,
     String filePath,
@@ -459,6 +680,22 @@ class RustChatService implements ChatService {
         roomsChanged: (_) {
           refreshRooms();
           _sync.add(ChatSyncEvent.roomsChanged());
+        },
+        typing: (wrapped) {
+          final t = wrapped.field0;
+          _sync.add(ChatSyncEvent.typing(t.roomId, t.userIds));
+        },
+        reactionUpdated: (wrapped) {
+          _sync.add(
+            ChatSyncEvent.reactionUpdated(
+              wrapped.roomId,
+              wrapped.targetEventId,
+              wrapped.emoji,
+              wrapped.sender,
+              wrapped.reactionEventId,
+              wrapped.removed,
+            ),
+          );
         },
       );
     });

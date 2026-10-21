@@ -105,7 +105,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'hello there');
-    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pumpAndSettle();
 
     expect(find.text('hello there'), findsOneWidget);
@@ -130,7 +131,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'nope');
-    await tester.tap(find.byIcon(Icons.send));
+    await tester.pump();
+    await tester.tap(find.byIcon(Icons.arrow_upward));
     await tester.pumpAndSettle();
 
     expect(find.textContaining('Not allowed:'), findsOneWidget);
