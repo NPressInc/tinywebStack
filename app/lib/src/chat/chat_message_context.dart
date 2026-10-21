@@ -32,7 +32,7 @@ Future<void> showMessageContextOverlay({
     barrierDismissible: true,
     barrierLabel: 'Dismiss',
     barrierColor: Colors.black.withValues(alpha: 0.35),
-    pageBuilder: (ctx, _, __) {
+    pageBuilder: (ctx, _, _) {
       return Stack(
         children: [
           Positioned(
@@ -69,8 +69,8 @@ Future<void> showMessageContextOverlay({
                       onReply?.call();
                     },
                     onCopy: () async {
-                      await Clipboard.setData(ClipboardData(text: message.body));
                       Navigator.pop(ctx);
+                      await Clipboard.setData(ClipboardData(text: message.body));
                     },
                     onSave: mediaSaver != null && message.isMedia
                         ? () async {
