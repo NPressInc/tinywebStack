@@ -55,12 +55,14 @@ extension SyncEventPatterns on SyncEvent {
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SyncEvent_Message value)?  message,TResult Function( SyncEvent_RoomsChanged value)?  roomsChanged,required TResult orElse(),}){
+@optionalTypeArgs TResult maybeMap<TResult extends Object?>({TResult Function( SyncEvent_Message value)?  message,TResult Function( SyncEvent_RoomsChanged value)?  roomsChanged,TResult Function( SyncEvent_Typing value)?  typing,TResult Function( SyncEvent_ReactionUpdated value)?  reactionUpdated,required TResult orElse(),}){
 final _that = this;
 switch (_that) {
 case SyncEvent_Message() when message != null:
 return message(_that);case SyncEvent_RoomsChanged() when roomsChanged != null:
-return roomsChanged(_that);case _:
+return roomsChanged(_that);case SyncEvent_Typing() when typing != null:
+return typing(_that);case SyncEvent_ReactionUpdated() when reactionUpdated != null:
+return reactionUpdated(_that);case _:
   return orElse();
 
 }
@@ -78,12 +80,14 @@ return roomsChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SyncEvent_Message value)  message,required TResult Function( SyncEvent_RoomsChanged value)  roomsChanged,}){
+@optionalTypeArgs TResult map<TResult extends Object?>({required TResult Function( SyncEvent_Message value)  message,required TResult Function( SyncEvent_RoomsChanged value)  roomsChanged,required TResult Function( SyncEvent_Typing value)  typing,required TResult Function( SyncEvent_ReactionUpdated value)  reactionUpdated,}){
 final _that = this;
 switch (_that) {
 case SyncEvent_Message():
 return message(_that);case SyncEvent_RoomsChanged():
-return roomsChanged(_that);}
+return roomsChanged(_that);case SyncEvent_Typing():
+return typing(_that);case SyncEvent_ReactionUpdated():
+return reactionUpdated(_that);}
 }
 /// A variant of `map` that fallback to returning `null`.
 ///
@@ -97,12 +101,14 @@ return roomsChanged(_that);}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SyncEvent_Message value)?  message,TResult? Function( SyncEvent_RoomsChanged value)?  roomsChanged,}){
+@optionalTypeArgs TResult? mapOrNull<TResult extends Object?>({TResult? Function( SyncEvent_Message value)?  message,TResult? Function( SyncEvent_RoomsChanged value)?  roomsChanged,TResult? Function( SyncEvent_Typing value)?  typing,TResult? Function( SyncEvent_ReactionUpdated value)?  reactionUpdated,}){
 final _that = this;
 switch (_that) {
 case SyncEvent_Message() when message != null:
 return message(_that);case SyncEvent_RoomsChanged() when roomsChanged != null:
-return roomsChanged(_that);case _:
+return roomsChanged(_that);case SyncEvent_Typing() when typing != null:
+return typing(_that);case SyncEvent_ReactionUpdated() when reactionUpdated != null:
+return reactionUpdated(_that);case _:
   return null;
 
 }
@@ -119,11 +125,13 @@ return roomsChanged(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( IncomingMessage field0)?  message,TResult Function()?  roomsChanged,required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>({TResult Function( IncomingMessage field0)?  message,TResult Function()?  roomsChanged,TResult Function( RoomTypingUpdate field0)?  typing,TResult Function( String roomId,  String targetEventId,  String emoji,  String sender,  String reactionEventId,  bool removed)?  reactionUpdated,required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case SyncEvent_Message() when message != null:
 return message(_that.field0);case SyncEvent_RoomsChanged() when roomsChanged != null:
-return roomsChanged();case _:
+return roomsChanged();case SyncEvent_Typing() when typing != null:
+return typing(_that.field0);case SyncEvent_ReactionUpdated() when reactionUpdated != null:
+return reactionUpdated(_that.roomId,_that.targetEventId,_that.emoji,_that.sender,_that.reactionEventId,_that.removed);case _:
   return orElse();
 
 }
@@ -141,11 +149,13 @@ return roomsChanged();case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( IncomingMessage field0)  message,required TResult Function()  roomsChanged,}) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>({required TResult Function( IncomingMessage field0)  message,required TResult Function()  roomsChanged,required TResult Function( RoomTypingUpdate field0)  typing,required TResult Function( String roomId,  String targetEventId,  String emoji,  String sender,  String reactionEventId,  bool removed)  reactionUpdated,}) {final _that = this;
 switch (_that) {
 case SyncEvent_Message():
 return message(_that.field0);case SyncEvent_RoomsChanged():
-return roomsChanged();}
+return roomsChanged();case SyncEvent_Typing():
+return typing(_that.field0);case SyncEvent_ReactionUpdated():
+return reactionUpdated(_that.roomId,_that.targetEventId,_that.emoji,_that.sender,_that.reactionEventId,_that.removed);}
 }
 /// A variant of `when` that fallback to returning `null`
 ///
@@ -159,11 +169,13 @@ return roomsChanged();}
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( IncomingMessage field0)?  message,TResult? Function()?  roomsChanged,}) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>({TResult? Function( IncomingMessage field0)?  message,TResult? Function()?  roomsChanged,TResult? Function( RoomTypingUpdate field0)?  typing,TResult? Function( String roomId,  String targetEventId,  String emoji,  String sender,  String reactionEventId,  bool removed)?  reactionUpdated,}) {final _that = this;
 switch (_that) {
 case SyncEvent_Message() when message != null:
 return message(_that.field0);case SyncEvent_RoomsChanged() when roomsChanged != null:
-return roomsChanged();case _:
+return roomsChanged();case SyncEvent_Typing() when typing != null:
+return typing(_that.field0);case SyncEvent_ReactionUpdated() when reactionUpdated != null:
+return reactionUpdated(_that.roomId,_that.targetEventId,_that.emoji,_that.sender,_that.reactionEventId,_that.removed);case _:
   return null;
 
 }
@@ -268,5 +280,147 @@ String toString() {
 
 
 
+
+/// @nodoc
+
+
+class SyncEvent_Typing extends SyncEvent {
+  const SyncEvent_Typing(this.field0): super._();
+  
+
+ final  RoomTypingUpdate field0;
+
+/// Create a copy of SyncEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SyncEvent_TypingCopyWith<SyncEvent_Typing> get copyWith => _$SyncEvent_TypingCopyWithImpl<SyncEvent_Typing>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncEvent_Typing&&(identical(other.field0, field0) || other.field0 == field0));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,field0);
+
+@override
+String toString() {
+  return 'SyncEvent.typing(field0: $field0)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SyncEvent_TypingCopyWith<$Res> implements $SyncEventCopyWith<$Res> {
+  factory $SyncEvent_TypingCopyWith(SyncEvent_Typing value, $Res Function(SyncEvent_Typing) _then) = _$SyncEvent_TypingCopyWithImpl;
+@useResult
+$Res call({
+ RoomTypingUpdate field0
+});
+
+
+
+
+}
+/// @nodoc
+class _$SyncEvent_TypingCopyWithImpl<$Res>
+    implements $SyncEvent_TypingCopyWith<$Res> {
+  _$SyncEvent_TypingCopyWithImpl(this._self, this._then);
+
+  final SyncEvent_Typing _self;
+  final $Res Function(SyncEvent_Typing) _then;
+
+/// Create a copy of SyncEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? field0 = null,}) {
+  return _then(SyncEvent_Typing(
+null == field0 ? _self.field0 : field0 // ignore: cast_nullable_to_non_nullable
+as RoomTypingUpdate,
+  ));
+}
+
+
+}
+
+/// @nodoc
+
+
+class SyncEvent_ReactionUpdated extends SyncEvent {
+  const SyncEvent_ReactionUpdated({required this.roomId, required this.targetEventId, required this.emoji, required this.sender, required this.reactionEventId, required this.removed}): super._();
+  
+
+ final  String roomId;
+ final  String targetEventId;
+ final  String emoji;
+ final  String sender;
+ final  String reactionEventId;
+ final  bool removed;
+
+/// Create a copy of SyncEvent
+/// with the given fields replaced by the non-null parameter values.
+@JsonKey(includeFromJson: false, includeToJson: false)
+@pragma('vm:prefer-inline')
+$SyncEvent_ReactionUpdatedCopyWith<SyncEvent_ReactionUpdated> get copyWith => _$SyncEvent_ReactionUpdatedCopyWithImpl<SyncEvent_ReactionUpdated>(this, _$identity);
+
+
+
+@override
+bool operator ==(Object other) {
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is SyncEvent_ReactionUpdated&&(identical(other.roomId, roomId) || other.roomId == roomId)&&(identical(other.targetEventId, targetEventId) || other.targetEventId == targetEventId)&&(identical(other.emoji, emoji) || other.emoji == emoji)&&(identical(other.sender, sender) || other.sender == sender)&&(identical(other.reactionEventId, reactionEventId) || other.reactionEventId == reactionEventId)&&(identical(other.removed, removed) || other.removed == removed));
+}
+
+
+@override
+int get hashCode => Object.hash(runtimeType,roomId,targetEventId,emoji,sender,reactionEventId,removed);
+
+@override
+String toString() {
+  return 'SyncEvent.reactionUpdated(roomId: $roomId, targetEventId: $targetEventId, emoji: $emoji, sender: $sender, reactionEventId: $reactionEventId, removed: $removed)';
+}
+
+
+}
+
+/// @nodoc
+abstract mixin class $SyncEvent_ReactionUpdatedCopyWith<$Res> implements $SyncEventCopyWith<$Res> {
+  factory $SyncEvent_ReactionUpdatedCopyWith(SyncEvent_ReactionUpdated value, $Res Function(SyncEvent_ReactionUpdated) _then) = _$SyncEvent_ReactionUpdatedCopyWithImpl;
+@useResult
+$Res call({
+ String roomId, String targetEventId, String emoji, String sender, String reactionEventId, bool removed
+});
+
+
+
+
+}
+/// @nodoc
+class _$SyncEvent_ReactionUpdatedCopyWithImpl<$Res>
+    implements $SyncEvent_ReactionUpdatedCopyWith<$Res> {
+  _$SyncEvent_ReactionUpdatedCopyWithImpl(this._self, this._then);
+
+  final SyncEvent_ReactionUpdated _self;
+  final $Res Function(SyncEvent_ReactionUpdated) _then;
+
+/// Create a copy of SyncEvent
+/// with the given fields replaced by the non-null parameter values.
+@pragma('vm:prefer-inline') $Res call({Object? roomId = null,Object? targetEventId = null,Object? emoji = null,Object? sender = null,Object? reactionEventId = null,Object? removed = null,}) {
+  return _then(SyncEvent_ReactionUpdated(
+roomId: null == roomId ? _self.roomId : roomId // ignore: cast_nullable_to_non_nullable
+as String,targetEventId: null == targetEventId ? _self.targetEventId : targetEventId // ignore: cast_nullable_to_non_nullable
+as String,emoji: null == emoji ? _self.emoji : emoji // ignore: cast_nullable_to_non_nullable
+as String,sender: null == sender ? _self.sender : sender // ignore: cast_nullable_to_non_nullable
+as String,reactionEventId: null == reactionEventId ? _self.reactionEventId : reactionEventId // ignore: cast_nullable_to_non_nullable
+as String,removed: null == removed ? _self.removed : removed // ignore: cast_nullable_to_non_nullable
+as bool,
+  ));
+}
+
+
+}
 
 // dart format on

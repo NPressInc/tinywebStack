@@ -9,8 +9,8 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'package:freezed_annotation/freezed_annotation.dart' hide protected;
 part 'matrix.freezed.dart';
 
-// These functions are ignored because they are not marked as `pub`: `body_from_msgtype`, `bootstrap_cross_signing`, `build_client`, `client`, `direct_room_display_name`, `empty_media_fields`, `encryption_initial_state`, `enrich_display_names`, `fetch_media_bytes`, `map_send_error`, `media_fields_from_msgtype`, `member_display_name`, `mxid_from_username`, `parse_timeline_message`, `recovery_state_label`, `runtime`, `server_name_from_homeserver`, `timeline_body_from_msgtype`, `timeline_ts_ms`, `write_media_cache_file`
-// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `drop`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
+// These functions are ignored because they are not marked as `pub`: `body_from_msgtype`, `bootstrap_cross_signing`, `build_client`, `client`, `direct_room_display_name`, `empty_media_fields`, `encryption_initial_state`, `fetch_media_bytes`, `map_send_error`, `media_fields_from_msgtype`, `member_display_name`, `mxid_from_username`, `parse_timeline_message`, `recovery_state_label`, `runtime`, `server_name_from_homeserver`, `timeline_body_from_msgtype`, `timeline_ts_ms`, `write_media_cache_file`
+// These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `clone`, `drop`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`, `fmt`
 
 Future<MatrixSession> restoreSession({
   required String homeserverUrl,
@@ -77,6 +77,8 @@ abstract class MatrixSession implements RustOpaqueInterface {
 
   Future<EncryptionStatus> encryptionStatus();
 
+  Future<UrlPreview> fetchUrlPreview({required String url});
+
   Future<void> flushKeyBackup();
 
   Future<void> joinRoom({required String roomId});
@@ -87,7 +89,18 @@ abstract class MatrixSession implements RustOpaqueInterface {
 
   Future<void> logout();
 
+  Future<List<UserReadReceipt>> readReceiptsForEvent({
+    required String roomId,
+    required String eventId,
+  });
+
   Future<void> recover({required String recoveryKey});
+
+  Future<void> redactEvent({
+    required String roomId,
+    required String eventId,
+    String? reason,
+  });
 
   Future<String> resetRecovery({String? password});
 
@@ -105,7 +118,24 @@ abstract class MatrixSession implements RustOpaqueInterface {
     String? caption,
   });
 
+  Future<String> sendReaction({
+    required String roomId,
+    required String eventId,
+    required String emoji,
+  });
+
+  Future<void> sendReadReceipt({
+    required String roomId,
+    required String eventId,
+  });
+
   Future<String> sendText({required String roomId, required String body});
+
+  Future<String> sendTextReply({
+    required String roomId,
+    required String body,
+    required String replyToEventId,
+  });
 
   Future<void> setHttpPusher({
     required String appId,
@@ -113,6 +143,8 @@ abstract class MatrixSession implements RustOpaqueInterface {
     required String gatewayUrl,
     String? lang,
   });
+
+  Future<void> setTyping({required String roomId, required bool typing});
 
   Future<String> setupRecovery({String? password});
 
@@ -176,6 +208,8 @@ class IncomingMessage {
   final int? width;
   final int? height;
   final PlatformInt64? durationMs;
+  final List<MessageReaction> reactions;
+  final ReplyPreview? inReplyTo;
 
   const IncomingMessage({
     required this.roomId,
@@ -193,6 +227,8 @@ class IncomingMessage {
     this.width,
     this.height,
     this.durationMs,
+    required this.reactions,
+    this.inReplyTo,
   });
 
   @override
@@ -211,7 +247,9 @@ class IncomingMessage {
       mimeType.hashCode ^
       width.hashCode ^
       height.hashCode ^
-      durationMs.hashCode;
+      durationMs.hashCode ^
+      reactions.hashCode ^
+      inReplyTo.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -232,7 +270,34 @@ class IncomingMessage {
           mimeType == other.mimeType &&
           width == other.width &&
           height == other.height &&
-          durationMs == other.durationMs;
+          durationMs == other.durationMs &&
+          reactions == other.reactions &&
+          inReplyTo == other.inReplyTo;
+}
+
+class MessageReaction {
+  final String emoji;
+  final String userId;
+  final String reactionEventId;
+
+  const MessageReaction({
+    required this.emoji,
+    required this.userId,
+    required this.reactionEventId,
+  });
+
+  @override
+  int get hashCode =>
+      emoji.hashCode ^ userId.hashCode ^ reactionEventId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MessageReaction &&
+          runtimeType == other.runtimeType &&
+          emoji == other.emoji &&
+          userId == other.userId &&
+          reactionEventId == other.reactionEventId;
 }
 
 class OwnDeviceInfo {
@@ -264,6 +329,37 @@ class OwnDeviceInfo {
           displayName == other.displayName &&
           verified == other.verified &&
           isCurrent == other.isCurrent;
+}
+
+class ReplyPreview {
+  final String eventId;
+  final String sender;
+  final String? senderDisplayName;
+  final String body;
+
+  const ReplyPreview({
+    required this.eventId,
+    required this.sender,
+    this.senderDisplayName,
+    required this.body,
+  });
+
+  @override
+  int get hashCode =>
+      eventId.hashCode ^
+      sender.hashCode ^
+      senderDisplayName.hashCode ^
+      body.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ReplyPreview &&
+          runtimeType == other.runtimeType &&
+          eventId == other.eventId &&
+          sender == other.sender &&
+          senderDisplayName == other.senderDisplayName &&
+          body == other.body;
 }
 
 class RoomMemberInfo {
@@ -331,12 +427,39 @@ class RoomSummary {
           isDirect == other.isDirect;
 }
 
+class RoomTypingUpdate {
+  final String roomId;
+  final List<String> userIds;
+
+  const RoomTypingUpdate({required this.roomId, required this.userIds});
+
+  @override
+  int get hashCode => roomId.hashCode ^ userIds.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RoomTypingUpdate &&
+          runtimeType == other.runtimeType &&
+          roomId == other.roomId &&
+          userIds == other.userIds;
+}
+
 @freezed
 sealed class SyncEvent with _$SyncEvent {
   const SyncEvent._();
 
   const factory SyncEvent.message(IncomingMessage field0) = SyncEvent_Message;
   const factory SyncEvent.roomsChanged() = SyncEvent_RoomsChanged;
+  const factory SyncEvent.typing(RoomTypingUpdate field0) = SyncEvent_Typing;
+  const factory SyncEvent.reactionUpdated({
+    required String roomId,
+    required String targetEventId,
+    required String emoji,
+    required String sender,
+    required String reactionEventId,
+    required bool removed,
+  }) = SyncEvent_ReactionUpdated;
 }
 
 class TimelineMessage {
@@ -357,6 +480,8 @@ class TimelineMessage {
 
   /// Video duration in milliseconds when known.
   final PlatformInt64? durationMs;
+  final List<MessageReaction> reactions;
+  final ReplyPreview? inReplyTo;
 
   const TimelineMessage({
     required this.eventId,
@@ -372,6 +497,8 @@ class TimelineMessage {
     this.width,
     this.height,
     this.durationMs,
+    required this.reactions,
+    this.inReplyTo,
   });
 
   @override
@@ -388,7 +515,9 @@ class TimelineMessage {
       mimeType.hashCode ^
       width.hashCode ^
       height.hashCode ^
-      durationMs.hashCode;
+      durationMs.hashCode ^
+      reactions.hashCode ^
+      inReplyTo.hashCode;
 
   @override
   bool operator ==(Object other) =>
@@ -407,5 +536,60 @@ class TimelineMessage {
           mimeType == other.mimeType &&
           width == other.width &&
           height == other.height &&
-          durationMs == other.durationMs;
+          durationMs == other.durationMs &&
+          reactions == other.reactions &&
+          inReplyTo == other.inReplyTo;
+}
+
+class UrlPreview {
+  final String url;
+  final String? title;
+  final String? description;
+  final String? imageMxc;
+  final String? siteName;
+
+  const UrlPreview({
+    required this.url,
+    this.title,
+    this.description,
+    this.imageMxc,
+    this.siteName,
+  });
+
+  @override
+  int get hashCode =>
+      url.hashCode ^
+      title.hashCode ^
+      description.hashCode ^
+      imageMxc.hashCode ^
+      siteName.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UrlPreview &&
+          runtimeType == other.runtimeType &&
+          url == other.url &&
+          title == other.title &&
+          description == other.description &&
+          imageMxc == other.imageMxc &&
+          siteName == other.siteName;
+}
+
+class UserReadReceipt {
+  final String userId;
+  final PlatformInt64? tsMs;
+
+  const UserReadReceipt({required this.userId, this.tsMs});
+
+  @override
+  int get hashCode => userId.hashCode ^ tsMs.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is UserReadReceipt &&
+          runtimeType == other.runtimeType &&
+          userId == other.userId &&
+          tsMs == other.tsMs;
 }
