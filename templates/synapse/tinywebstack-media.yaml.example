@@ -1,0 +1,4 @@
+# Managed by tinywebStack synapse-upload-previews.sh
+# Overrides YunoHost homeserver.yaml (conf.d wins for duplicate keys).
+max_upload_size: 200M
+url_preview_enabled: false

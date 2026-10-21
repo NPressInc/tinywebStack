@@ -81,9 +81,8 @@ class _MessageBubbleState extends State<MessageBubble> {
     if (url == null) {
       return;
     }
-    final cached = cachedUrlPreview(url);
-    if (cached != null) {
-      setState(() => _linkPreview = cached);
+    if (isUrlPreviewResolved(url)) {
+      setState(() => _linkPreview = cachedUrlPreview(url));
       return;
     }
     final preview = await loadUrlPreview(widget.chat, url);

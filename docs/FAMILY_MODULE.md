@@ -18,6 +18,12 @@ Or step by step:
 
 This pip-installs the module into the Synapse venv, drops `/etc/matrix-synapse/conf.d/tinywebstack-family.yaml`, sets `encryption_enabled_by_default_for_room_type: all` so new rooms and DMs are E2EE by default, and restarts Synapse.
 
+`family-init.sh` also runs `synapse-upload-previews.sh`, which sets **`max_upload_size: 200M`**, **`url_preview_enabled: false`** in `/etc/matrix-synapse/conf.d/tinywebstack-media.yaml` (overrides YunoHost `homeserver.yaml`), mirrors `max_upload_size` via `yunohost app setting synapse` when available, and adds **`client_max_body_size 200M`** on the Matrix (and main) nginx vhosts. Re-apply anytime:
+
+```bash
+./scripts/vm/remote-run.sh "$IP" synapse-upload-previews.sh family-a.family.test
+```
+
 `install-family-module.sh` also creates `/etc/tinywebstack/matrix-login-ticket.secret` (32 random bytes, mode `640`, group `www-data`) and sets module config `login_ticket_secret_file` to that path. The family dashboard reads the same path via `TWS_MATRIX_LOGIN_TICKET_SECRET_FILE` to mint short-lived tickets for code enrollment.
 
 ### Matrix login type `org.tinywebstack.login_ticket`

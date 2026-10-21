@@ -696,6 +696,19 @@ step_selfcheck() {
     fi
   fi
 
+  if [[ -f "/etc/matrix-synapse/conf.d/tinywebstack-media.yaml" ]]; then
+    if grep -q 'max_upload_size: 200M' /etc/matrix-synapse/conf.d/tinywebstack-media.yaml \
+      && grep -q 'url_preview_enabled: false' /etc/matrix-synapse/conf.d/tinywebstack-media.yaml; then
+      results+=("PASS	synapse media upload / url_preview snippet present")
+    else
+      results+=("FAIL	synapse tinywebstack-media.yaml missing expected keys")
+      fail=1
+    fi
+  else
+    results+=("FAIL	synapse tinywebstack-media.yaml missing")
+    fail=1
+  fi
+
   if [[ "$LOCATION_APP" == "owntracks" ]]; then
     line="$(selfcheck_require_first_unit owntracks ot-recorder || true)"
     results+=("$line")

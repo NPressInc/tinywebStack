@@ -352,17 +352,31 @@ fn receipt_ts_ms(receipt: &Receipt) -> Option<i64> {
     receipt.ts.map(|t| t.get().into())
 }
 
+fn url_preview_unavailable(err: &impl std::fmt::Display) -> bool {
+    let s = err.to_string().to_lowercase();
+    s.contains("m_unrecognized")
+        || s.contains("url_preview_unavailable")
+        || (s.contains("preview") && (s.contains("403") || s.contains("404") || s.contains("forbidden")))
+}
+
 pub(super) async fn fetch_url_preview(client: &Client, url: &str) -> anyhow::Result<UrlPreview> {
     let auth_req = auth_preview::Request::new(url.to_owned());
     let data = match client.send(auth_req).await {
         Ok(resp) => resp.data,
-        Err(_) => {
+        Err(e) => {
+            if url_preview_unavailable(&e) {
+                return Err(anyhow!("url_preview_unavailable"));
+            }
             let legacy_req = legacy_preview::Request::new(url.to_owned());
-            client
-                .send(legacy_req)
-                .await
-                .context("legacy preview_url")?
-                .data
+            match client.send(legacy_req).await {
+                Ok(resp) => resp.data,
+                Err(e2) => {
+                    if url_preview_unavailable(&e2) {
+                        return Err(anyhow!("url_preview_unavailable"));
+                    }
+                    return Err(e2).context("legacy preview_url");
+                }
+            }
         }
     };
     parse_preview_json(url, data)
