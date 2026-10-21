@@ -82,6 +82,18 @@ yaml.safe_load(p.read_text())
 print("  YAML OK", p)
 PY
 
+echo "== synapse media template yaml =="
+python3 - <<'PY'
+import yaml
+from pathlib import Path
+p = Path("templates/synapse/tinywebstack-media.yaml.example")
+data = yaml.safe_load(p.read_text())
+assert data.get("max_upload_size") == "200M"
+assert data.get("url_preview_enabled") is False
+assert "url_preview_ip_range_blacklist" not in data
+print("  YAML OK", p)
+PY
+
 echo "== git executable bits (scripts/*.sh) =="
 python3 - <<'PY'
 import subprocess

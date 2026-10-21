@@ -35,6 +35,7 @@ if [[ -f "${TW_STACK_ROOT}/vm/install-mobilizon.sh" ]]; then
   run_vm_script install-mobilizon.sh "$MAIN_DOMAIN" "${NODE_NAME:-}"
 fi
 run_vm_script install-family-module.sh "$MAIN_DOMAIN"
+run_vm_script synapse-upload-previews.sh "$MAIN_DOMAIN"
 if [[ -f "${TW_STACK_ROOT}/vm/family-permissions-seed.sh" ]]; then
   run_vm_script family-permissions-seed.sh "$MAIN_DOMAIN"
 fi

@@ -11,6 +11,9 @@ import 'chat_models.dart';
 abstract class ChatService {
   bool get isConfigured;
 
+  /// Session scope for URL preview negative caching (homeserver base URL or similar).
+  String get urlPreviewCacheKey;
+
   ValueListenable<List<ChatRoom>> get roomsListenable;
 
   List<ChatRoom> get rooms;
@@ -139,6 +142,9 @@ class UnconfiguredChatService implements ChatService {
   bool get isConfigured => false;
 
   @override
+  String get urlPreviewCacheKey => 'unconfigured';
+
+  @override
   ValueListenable<List<ChatRoom>> get roomsListenable => _rooms;
 
   @override
@@ -245,8 +251,14 @@ class FakeChatService implements ChatService {
 
   final Map<String, Map<String, List<ChatReaction>>> _reactionsByRoom = {};
 
+  int urlPreviewFetchCount = 0;
+  Object? urlPreviewError;
+
   /// Local paths returned by [downloadMedia] / [downloadThumbnail] for fakes.
   final Map<String, String> mediaPaths = {};
+
+  @override
+  String get urlPreviewCacheKey => 'fake';
   final Map<String, String> thumbnailPaths = {};
 
   @override
@@ -352,6 +364,10 @@ class FakeChatService implements ChatService {
 
   @override
   Future<ChatUrlPreview> fetchUrlPreview(String url) async {
+    urlPreviewFetchCount++;
+    if (urlPreviewError != null) {
+      throw urlPreviewError!;
+    }
     return ChatUrlPreview(url: url, title: 'Example', siteName: 'example.com');
   }
 
@@ -501,6 +517,13 @@ class RustChatService implements ChatService {
 
   @override
   bool get isConfigured => bundle.matrixEnrollment.isOk;
+
+  @override
+  String get urlPreviewCacheKey =>
+      bundle.matrixEnrollment.homeserver ??
+      bundle.matrixHomeserverUrl ??
+      bundle.discovery.matrixHomeserverUrl ??
+      'matrix';
 
   @override
   ValueListenable<List<ChatRoom>> get roomsListenable => _rooms;
