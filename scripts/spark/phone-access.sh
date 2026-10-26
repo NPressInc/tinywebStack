@@ -138,8 +138,9 @@ do_up() {
   install_nat_unit
 
   systemctl daemon-reload
-  systemctl enable --now "${DNS_UNIT}"
-  systemctl enable --now "${NAT_UNIT}"
+  systemctl enable "${DNS_UNIT}" "${NAT_UNIT}"
+  systemctl restart "${DNS_UNIT}"
+  systemctl restart "${NAT_UNIT}"
 
   log "Phone access UP: DNS on ${ts_ip} for *.${LAB_DOMAIN} (incl. ${LAB_NODE}.${LAB_DOMAIN}); HTTPS DNAT to ${TW_VM_IP}"
   log "Tailscale admin: DNS -> Add nameserver -> Custom ${ts_ip}, restrict to *.${LAB_DOMAIN}"

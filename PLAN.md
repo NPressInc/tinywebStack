@@ -4,6 +4,10 @@ tinywebStack is a private, self-hosted app ecosystem for families that runs on h
 
 **Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Test nodes lab](docs/test-nodes.md)
 
+## Target hardware
+
+TinyWeb is home-server software targeted at a **NAS or mini PC with 8 GB of RAM**. A Raspberry Pi is possible for light use, but an 8 GB mini PC or NAS is the main target; a full family box runs comfortably in 4 GB of RAM.
+
 ## Why the change
 
 TinyWebC rebuilt things that already exist: a gossip protocol, a message store, and location storage. Mature projects already cover most of that. The only genuinely new part is the family layer: parent-managed identity and permissions that every app respects, and trusted links between households. That's where the effort goes now.
@@ -13,7 +17,7 @@ TinyWebC rebuilt things that already exist: a gossip protocol, a message store, 
 - **Base OS:** [YunoHost](https://yunohost.org), a Debian-based self-hosting OS with an app catalog, user accounts and groups, single sign-on (one login for every app), per-app permissions, domains, and HTTPS.
 - **Texting and calling:** Matrix on **Synapse** (homeserver). Families use the **TinyWeb app** for chat; voice/video calls land in a later app stage (Element Call on the box). Synapse uses YunoHost logins and can federate between homes.
 - **Location:** OwnTracks Recorder or Traccar on the box; kids publish from the **TinyWeb app** (not the OwnTracks app).
-- **Media and apps:** Jellyfin, Immich, Nextcloud, and others from the YunoHost catalog.
+- **Media and apps:** Jellyfin, Immich, Nextcloud, and others from the YunoHost catalog. Complex optional media apps like **Jellyfin** stay as their own separate native apps (phone/TV) rather than being built into the TinyWeb mega-app; family members sign into them automatically using their same TinyWeb username and password via YunoHost's shared LDAP directory.
 
 ## What we build (the family layer)
 
