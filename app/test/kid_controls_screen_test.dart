@@ -41,14 +41,26 @@ AppSession _parentSession() {
   return session;
 }
 
-FamilyApiClient _fakeApi({List<Map<String, dynamic>>? putBodies}) {
+FamilyApiClient _fakeApi({
+  List<Map<String, dynamic>>? putBodies,
+  List<Map<String, dynamic>>? linkedFamilies,
+}) {
+  final linked = linkedFamilies ?? <Map<String, dynamic>>[];
   return FamilyApiClient(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/invites')) {
         return http.Response(jsonEncode([]), 200);
       }
+      if (request.url.path.contains('/trusted-domains/') &&
+          request.method == 'DELETE') {
+        linked.clear();
+        return http.Response('{}', 200);
+      }
       if (request.url.path.endsWith('/linked-families')) {
-        return http.Response(jsonEncode({'linked_families': []}), 200);
+        return http.Response(
+          jsonEncode({'linked_families': List<Map<String, dynamic>>.from(linked)}),
+          200,
+        );
       }
       if (request.url.path.endsWith('/members') && request.method == 'GET') {
         return http.Response(
@@ -158,6 +170,77 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Kid One'), findsOneWidget);
+  });
+
+  testWidgets('parent unlinks linked family domain', (tester) async {
+    final linked = [
+      {
+        'domain': 'jones.family.test',
+        'family_name': 'Jones Family',
+      },
+    ];
+    String? deletedPath;
+    final api = FamilyApiClient(
+      client: MockClient((request) async {
+        if (request.url.path.endsWith('/invites')) {
+          return http.Response(jsonEncode([]), 200);
+        }
+        if (request.url.path.contains('/trusted-domains/') &&
+            request.method == 'DELETE') {
+          deletedPath = request.url.path;
+          linked.clear();
+          return http.Response('{}', 200);
+        }
+        if (request.url.path.endsWith('/linked-families')) {
+          return http.Response(
+            jsonEncode({'linked_families': List.from(linked)}),
+            200,
+          );
+        }
+        if (request.url.path.endsWith('/members') && request.method == 'GET') {
+          return http.Response(
+            jsonEncode([
+              {
+                'username': 'kid1',
+                'role': 'kid',
+                'mxid': '@kid1:family.example',
+                'display_name': 'Kid One',
+                'device_count': 0,
+              },
+            ]),
+            200,
+          );
+        }
+        return http.Response('{}', 404);
+      }),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: KidControlsScreen(
+          session: _parentSession(),
+          api: api,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('jones.family.test'), findsOneWidget);
+    await tester.tap(
+      find.byKey(const Key('unlink-domain-jones.family.test')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Unlink jones.family.test?'), findsOneWidget);
+    await tester.tap(find.text('Unlink'));
+    await tester.pumpAndSettle();
+
+    expect(
+      deletedPath,
+      '/family/api/trusted-domains/jones.family.test',
+    );
+    expect(find.text('Unlinked jones.family.test'), findsOneWidget);
+    expect(find.text('jones.family.test'), findsNothing);
   });
 
   testWidgets('kid detail toggles events with optimistic UI', (tester) async {

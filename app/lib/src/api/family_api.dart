@@ -437,6 +437,22 @@ class FamilyApiClient {
     _throwForStatus(response);
   }
 
+  Future<void> removeTrustedDomain(
+    EnrollmentBundle bundle,
+    String domain,
+  ) async {
+    final path =
+        '/trusted-domains/${Uri.encodeComponent(domain)}';
+    final response = await _client.delete(
+      Uri.parse(_apiUrl(bundle, path)),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      return;
+    }
+    _throwForStatus(response);
+  }
+
   Future<FederationPeersResponse> fetchFederationPeers(
     EnrollmentBundle bundle,
   ) async {

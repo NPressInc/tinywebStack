@@ -146,6 +146,50 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
     }
   }
 
+  Future<void> _unlinkFamily(LinkedFamily family) async {
+    final bundle = widget.session.enrollment;
+    if (bundle == null) {
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Unlink ${family.domain}?'),
+        content: Text(
+          'Members of ${family.domain} will no longer be able to chat or share events with your family.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Unlink'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) {
+      return;
+    }
+    try {
+      await _api.removeTrustedDomain(bundle, family.domain);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Unlinked ${family.domain}')),
+        );
+      }
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString())),
+        );
+      }
+    }
+  }
+
   Future<void> _deleteInvite(FamilyInviteRow invite) async {
     final bundle = widget.session.enrollment;
     if (bundle == null) {
@@ -328,14 +372,23 @@ class _KidControlsScreenState extends State<KidControlsScreen> {
           )
         else
           ..._linkedFamilies.map(
-            (f) => Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: const Icon(Icons.home_work_outlined),
-                title: Text(f.familyName),
-                subtitle: Text(f.domain),
-              ),
-            ),
+            (f) {
+              final d = f.domain;
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: const Icon(Icons.home_work_outlined),
+                  title: Text(f.familyName),
+                  subtitle: Text(f.domain),
+                  trailing: IconButton(
+                    key: Key('unlink-domain-$d'),
+                    icon: const Icon(Icons.link_off),
+                    tooltip: 'Unlink family',
+                    onPressed: _loading ? null : () => _unlinkFamily(f),
+                  ),
+                ),
+              );
+            },
           ),
         const SizedBox(height: 8),
       ],
