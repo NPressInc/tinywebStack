@@ -6,6 +6,9 @@ import 'tls_http_client.dart';
 
 import 'models.dart';
 
+export '../enroll/enroll_link.dart'
+    show kDefaultTinyWebBaseDomain, normalizeEnteredMxid, normalizeFamilyServerInput;
+
 class DiscoveryClient {
   DiscoveryClient({http.Client? client})
       : _client = client ?? defaultTlsHttpClient(),

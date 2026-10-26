@@ -82,7 +82,7 @@ Env knobs: `TWS_SERVER_NAME`, `TWS_CALDAV_ROOT`, `TWS_EVENTS_URL`, `TWS_LOCATION
 
 Single **provisioning** flow so families sign in once:
 
-1. **Discover box:** Scan QR encoding `https://<main-domain>` (or read `/.well-known/tinywebstack-family.json` for `server_name`, `enroll_url`, `matrix_homeserver_url`, `caldav_root`, etc.).
+1. **Discover box:** Scan QR encoding `https://<main-domain>` (or read `/.well-known/tinywebstack-family.json` for `server_name`, `enroll_url`, `matrix_homeserver_url`, `caldav_root`, etc.). On the enrollment screen, parents and kids can type a **bare family name** (for example `smith`) and the app expands it to **`smith.tinyweb.win`**; full domains such as `family-b.family.test` or a custom hostname are accepted as-is. In chat and contact dialogs, Matrix IDs like `@user:smith` expand to `@user:smith.tinyweb.win` the same way.
 2. **Enroll:** `POST /family/api/app/enroll` (public; rate-limited) with JSON:
    - **Password:** `{ "method": "password", "username", "password", "device_name", "platform": "android"|"ios"|"other" }` — Synapse `m.login.password` (+ optional Mobilizon GraphQL `login` when `TWS_EVENTS_URL` is set).
    - **Code:** `{ "method": "code", "code", "device_name", "platform" }` — parent mints code via dashboard or `POST /family/api/app/codes` (`{"username"}` → `{code, expires_at, qr_payload}`).
@@ -229,7 +229,7 @@ Same binary; **mode from LDAP groups** at enrollment (`parents` vs `kids` — `T
 | **Mobilizon PUBLIC default** | Federated event titles visible on public URLs — app UI should not surprise parents ([EVENTS.md](EVENTS.md)). |
 | **In-app chat scope** | Stage 1 chat is text only (no media, reactions, threads or calls). Room list and timeline come from a hand-written facade over `matrix-sdk`; move to `matrix-sdk-ui` (Timeline/RoomListService) as features grow. |
 | **E2EE** | **On** from Stage 1. Risks: a lost recovery key means old messages are lost on a new phone; parents can't see content off the kid's device; server-side content filters (P3.6) can't work in encrypted rooms. Interactive SAS verification of other people is deferred. |
-| **Box addressing** | QR `https://<main-domain>`; confirm `/.well-known/tinywebstack-family.json` fields match Matrix client discovery (`matrix_server` in [`app.py`](../family/dashboard/tinywebstack_dashboard/app.py)). |
+| **Box addressing** | Default production scheme: **`https://<family>.tinyweb.win`** (services at `matrix.<family>.tinyweb.win`, etc.). QR `https://<main-domain>`; confirm `/.well-known/tinywebstack-family.json` fields match Matrix client discovery (`matrix_server` in [`app.py`](../family/dashboard/tinywebstack_dashboard/app.py)). App enrollment accepts bare `<family>` slugs; DDNS/TLS on the box uses [`tinyweb-subdomain-ddns.sh`](../scripts/vm/tinyweb-subdomain-ddns.sh) with optional single SAN/wildcard cert (`TWS_TLS_SINGLE_SAN_CERT=1`) to avoid Let's Encrypt per-name limits on `tinyweb.win`. |
 | **OwnTracks Recorder API** | Exact read endpoints and auth for app proxy — confirm against Recorder version shipped on YunoHost. |
 | **Enrollment security** | Rate limits, lockout, and audit log for enroll and revoke. |
 

@@ -87,7 +87,7 @@ class _EnrollScreenState extends State<EnrollScreen> {
       if (origin == null) {
         throw EnrollException(
           EnrollErrorKind.network,
-          'Enter a valid HTTPS server (e.g. family.example)',
+          'Enter a family name (e.g. smith) or HTTPS server (e.g. smith.tinyweb.win)',
         );
       }
 
@@ -177,7 +177,9 @@ class _EnrollScreenState extends State<EnrollScreen> {
             controller: _serverController,
             decoration: const InputDecoration(
               labelText: 'Family server',
-              hintText: 'family.example',
+              hintText: 'smith (or smith.tinyweb.win)',
+              helperText:
+                  'Enter your family name for <name>.tinyweb.win, or a full domain',
             ),
             textInputAction: TextInputAction.next,
             autocorrect: false,

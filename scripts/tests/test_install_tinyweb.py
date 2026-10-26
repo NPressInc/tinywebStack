@@ -536,6 +536,61 @@ if should_create_swap off; then echo OFF_YES; else echo OFF_NO; fi
     assert "OFF_NO" in out
 
 
+def test_tws_domain_bare_slug_resolves_to_tinyweb_win() -> None:
+    script = r"""
+set -euo pipefail
+source scripts/lib/tinyweb-install-env.sh
+export TWS_DOMAIN=smith
+apply_tinyweb_env_defaults
+printf 'TWS_DOMAIN=%s\nTWS_NODE_NAME=%s\n' "$TWS_DOMAIN" "$TWS_NODE_NAME"
+"""
+    proc = subprocess.run(
+        ["bash", "-c", script],
+        cwd=ROOT,
+        env={k: v for k, v in os.environ.items() if k != "DRY_RUN"},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert "TWS_DOMAIN=smith.tinyweb.win" in proc.stdout
+    assert "TWS_NODE_NAME=smith" in proc.stdout
+
+
+def test_install_on_box_family_dry_run_resolves_domain() -> None:
+    install_on_box = ROOT / "scripts" / "install-on-box.sh"
+    proc = subprocess.run(
+        ["bash", str(install_on_box), "--family", "smith", "--dry-run"],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    log = proc.stderr
+    assert "TWS_DOMAIN=smith.tinyweb.win" in log
+
+
+def test_full_domain_unchanged_by_resolve() -> None:
+    script = r"""
+set -euo pipefail
+source scripts/lib/tinyweb-install-env.sh
+export TWS_DOMAIN=family-a.family.test
+apply_tinyweb_env_defaults
+printf '%s\n' "$TWS_DOMAIN"
+"""
+    proc = subprocess.run(
+        ["bash", "-c", script],
+        cwd=ROOT,
+        env={k: v for k, v in os.environ.items() if k != "DRY_RUN"},
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    assert proc.stdout.strip() == "family-a.family.test"
+
+
 def test_selfcheck_includes_family_public_nginx_checks() -> None:
     text = INSTALL.read_text(encoding="utf-8")
     assert "tinywebstack-family.json" in text

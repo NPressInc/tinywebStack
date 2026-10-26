@@ -12,6 +12,12 @@ TinyWeb is home-server software targeted at a **NAS or mini PC with 8 GB of RAM*
 
 TinyWebC rebuilt things that already exist: a gossip protocol, a message store, and location storage. Mature projects already cover most of that. The only genuinely new part is the family layer: parent-managed identity and permissions that every app respects, and trusted links between households. That's where the effort goes now.
 
+## Default family domains (`<family>.tinyweb.win`)
+
+Production TinyWeb families use **`<family>.tinyweb.win`** as the default hostname scheme (for example `smith.tinyweb.win`, with service hosts such as `matrix.smith.tinyweb.win`, `mobilizon.smith.tinyweb.win`, `push.smith.tinyweb.win`, `owntracks.smith.tinyweb.win`, and `nextcloud.smith.tinyweb.win`). Custom domains (for example `family-b.family.test` or your own DNS) still work unchanged.
+
+Bare family slugs are expanded automatically in the **TinyWeb app** (enrollment and Matrix ID entry) and in the **one-box installer** (`scripts/install-on-box.sh`, `scripts/install-tinyweb.sh --family`). Dynamic DNS and TLS for `tinyweb.win` families are handled by `scripts/vm/tinyweb-subdomain-ddns.sh`, which can update `A`/`AAAA` records via a TinyWeb webhook or Cloudflare and provision **one** Let's Encrypt certificate for `<family>.tinyweb.win` plus `*.<family>.tinyweb.win` so multiple service subdomains do not each consume a separate LE rate-limit slot on the shared `tinyweb.win` zone.
+
 ## The stack
 
 - **Base OS:** [YunoHost](https://yunohost.org), a Debian-based self-hosting OS with an app catalog, user accounts and groups, single sign-on (one login for every app), per-app permissions, domains, and HTTPS.
