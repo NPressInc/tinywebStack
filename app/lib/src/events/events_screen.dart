@@ -28,6 +28,9 @@ class _EventsScreenState extends State<EventsScreen> {
   List<MobilizonEventSummary> _events = [];
   bool _loading = true;
   String? _error;
+  final TextEditingController _passwordController = TextEditingController();
+  bool _linking = false;
+  String? _linkError;
 
   bool get _isParent => widget.session.profile?.role == 'parent';
 
@@ -39,6 +42,7 @@ class _EventsScreenState extends State<EventsScreen> {
 
   @override
   void dispose() {
+    _passwordController.dispose();
     if (widget.service == null) {
       _service?.dispose();
     }
@@ -67,8 +71,7 @@ class _EventsScreenState extends State<EventsScreen> {
     if (bundle.mobilizonCredentials == null) {
       setState(() {
         _loading = false;
-        _error =
-            'Events not linked on this device. Enroll with your family password (not a one-time code).';
+        _error = null;
       });
       return;
     }
@@ -87,6 +90,40 @@ class _EventsScreenState extends State<EventsScreen> {
         _loading = false;
         _error = e.toString();
       });
+    }
+  }
+
+  Future<void> _submitLinkPassword() async {
+    final password = _passwordController.text;
+    if (password.trim().isEmpty) {
+      setState(() {
+        _linkError = 'Enter your family password';
+      });
+      return;
+    }
+    setState(() {
+      _linking = true;
+      _linkError = null;
+    });
+    try {
+      final service = _openService();
+      await service.linkWithPassword(password);
+      widget.session.enrollment = service.bundle;
+      await widget.session.credentialStore.write(service.bundle);
+      _passwordController.clear();
+      if (mounted) {
+        setState(() {
+          _linking = false;
+        });
+      }
+      await _refresh();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _linking = false;
+          _linkError = e.toString();
+        });
+      }
     }
   }
 
@@ -150,6 +187,62 @@ class _EventsScreenState extends State<EventsScreen> {
         children: const [
           SizedBox(height: 120),
           Center(child: CircularProgressIndicator()),
+        ],
+      );
+    }
+    if (widget.session.enrollment?.mobilizonCredentials == null) {
+      final username = widget.session.profile?.username ??
+          widget.session.enrollment?.username ??
+          '';
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Sign in to Events',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'One-time QR enrollment needs your family password once to link Events for @$username.',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    key: const Key('events-link-password'),
+                    controller: _passwordController,
+                    obscureText: true,
+                    enabled: !_linking,
+                    decoration: const InputDecoration(
+                      labelText: 'Family password',
+                    ),
+                    onSubmitted: (_) => _submitLinkPassword(),
+                  ),
+                  if (_linkError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _linkError!,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.error,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    key: const Key('events-link-submit'),
+                    onPressed: _linking ? null : _submitLinkPassword,
+                    child: Text(
+                      _linking ? 'Connecting...' : 'Connect Events',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
         ],
       );
     }

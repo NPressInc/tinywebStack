@@ -16,7 +16,8 @@ FamilyDiscovery _discovery() => FamilyDiscovery(
       enrollUrl: '/family/api/app/enroll',
     );
 
-EnrollmentBundle _bundle() => EnrollmentBundle(
+EnrollmentBundle _bundle({Map<String, dynamic>? mobilizonRaw}) =>
+    EnrollmentBundle(
       deviceId: 'd',
       username: 'parent',
       role: 'parent',
@@ -27,11 +28,12 @@ EnrollmentBundle _bundle() => EnrollmentBundle(
       serverOrigin: 'https://family.example',
       discovery: _discovery(),
       rawJson: {
-        'mobilizon': {
-          'status': 'ok',
-          'api_url': 'https://mobilizon.family.example/api',
-          'access_token': 'mob-tok',
-        },
+        'mobilizon': mobilizonRaw ??
+            {
+              'status': 'ok',
+              'api_url': 'https://mobilizon.family.example/api',
+              'access_token': 'mob-tok',
+            },
       },
     );
 
@@ -49,11 +51,23 @@ AppSession _session() {
   return session;
 }
 
-EventsService _mockService() {
-  final mock = MockClient((request) async {
-    final body = jsonDecode(request.body) as Map<String, dynamic>;
-    final query = body['query'] as String;
-    if (query.contains('loggedUser')) {
+Future<http.Response> _mockMobilizonResponse(http.Request request) async {
+  final body = jsonDecode(request.body) as Map<String, dynamic>;
+  final query = body['query'] as String;
+  if (query.contains('mutation Login')) {
+    return http.Response(
+      jsonEncode({
+        'data': {
+          'login': {
+            'accessToken': 'linked-mob-tok',
+            'refreshToken': 'linked-refresh',
+          },
+        },
+      }),
+      200,
+    );
+  }
+  if (query.contains('loggedUser')) {
       return http.Response(
         jsonEncode({
           'data': {
@@ -102,9 +116,19 @@ EventsService _mockService() {
         200,
       );
     }
-    return http.Response(jsonEncode({'data': {}}), 200);
-  });
-  return EventsService(bundle: _bundle(), httpClient: mock);
+  return http.Response(jsonEncode({'data': {}}), 200);
+}
+
+EventsService _mockService({
+  EnrollmentBundle? bundle,
+  CredentialStore? credentialStore,
+}) {
+  final mock = MockClient(_mockMobilizonResponse);
+  return EventsService(
+    bundle: bundle ?? _bundle(),
+    httpClient: mock,
+    credentialStore: credentialStore,
+  );
 }
 
 void main() {
@@ -120,5 +144,51 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Block party'), findsOneWidget);
     expect(find.text('Events'), findsOneWidget);
+  });
+
+  testWidgets('events screen links events with family password', (tester) async {
+    final store = InMemoryCredentialStore();
+    final session = AppSession(store: store);
+    session.enrollment = _bundle(
+      mobilizonRaw: const {'status': 'password_required'},
+    );
+    session.profile = AppMeProfile(
+      username: 'parent',
+      role: 'parent',
+      mxid: '@parent:family.example',
+      quietHours: QuietHoursInfo(configured: false, active: false),
+      eventsEnabled: true,
+    );
+    session.route = AppRoute.home;
+    final service = _mockService(
+      bundle: session.enrollment!,
+      credentialStore: store,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: EventsScreen(
+          session: session,
+          service: service,
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sign in to Events'), findsOneWidget);
+    expect(find.byKey(const Key('events-link-password')), findsOneWidget);
+    expect(find.text('Connect Events'), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('events-link-password')),
+      'family-secret',
+    );
+    await tester.tap(find.byKey(const Key('events-link-submit')));
+    await tester.pumpAndSettle();
+
+    expect(session.enrollment?.mobilizonCredentials?.accessToken, 'linked-mob-tok');
+    final stored = await store.read();
+    expect(stored?.mobilizonCredentials?.accessToken, 'linked-mob-tok');
+    expect(find.text('Block party'), findsOneWidget);
   });
 }
