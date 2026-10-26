@@ -54,6 +54,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _chat = UnconfiguredChatService();
       }
     }
+    _chat.roomsListenable.addListener(_onRoomsChanged);
   }
 
   Future<void> _bootstrapRustChat() async {
@@ -72,6 +73,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     widget.session.locationService.removeListener(_onLocationChanged);
+    _chat.roomsListenable.removeListener(_onRoomsChanged);
     if (_ownsChat) {
       _chat.dispose();
     }
@@ -82,6 +84,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {});
     }
+  }
+
+  void _onRoomsChanged() {
+    if (!mounted) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override
@@ -126,6 +139,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final totalUnread =
+        _chat.rooms.fold<int>(0, (sum, r) => sum + r.unread);
     final pages = <Widget>[
       HomeScreen(
         session: widget.session,
@@ -176,9 +191,17 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           selectedIcon: Icon(Icons.family_restroom),
           label: 'Family',
         ),
-      const NavigationDestination(
-        icon: Icon(Icons.chat_bubble_outline),
-        selectedIcon: Icon(Icons.chat_bubble),
+      NavigationDestination(
+        icon: Badge(
+          isLabelVisible: totalUnread > 0,
+          label: Text('$totalUnread'),
+          child: const Icon(Icons.chat_bubble_outline),
+        ),
+        selectedIcon: Badge(
+          isLabelVisible: totalUnread > 0,
+          label: Text('$totalUnread'),
+          child: const Icon(Icons.chat_bubble),
+        ),
         label: 'Chat',
       ),
     ];

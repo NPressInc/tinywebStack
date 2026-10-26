@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/family_api.dart';
 import '../api/models.dart';
@@ -9,6 +11,32 @@ import '../brand.dart';
 import 'family_map_view.dart';
 
 enum _LocationsViewMode { map, list }
+
+String formatLocationAge(int? ageSeconds) {
+  if (ageSeconds == null) {
+    return 'no data';
+  }
+  final seconds = ageSeconds < 0 ? 0 : ageSeconds;
+  if (seconds < 60) {
+    return '${seconds}s ago';
+  }
+  if (seconds < 3600) {
+    return '${seconds ~/ 60}m ago';
+  }
+  if (seconds < 86400) {
+    return '${seconds ~/ 3600}h ago';
+  }
+  return '${seconds ~/ 86400}d ago';
+}
+
+String _formatTrackTimestamp(DateTime when) {
+  final y = when.year;
+  final m = when.month.toString().padLeft(2, '0');
+  final d = when.day.toString().padLeft(2, '0');
+  final h = when.hour.toString().padLeft(2, '0');
+  final min = when.minute.toString().padLeft(2, '0');
+  return '$y-$m-$d $h:$min';
+}
 
 class LocationsScreen extends StatefulWidget {
   const LocationsScreen({
@@ -92,6 +120,22 @@ class _LocationsScreenState extends State<LocationsScreen> {
         _error = e.toString();
       });
     }
+  }
+
+  Future<void> _openInMaps(KidLocationSnapshot kid) async {
+    final label =
+        kid.displayName.isNotEmpty ? kid.displayName : kid.username;
+    final Uri uri;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      uri = Uri.parse(
+        'https://maps.apple.com/?ll=${kid.lat},${kid.lon}&q=${Uri.encodeComponent(label)}',
+      );
+    } else {
+      uri = Uri.parse(
+        'https://www.google.com/maps/search/?api=1&query=${kid.lat},${kid.lon}',
+      );
+    }
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _loadTrack(String username) async {
@@ -234,8 +278,8 @@ class _LocationsScreenState extends State<LocationsScreen> {
 
   Widget _kidCard(KidLocationSnapshot kid) {
     final selected = kid.username == _selectedKid;
-    final lastSeen =
-        kid.ageSeconds != null ? '${kid.ageSeconds}s ago' : 'no data';
+    final lastSeen = formatLocationAge(kid.ageSeconds);
+    final hasCoords = kid.lat != null && kid.lon != null;
     return Card(
       color: selected ? TinyWebColors.bgSoft : null,
       child: ListTile(
@@ -245,14 +289,27 @@ class _LocationsScreenState extends State<LocationsScreen> {
         subtitle: Text(
           [
             'Last seen: $lastSeen',
-            if (kid.lat != null && kid.lon != null)
+            if (hasCoords)
               '${kid.lat!.toStringAsFixed(5)}, ${kid.lon!.toStringAsFixed(5)}',
             if (kid.acc != null) '±${kid.acc!.round()} m',
             if (kid.batt != null) 'Battery ${kid.batt}%',
           ].join(' · '),
         ),
         onTap: () => _loadTrack(kid.username),
-        trailing: selected ? const Icon(Icons.check) : null,
+        trailing: hasCoords
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.directions_outlined),
+                    tooltip: 'Open in Maps',
+                    key: Key('open-maps-${kid.username}'),
+                    onPressed: () => _openInMaps(kid),
+                  ),
+                  if (selected) const Icon(Icons.check),
+                ],
+              )
+            : (selected ? const Icon(Icons.check) : null),
       ),
     );
   }
@@ -270,7 +327,7 @@ class _LocationsScreenState extends State<LocationsScreen> {
       ),
       subtitle: Text(
         [
-          if (when != null) when.toString(),
+          if (when != null) _formatTrackTimestamp(when),
           if (point.acc != null) '±${point.acc!.round()} m',
           if (point.batt != null) '${point.batt}%',
         ].join(' · '),

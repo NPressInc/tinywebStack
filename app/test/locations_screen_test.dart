@@ -68,7 +68,37 @@ FamilyApiClient _fakeApi() {
   return FamilyApiClient(client: client);
 }
 
+String _expectedTrackTimestamp(int tstSeconds) {
+  final when =
+      DateTime.fromMillisecondsSinceEpoch(tstSeconds * 1000).toLocal();
+  final y = when.year;
+  final m = when.month.toString().padLeft(2, '0');
+  final d = when.day.toString().padLeft(2, '0');
+  final h = when.hour.toString().padLeft(2, '0');
+  final min = when.minute.toString().padLeft(2, '0');
+  return '$y-$m-$d $h:$min';
+}
+
 void main() {
+  group('formatLocationAge', () {
+    test('null is no data', () {
+      expect(formatLocationAge(null), 'no data');
+    });
+    test('seconds', () {
+      expect(formatLocationAge(45), '45s ago');
+    });
+    test('minutes', () {
+      expect(formatLocationAge(120), '2m ago');
+      expect(formatLocationAge(300), '5m ago');
+    });
+    test('hours', () {
+      expect(formatLocationAge(7200), '2h ago');
+    });
+    test('days', () {
+      expect(formatLocationAge(172800), '2d ago');
+    });
+  });
+
   testWidgets('locations screen lists kid snapshot', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -81,5 +111,23 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Kid One'), findsOneWidget);
     expect(find.textContaining('40.1'), findsWidgets);
+  });
+
+  testWidgets('locations screen shows friendly age, track time, and open in maps',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LocationsScreen(
+          session: _parentSession(),
+          api: _fakeApi(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Last seen: 2m ago'), findsOneWidget);
+    expect(find.text(_expectedTrackTimestamp(1700000000)), findsOneWidget);
+    expect(find.byKey(const Key('open-maps-kid1')), findsOneWidget);
+    expect(find.byTooltip('Open in Maps'), findsOneWidget);
   });
 }
