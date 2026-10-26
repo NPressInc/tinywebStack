@@ -128,7 +128,7 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
         QuietHoursConfig(
           start: '21:00',
           end: '07:00',
-          timezone: 'UTC',
+          timezone: 'America/Denver',
         );
     _mutate(
       current.copyWith(quietHours: qh),
@@ -142,6 +142,174 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
       current.copyWith(quietHours: qh),
       {'quiet_hours': qh.toJson()},
     );
+  }
+
+  static const _commonTimezones = [
+    'America/Denver',
+    'America/Los_Angeles',
+    'America/Phoenix',
+    'America/Chicago',
+    'America/New_York',
+    'America/Anchorage',
+    'Pacific/Honolulu',
+    'Europe/London',
+    'Europe/Dublin',
+    'Europe/Paris',
+    'UTC',
+  ];
+
+  TimeOfDay _parseHm(String value) {
+    final parts = value.split(':');
+    final h = int.tryParse(parts.first) ?? 0;
+    final m = int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0;
+    return TimeOfDay(hour: h.clamp(0, 23), minute: m.clamp(0, 59));
+  }
+
+  String _formatHm(TimeOfDay time) {
+    return '${time.hour.toString().padLeft(2, '0')}:'
+        '${time.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _friendlyTimeLabel(String hhmm) {
+    final time = _parseHm(hhmm);
+    final hour12 = time.hour % 12 == 0 ? 12 : time.hour % 12;
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour12:${time.minute.toString().padLeft(2, '0')} '
+        '$period (${_formatHm(time)})';
+  }
+
+  Future<void> _pickQuietHoursTime({
+    required QuietHoursConfig qh,
+    required bool isStart,
+  }) async {
+    if (_saving) {
+      return;
+    }
+    final initial = _parseHm(isStart ? qh.start : qh.end);
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initial,
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    final formatted = _formatHm(picked);
+    _updateQuietHours(
+      isStart ? qh.copyWith(start: formatted) : qh.copyWith(end: formatted),
+    );
+  }
+
+  Future<void> _promptManualQuietHoursTime({
+    required QuietHoursConfig qh,
+    required bool isStart,
+  }) async {
+    if (_saving) {
+      return;
+    }
+    final controller = TextEditingController(
+      text: isStart ? qh.start : qh.end,
+    );
+    final entered = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(isStart ? 'Start time' : 'End time'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(hintText: 'HH:MM'),
+          autocorrect: false,
+          keyboardType: TextInputType.datetime,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (entered == null || entered.isEmpty) {
+      return;
+    }
+    _updateQuietHours(
+      isStart ? qh.copyWith(start: entered) : qh.copyWith(end: entered),
+    );
+  }
+
+  Future<void> _showTimezoneSheet(QuietHoursConfig qh) async {
+    if (_saving) {
+      return;
+    }
+    await showModalBottomSheet<void>(
+      context: context,
+      showDragHandle: true,
+      builder: (ctx) {
+        return SafeArea(
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: Text(
+                  'Timezone',
+                  style: Theme.of(ctx).textTheme.titleMedium,
+                ),
+              ),
+              ..._commonTimezones.map(
+                (tz) => ListTile(
+                  title: Text(tz),
+                  trailing: qh.timezone == tz ? const Icon(Icons.check) : null,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    _updateQuietHours(qh.copyWith(timezone: tz));
+                  },
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.edit_outlined),
+                title: const Text('Custom timezone…'),
+                onTap: () async {
+                  Navigator.pop(ctx);
+                  await _promptCustomTimezone(qh);
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _promptCustomTimezone(QuietHoursConfig qh) async {
+    final controller = TextEditingController(text: qh.timezone);
+    final entered = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Timezone'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(hintText: 'America/Denver'),
+          autocorrect: false,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (entered == null || entered.isEmpty) {
+      return;
+    }
+    _updateQuietHours(qh.copyWith(timezone: entered));
   }
 
   void _setAllowlistMxids(List<String> mxids) {
@@ -395,7 +563,11 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
     }
     final perms = _permissions!;
     final qh = perms.quietHours ??
-        QuietHoursConfig(start: '21:00', end: '07:00', timezone: 'UTC');
+        QuietHoursConfig(
+          start: '21:00',
+          end: '07:00',
+          timezone: 'America/Denver',
+        );
 
     return ListView(
       padding: const EdgeInsets.all(16),
@@ -468,25 +640,63 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
           subtitle: const Text('Server blocks sends during this window'),
         ),
         if (perms.quietHoursEnabled) ...[
-          _TimeField(
-            label: 'Start',
-            value: qh.start,
-            onSubmitted: (v) =>
-                _updateQuietHours(qh.copyWith(start: v)),
-            enabled: !_saving,
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: InkWell(
+              key: const Key('quiet-hours-start'),
+              onTap: _saving
+                  ? null
+                  : () => _pickQuietHoursTime(qh: qh, isStart: true),
+              child: ListTile(
+                title: const Text('Start'),
+                subtitle: Text(_friendlyTimeLabel(qh.start)),
+                trailing: IconButton(
+                  key: const Key('quiet-hours-start-manual'),
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: _saving
+                      ? null
+                      : () => _promptManualQuietHoursTime(
+                            qh: qh,
+                            isStart: true,
+                          ),
+                ),
+              ),
+            ),
           ),
-          _TimeField(
-            label: 'End',
-            value: qh.end,
-            onSubmitted: (v) => _updateQuietHours(qh.copyWith(end: v)),
-            enabled: !_saving,
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: InkWell(
+              key: const Key('quiet-hours-end'),
+              onTap: _saving
+                  ? null
+                  : () => _pickQuietHoursTime(qh: qh, isStart: false),
+              child: ListTile(
+                title: const Text('End'),
+                subtitle: Text(_friendlyTimeLabel(qh.end)),
+                trailing: IconButton(
+                  key: const Key('quiet-hours-end-manual'),
+                  icon: const Icon(Icons.edit_outlined),
+                  onPressed: _saving
+                      ? null
+                      : () => _promptManualQuietHoursTime(
+                            qh: qh,
+                            isStart: false,
+                          ),
+                ),
+              ),
+            ),
           ),
-          _TextSettingField(
-            label: 'Timezone',
-            value: qh.timezone,
-            onSubmitted: (v) =>
-                _updateQuietHours(qh.copyWith(timezone: v)),
-            enabled: !_saving,
+          Card(
+            margin: const EdgeInsets.symmetric(vertical: 4),
+            child: InkWell(
+              key: const Key('quiet-hours-timezone'),
+              onTap: _saving ? null : () => _showTimezoneSheet(qh),
+              child: ListTile(
+                title: const Text('Timezone'),
+                subtitle: Text(qh.timezone),
+                trailing: const Icon(Icons.chevron_right),
+              ),
+            ),
           ),
         ],
         const SizedBox(height: 16),
@@ -501,123 +711,6 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
           subtitle: const Text('Mobilizon RSVPs for this child'),
         ),
       ],
-    );
-  }
-}
-
-class _TimeField extends StatefulWidget {
-  const _TimeField({
-    required this.label,
-    required this.value,
-    required this.onSubmitted,
-    required this.enabled,
-  });
-
-  final String label;
-  final String value;
-  final ValueChanged<String> onSubmitted;
-  final bool enabled;
-
-  @override
-  State<_TimeField> createState() => _TimeFieldState();
-}
-
-class _TimeFieldState extends State<_TimeField> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.value);
-  }
-
-  @override
-  void didUpdateWidget(covariant _TimeField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value && _controller.text != widget.value) {
-      _controller.text = widget.value;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: TextField(
-        controller: _controller,
-        enabled: widget.enabled,
-        decoration: InputDecoration(
-          labelText: widget.label,
-          hintText: 'HH:MM',
-          border: const OutlineInputBorder(),
-        ),
-        onSubmitted: widget.onSubmitted,
-        onEditingComplete: () => widget.onSubmitted(_controller.text.trim()),
-      ),
-    );
-  }
-}
-
-class _TextSettingField extends StatefulWidget {
-  const _TextSettingField({
-    required this.label,
-    required this.value,
-    required this.onSubmitted,
-    required this.enabled,
-  });
-
-  final String label;
-  final String value;
-  final ValueChanged<String> onSubmitted;
-  final bool enabled;
-
-  @override
-  State<_TextSettingField> createState() => _TextSettingFieldState();
-}
-
-class _TextSettingFieldState extends State<_TextSettingField> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.value);
-  }
-
-  @override
-  void didUpdateWidget(covariant _TextSettingField oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.value != widget.value && _controller.text != widget.value) {
-      _controller.text = widget.value;
-    }
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: TextField(
-        controller: _controller,
-        enabled: widget.enabled,
-        decoration: InputDecoration(
-          labelText: widget.label,
-          border: const OutlineInputBorder(),
-        ),
-        onSubmitted: widget.onSubmitted,
-        onEditingComplete: () => widget.onSubmitted(_controller.text.trim()),
-      ),
     );
   }
 }
