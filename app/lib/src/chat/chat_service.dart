@@ -55,6 +55,8 @@ abstract class ChatService {
 
   Future<String> createDirectChat(String userId);
 
+  Future<String> createGroupChat(String name, List<String> userIds);
+
   Future<void> startSync();
 
   Future<void> stopSync();
@@ -224,6 +226,11 @@ class UnconfiguredChatService implements ChatService {
   }
 
   @override
+  Future<String> createGroupChat(String name, List<String> userIds) async {
+    throw StateError('Chat not configured');
+  }
+
+  @override
   Future<void> startSync() async {}
 
   @override
@@ -253,6 +260,9 @@ class FakeChatService implements ChatService {
 
   int urlPreviewFetchCount = 0;
   Object? urlPreviewError;
+
+  String? lastCreatedGroupName;
+  List<String>? lastCreatedGroupUserIds;
 
   /// Local paths returned by [downloadMedia] / [downloadThumbnail] for fakes.
   final Map<String, String> mediaPaths = {};
@@ -479,6 +489,28 @@ class FakeChatService implements ChatService {
   }
 
   @override
+  Future<String> createGroupChat(String name, List<String> userIds) async {
+    lastCreatedGroupName = name;
+    lastCreatedGroupUserIds = List<String>.from(userIds);
+    final title = name.trim().isNotEmpty
+        ? name.trim()
+        : userIds.join(', ');
+    final roomId = '!grp_${DateTime.now().microsecondsSinceEpoch}:fake';
+    _rooms.value = [
+      ChatRoom(
+        roomId: roomId,
+        title: title,
+        isDirect: false,
+        encrypted: true,
+        lastTsMs: DateTime.now().millisecondsSinceEpoch,
+      ),
+      ..._rooms.value,
+    ];
+    _timelines[roomId] = [];
+    return roomId;
+  }
+
+  @override
   Future<void> startSync() async {}
 
   @override
@@ -688,6 +720,20 @@ class RustChatService implements ChatService {
   @override
   Future<String> createDirectChat(String userId) async {
     return _s.createDirectChat(userId: userId);
+  }
+
+  @override
+  Future<String> createGroupChat(String name, List<String> userIds) async {
+    final cleanName = name.trim().isNotEmpty
+        ? name.trim()
+        : userIds
+            .map((id) => id.split(':').first.replaceFirst('@', ''))
+            .join(', ');
+    return _s.createRoom(
+      name: cleanName,
+      inviteUserIds: userIds,
+      encrypted: true,
+    );
   }
 
   @override
