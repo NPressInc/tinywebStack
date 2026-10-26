@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 
 import '../api/models.dart';
+import '../api/tls_http_client.dart';
 import '../storage/credential_store.dart';
 import 'events_models.dart';
 import 'mobilizon_client.dart';
@@ -100,6 +103,15 @@ mutation CreateEvent(
 }
 ''';
 
+const _loginMutation = r'''
+mutation Login($email: String!, $password: String!) {
+  login(email: $email, password: $password) {
+    accessToken
+    refreshToken
+  }
+}
+''';
+
 class EventsService {
   EventsService({
     required this._bundle,
@@ -119,6 +131,8 @@ class EventsService {
   String? _defaultActorId;
 
   MobilizonCredentials? get credentials => _bundle.mobilizonCredentials;
+
+  EnrollmentBundle get bundle => _bundle;
 
   MobilizonClient _openClient() {
     final creds = credentials;
@@ -147,6 +161,114 @@ class EventsService {
     );
     await _credentialStore?.write(_bundle);
     _onEnrollmentUpdated?.call(_bundle);
+  }
+
+  Future<MobilizonCredentials> linkWithPassword(String password) async {
+    if (password.trim().isEmpty) {
+      throw MobilizonException('Enter your family password');
+    }
+
+    final mobRaw = _bundle.rawJson?['mobilizon'];
+    final mobMap = mobRaw is Map<String, dynamic> ? mobRaw : null;
+    var eventsBase = mobMap?['events_url'] as String? ?? '';
+    if (eventsBase.isEmpty) {
+      eventsBase = _bundle.discovery.eventsUrl ?? '';
+    }
+    if (eventsBase.isEmpty && _bundle.serverName.isNotEmpty) {
+      eventsBase = 'https://mobilizon.${_bundle.serverName}';
+    }
+    eventsBase = eventsBase.replaceAll(RegExp(r'/+$'), '');
+
+    final rawApiUrl = mobMap?['api_url'] as String? ?? '';
+    final apiUrl = rawApiUrl.isNotEmpty
+        ? rawApiUrl
+        : (eventsBase.isNotEmpty ? '$eventsBase/api' : '');
+    if (apiUrl.isEmpty) {
+      throw MobilizonException('Events server URL is not configured');
+    }
+
+    final httpClient = _httpClient ?? defaultTlsHttpClient();
+    final candidates = _bundle.serverName.isNotEmpty
+        ? <String>[
+            '${_bundle.username}@${_bundle.serverName}',
+            _bundle.username,
+          ]
+        : <String>[_bundle.username];
+
+    String? lastError;
+    for (final email in candidates) {
+      final response = await httpClient.post(
+        Uri.parse(apiUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'query': _loginMutation,
+          'variables': {'email': email, 'password': password},
+        }),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        lastError = 'HTTP ${response.statusCode}';
+        continue;
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map<String, dynamic>) {
+        lastError = 'Invalid response from Events server';
+        continue;
+      }
+
+      final errors = decoded['errors'] as List<dynamic>?;
+      if (errors != null && errors.isNotEmpty) {
+        final first = errors.first;
+        if (first is Map<String, dynamic>) {
+          lastError = first['message'] as String? ?? lastError;
+        }
+      }
+
+      final data = decoded['data'] as Map<String, dynamic>?;
+      final login = data?['login'] as Map<String, dynamic>?;
+      final accessToken = login?['accessToken'] as String? ?? '';
+      final refreshToken = login?['refreshToken'] as String?;
+      if (accessToken.isEmpty) {
+        continue;
+      }
+
+      final raw = Map<String, dynamic>.from(_bundle.rawJson ?? {});
+      raw['mobilizon'] = {
+        'status': 'ok',
+        if (eventsBase.isNotEmpty) 'events_url': eventsBase,
+        'api_url': apiUrl,
+        'access_token': accessToken,
+        if (refreshToken != null && refreshToken.isNotEmpty)
+          'refresh_token': refreshToken,
+      };
+      _bundle = EnrollmentBundle(
+        deviceId: _bundle.deviceId,
+        username: _bundle.username,
+        role: _bundle.role,
+        mxid: _bundle.mxid,
+        serverName: _bundle.serverName,
+        dashboardToken: _bundle.dashboardToken,
+        apiBase: _bundle.apiBase,
+        serverOrigin: _bundle.serverOrigin,
+        discovery: _bundle.discovery,
+        matrixHomeserverUrl: _bundle.matrixHomeserverUrl,
+        rawJson: raw,
+      );
+      _client = null;
+      _defaultActorId = null;
+      await _credentialStore?.write(_bundle);
+      _onEnrollmentUpdated?.call(_bundle);
+      return MobilizonCredentials(
+        apiUrl: apiUrl,
+        accessToken: accessToken,
+        refreshToken: refreshToken,
+      );
+    }
+
+    throw MobilizonException(
+      lastError ?? 'Could not sign in to Events — check your family password.',
+    );
   }
 
   Future<String> defaultActorId() async {
