@@ -8,9 +8,13 @@ cd "$TW_STACK_ROOT"
 install_shellcheck() {
   local sc_dir="${TW_STACK_ROOT}/.tools/shellcheck"
   local sc_bin="${sc_dir}/shellcheck"
+  local want_version="0.11.0"
   if [[ -x "$sc_bin" ]]; then
-    echo "$sc_bin"
-    return 0
+    if "$sc_bin" --version 2>/dev/null | grep -q "version: ${want_version}"; then
+      echo "$sc_bin"
+      return 0
+    fi
+    rm -f "$sc_bin"
   fi
   if command -v shellcheck >/dev/null 2>&1; then
     command -v shellcheck
@@ -20,8 +24,8 @@ install_shellcheck() {
   local arch url
   arch="$(uname -m)"
   case "$arch" in
-    x86_64) url="https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.x86_64.tar.xz" ;;
-    aarch64) url="https://github.com/koalaman/shellcheck/releases/download/v0.10.0/shellcheck-v0.10.0.linux.aarch64.tar.xz" ;;
+    x86_64) url="https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz" ;;
+    aarch64) url="https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.xz" ;;
     *)
       echo "  shellcheck: no binary for ${arch} — skipped" >&2
       return 1

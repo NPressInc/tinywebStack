@@ -23,7 +23,7 @@ if [[ -f "${STAGING}/peers.hosts" ]]; then
   sudo install -m 644 "${STAGING}/peers.hosts" "${REMOTE_ROOT}/peers.hosts"
 fi
 
-# shellcheck disable=SC2317  # invoked via trap EXIT
+# shellcheck disable=SC2317,SC2329  # invoked via trap EXIT
 cleanup() {
   sudo rm -f "${REMOTE_ROOT}/remote.env"
   rm -f "${STAGING}/remote.env"
