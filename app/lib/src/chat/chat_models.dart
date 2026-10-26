@@ -79,6 +79,8 @@ class ChatMessage {
     this.durationMs,
     this.reactions = const [],
     this.inReplyTo,
+    this.sendFailed = false,
+    this.localMediaPath,
   });
 
   final String eventId;
@@ -96,12 +98,16 @@ class ChatMessage {
   final int? durationMs;
   final List<ChatReaction> reactions;
   final ChatReplyPreview? inReplyTo;
+  final bool sendFailed;
+  final String? localMediaPath;
 
   String get senderLabel => senderDisplayName ?? senderId;
 
   ChatMessage copyWith({
     List<ChatReaction>? reactions,
     ChatReplyPreview? inReplyTo,
+    bool? sendFailed,
+    String? localMediaPath,
   }) {
     return ChatMessage(
       eventId: eventId,
@@ -119,6 +125,8 @@ class ChatMessage {
       durationMs: durationMs,
       reactions: reactions ?? this.reactions,
       inReplyTo: inReplyTo ?? this.inReplyTo,
+      sendFailed: sendFailed ?? this.sendFailed,
+      localMediaPath: localMediaPath ?? this.localMediaPath,
     );
   }
 

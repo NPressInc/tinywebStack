@@ -31,6 +31,7 @@ class MessageBubble extends StatefulWidget {
     this.onSwipeReply,
     this.onReplyQuoteTap,
     this.onReactionStackTap,
+    this.onRetry,
   });
 
   final ChatMessage message;
@@ -48,6 +49,7 @@ class MessageBubble extends StatefulWidget {
   final VoidCallback? onSwipeReply;
   final void Function(String eventId)? onReplyQuoteTap;
   final void Function(String emoji, List<ChatReaction> reactors)? onReactionStackTap;
+  final VoidCallback? onRetry;
 
   /// When false, skips decoding media in the bubble (widget tests).
   final bool previewMedia;
@@ -305,6 +307,13 @@ class _MessageBubbleState extends State<MessageBubble> {
                   padding: EdgeInsets.only(right: 6),
                   child: Icon(Icons.reply, size: 18, color: ChatColors.ownBubble),
                 ),
+              if (message.sendFailed && message.isOwn && widget.onRetry != null)
+                IconButton(
+                  key: const Key('message-retry'),
+                  icon: const Icon(Icons.error_outline, color: Colors.red),
+                  tooltip: 'Retry',
+                  onPressed: widget.onRetry,
+                ),
               interactive,
               if (showMediaSave && !message.isOwn)
                 MediaSaveButton(
@@ -318,6 +327,19 @@ class _MessageBubbleState extends State<MessageBubble> {
               if (!message.isOwn) const Spacer(),
             ],
           ),
+          if (message.sendFailed && message.isOwn)
+            Padding(
+              padding: const EdgeInsets.only(top: 2, right: 4),
+              child: GestureDetector(
+                onTap: widget.onRetry,
+                child: Text(
+                  'Not Delivered',
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Colors.red,
+                      ),
+                ),
+              ),
+            ),
         ],
       ),
     );

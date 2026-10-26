@@ -231,7 +231,77 @@ class _RoomScreenState extends State<RoomScreen> {
       });
       _scrollToBottom();
     } on ChatSendException catch (e) {
-      _showSendError(e.message);
+      if (e.message.contains('forbidden:')) {
+        _showSendError(e.message);
+      } else {
+        _insertFailedMessage(body, reply);
+      }
+    } catch (_) {
+      _insertFailedMessage(body, reply);
+    }
+  }
+
+  void _insertFailedMessage(String body, ChatMessage? reply) {
+    final failed = ChatMessage(
+      eventId: 'local-failed-${DateTime.now().microsecondsSinceEpoch}',
+      body: body,
+      senderId: widget.profile.mxid,
+      senderDisplayName: widget.profile.username,
+      tsMs: DateTime.now().millisecondsSinceEpoch,
+      isOwn: true,
+      sendFailed: true,
+      inReplyTo: reply == null
+          ? null
+          : ChatReplyPreview(
+              eventId: reply.eventId,
+              senderId: reply.senderId,
+              senderDisplayName: reply.senderDisplayName,
+              body: reply.body,
+            ),
+    );
+    setState(() {
+      _messages = [..._messages, failed];
+      _deliveryLabel = 'Not Delivered';
+    });
+    _scrollToBottom();
+  }
+
+  Future<void> _retryMessage(ChatMessage failedMessage) async {
+    try {
+      final eventId = failedMessage.inReplyTo != null
+          ? await widget.chat.sendReply(
+              widget.roomId,
+              failedMessage.body,
+              failedMessage.inReplyTo!.eventId,
+            )
+          : await widget.chat.sendMessage(widget.roomId, failedMessage.body);
+      final msg = ChatMessage(
+        eventId: eventId,
+        body: failedMessage.body,
+        senderId: widget.profile.mxid,
+        senderDisplayName: widget.profile.username,
+        tsMs: DateTime.now().millisecondsSinceEpoch,
+        isOwn: true,
+        inReplyTo: failedMessage.inReplyTo,
+      );
+      setState(() {
+        final withoutFailed =
+            _messages.where((m) => m.eventId != failedMessage.eventId).toList();
+        if (!withoutFailed.any((m) => m.eventId == eventId)) {
+          withoutFailed.add(msg);
+        }
+        _messages = withoutFailed;
+        _deliveryLabel = 'Delivered';
+      });
+      _scrollToBottom();
+    } on ChatSendException catch (e) {
+      if (e.message.contains('forbidden:')) {
+        _showSendError(e.message);
+      } else {
+        setState(() => _deliveryLabel = 'Not Delivered');
+      }
+    } catch (_) {
+      setState(() => _deliveryLabel = 'Not Delivered');
     }
   }
 
@@ -298,7 +368,7 @@ class _RoomScreenState extends State<RoomScreen> {
       if (file == null) {
         return;
       }
-      final mime = video ? 'video/mp4' : _guessImageMime(file.path);
+      final mime = video ? _guessVideoMime(file.path) : _guessImageMime(file.path);
       final eventId = await widget.chat.sendMedia(
         widget.roomId,
         file.path,
@@ -338,6 +408,13 @@ class _RoomScreenState extends State<RoomScreen> {
     return 'image/jpeg';
   }
 
+  String _guessVideoMime(String path) {
+    final lower = path.toLowerCase();
+    if (lower.endsWith('.mov')) return 'video/quicktime';
+    if (lower.endsWith('.webm')) return 'video/webm';
+    return 'video/mp4';
+  }
+
   Future<void> _showAttachSheet() async {
     await showModalBottomSheet<void>(
       context: context,
@@ -354,11 +431,27 @@ class _RoomScreenState extends State<RoomScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.video_library_outlined),
+              title: const Text('Videos'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAttachment(ImageSource.gallery, video: true);
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.photo_camera_outlined),
               title: const Text('Camera'),
               onTap: () {
                 Navigator.pop(ctx);
                 _pickAttachment(ImageSource.camera, video: false);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam_outlined),
+              title: const Text('Record video'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _pickAttachment(ImageSource.camera, video: true);
               },
             ),
           ],
@@ -454,6 +547,7 @@ class _RoomScreenState extends State<RoomScreen> {
                                 ),
                               );
                             },
+                            onRetry: m.sendFailed ? () => _retryMessage(m) : null,
                           );
                         },
                       ),
@@ -483,7 +577,9 @@ class _RoomScreenState extends State<RoomScreen> {
                 alignment: Alignment.centerRight,
                 child: Text(
                   _deliveryLabel!,
-                  style: Theme.of(context).textTheme.labelSmall,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: _deliveryLabel == 'Not Delivered' ? Colors.red : null,
+                      ),
                 ),
               ),
             ),
