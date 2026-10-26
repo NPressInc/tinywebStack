@@ -41,7 +41,7 @@ AppSession _parentSession() {
   return session;
 }
 
-FamilyApiClient _fakeApi() {
+FamilyApiClient _fakeApi({List<Map<String, dynamic>>? putBodies}) {
   return FamilyApiClient(
     client: MockClient((request) async {
       if (request.url.path.endsWith('/invites')) {
@@ -67,6 +67,7 @@ FamilyApiClient _fakeApi() {
       if (request.url.path.endsWith('/permissions/kid1')) {
         if (request.method == 'PUT') {
           final body = jsonDecode(request.body) as Map<String, dynamic>;
+          putBodies?.add(body);
           return http.Response(
             jsonEncode({
               'username': 'kid1',
@@ -101,6 +102,47 @@ FamilyApiClient _fakeApi() {
       }
       return http.Response('{}', 404);
     }),
+  );
+}
+
+Widget _kidDetailApp({
+  required AppSession session,
+  required FamilyApiClient api,
+}) {
+  return MaterialApp(
+    home: KidDetailScreen(
+      session: session,
+      kid: FamilyMember(
+        username: 'kid1',
+        mxid: '@kid1:family.example',
+        role: 'kid',
+        displayName: 'Kid One',
+      ),
+      api: api,
+    ),
+  );
+}
+
+Future<void> _pumpKidDetail(
+  WidgetTester tester, {
+  List<Map<String, dynamic>>? putBodies,
+}) async {
+  await tester.pumpWidget(
+    _kidDetailApp(
+      session: _parentSession(),
+      api: _fakeApi(putBodies: putBodies),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+Finder _quietHoursSwitch(WidgetTester tester) {
+  return find.descendant(
+    of: find.byWidgetPredicate(
+      (w) => w is SwitchListTile && w.title is Text &&
+          (w.title as Text).data == 'Pause messages overnight',
+    ),
+    matching: find.byType(Switch),
   );
 }
 
@@ -139,5 +181,62 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
     expect(find.byType(SwitchListTile), findsWidgets);
+  });
+
+  testWidgets('enabling quiet hours defaults to America/Denver window',
+      (tester) async {
+    final putBodies = <Map<String, dynamic>>[];
+    await _pumpKidDetail(tester, putBodies: putBodies);
+
+    await tester.tap(_quietHoursSwitch(tester));
+    await tester.pumpAndSettle();
+
+    expect(putBodies, isNotEmpty);
+    final qh = putBodies.last['quiet_hours'] as Map<String, dynamic>;
+    expect(qh['start'], '21:00');
+    expect(qh['end'], '07:00');
+    expect(qh['timezone'], 'America/Denver');
+    expect(find.text('9:00 PM (21:00)'), findsOneWidget);
+    expect(find.text('7:00 AM (07:00)'), findsOneWidget);
+  });
+
+  testWidgets('quiet hours start picker saves immediately on confirm',
+      (tester) async {
+    final putBodies = <Map<String, dynamic>>[];
+    await _pumpKidDetail(tester, putBodies: putBodies);
+
+    await tester.tap(_quietHoursSwitch(tester));
+    await tester.pumpAndSettle();
+    putBodies.clear();
+
+    await tester.tap(find.byKey(const Key('quiet-hours-start')));
+    await tester.pumpAndSettle();
+    expect(find.byType(TimePickerDialog), findsOneWidget);
+
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    expect(putBodies, isNotEmpty);
+    final qh = putBodies.last['quiet_hours'] as Map<String, dynamic>;
+    expect(qh['start'], '21:00');
+  });
+
+  testWidgets('quiet hours timezone sheet saves immediately', (tester) async {
+    final putBodies = <Map<String, dynamic>>[];
+    await _pumpKidDetail(tester, putBodies: putBodies);
+
+    await tester.tap(_quietHoursSwitch(tester));
+    await tester.pumpAndSettle();
+    putBodies.clear();
+
+    await tester.tap(find.byKey(const Key('quiet-hours-timezone')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('America/New_York'));
+    await tester.pumpAndSettle();
+
+    expect(putBodies, isNotEmpty);
+    final qh = putBodies.last['quiet_hours'] as Map<String, dynamic>;
+    expect(qh['timezone'], 'America/New_York');
   });
 }
