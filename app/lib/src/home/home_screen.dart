@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
+import '../api/lab_ca_config.dart';
 import '../app_session.dart';
 import '../brand.dart';
+import '../enroll/secure_recovery_screen.dart';
 import '../location/location_service.dart';
 import '../widgets/quiet_hours_banner.dart';
 
@@ -35,9 +38,15 @@ class HomeScreen extends StatelessWidget {
             onSelected: (value) {
               if (value == 'remove') {
                 session.removeDevice();
+              } else if (value == 'recovery') {
+                _openChatRecoveryKey(context);
               }
             },
             itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'recovery',
+                child: Text('Chat recovery key'),
+              ),
               const PopupMenuItem(
                 value: 'remove',
                 child: Text('Remove this device'),
@@ -57,9 +66,9 @@ class HomeScreen extends StatelessWidget {
                   child: Text(
                     'Hi ${profile.username}',
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: TinyWebColors.text,
-                        ),
+                      fontWeight: FontWeight.w600,
+                      color: TinyWebColors.text,
+                    ),
                   ),
                 ),
                 Chip(
@@ -105,12 +114,170 @@ class HomeScreen extends StatelessWidget {
                 subtitle: 'Kids: chat rules, quiet hours, events',
                 onTap: onOpenFamily!,
               ),
+            _HomeTile(
+              icon: Icons.apps_outlined,
+              title: 'Other family apps',
+              subtitle: 'Server URL & login for Jellyfin and TV apps',
+              onTap: () => _showOtherAppsSheet(context),
+            ),
           ],
         ),
       ),
     );
   }
 
+  Future<void> _openChatRecoveryKey(BuildContext context) async {
+    final key = await session.credentialStore.readMatrixRecoveryKey();
+    if (!context.mounted) return;
+    if (key != null && key.trim().isNotEmpty) {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Chat recovery key'),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Save this recovery key so you can unlock encrypted messages if you sign in on another phone.',
+                ),
+                const SizedBox(height: 12),
+                SelectableText(
+                  key,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                await Clipboard.setData(ClipboardData(text: key));
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Recovery key copied')),
+                  );
+                }
+              },
+              child: const Text('Copy key'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => SecureRecoveryScreen(
+                      session: session,
+                      caCertPem: labCaPemForMatrix(),
+                    ),
+                  ),
+                );
+              },
+              child: const Text('Enter a different key'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } else {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => SecureRecoveryScreen(
+            session: session,
+            caCertPem: labCaPemForMatrix(),
+          ),
+        ),
+      );
+    }
+  }
+
+  void _showOtherAppsSheet(BuildContext context) {
+    final profile = session.profile!;
+    final enrollment = session.enrollment;
+    var serverUrl = enrollment?.serverOrigin ?? '';
+    if (serverUrl.isEmpty &&
+        enrollment?.serverName != null &&
+        enrollment!.serverName.isNotEmpty) {
+      serverUrl = 'https://${enrollment.serverName}';
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => Padding(
+        padding: EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 8,
+          bottom: 24 + MediaQuery.of(sheetContext).padding.bottom,
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Other family apps (Jellyfin, etc.)',
+                style: Theme.of(sheetContext).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Optional apps like Jellyfin stay as their own separate native phone or TV apps and use your same TinyWeb login (via YunoHost).',
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Server URL',
+                style: Theme.of(sheetContext).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                serverUrl,
+                style: const TextStyle(fontFamily: 'monospace'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await Clipboard.setData(ClipboardData(text: serverUrl));
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Server URL copied')),
+                    );
+                  }
+                },
+                child: const Text('Copy server URL'),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Username',
+                style: Theme.of(sheetContext).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                profile.username,
+                style: const TextStyle(fontFamily: 'monospace'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  await Clipboard.setData(
+                    ClipboardData(text: profile.username),
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Username copied')),
+                    );
+                  }
+                },
+                child: const Text('Copy username'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _NotificationsToggle extends StatefulWidget {
