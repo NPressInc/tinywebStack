@@ -960,6 +960,32 @@ class FederationPeerNode {
   }
 }
 
+class ChatContact {
+  ChatContact({
+    required this.username,
+    required this.mxid,
+    required this.role,
+    this.displayName,
+  });
+
+  final String username;
+  final String mxid;
+  final String role;
+  final String? displayName;
+
+  String get displayLabel =>
+      (displayName != null && displayName!.isNotEmpty) ? displayName! : username;
+
+  factory ChatContact.fromJson(Map<String, dynamic> json) {
+    return ChatContact(
+      username: json['username'] as String? ?? '',
+      mxid: json['mxid'] as String? ?? '',
+      role: json['role'] as String? ?? 'contact',
+      displayName: json['display_name'] as String?,
+    );
+  }
+}
+
 class AppMeProfile {
   AppMeProfile({
     required this.username,
@@ -967,6 +993,7 @@ class AppMeProfile {
     required this.mxid,
     required this.quietHours,
     required this.eventsEnabled,
+    this.chatContacts = const [],
   });
 
   final String username;
@@ -974,8 +1001,10 @@ class AppMeProfile {
   final String mxid;
   final QuietHoursInfo quietHours;
   final bool eventsEnabled;
+  final List<ChatContact> chatContacts;
 
   factory AppMeProfile.fromJson(Map<String, dynamic> json) {
+    final contactsJson = json['chat_contacts'] as List<dynamic>?;
     return AppMeProfile(
       username: json['username'] as String,
       role: json['role'] as String,
@@ -984,6 +1013,12 @@ class AppMeProfile {
         json['quiet_hours'] as Map<String, dynamic>?,
       ),
       eventsEnabled: json['events_enabled'] as bool? ?? true,
+      chatContacts: contactsJson
+              ?.map(
+                (e) => ChatContact.fromJson(e as Map<String, dynamic>),
+              )
+              .toList() ??
+          const [],
     );
   }
 }

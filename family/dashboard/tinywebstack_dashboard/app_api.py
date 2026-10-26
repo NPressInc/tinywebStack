@@ -64,6 +64,7 @@ from tinywebstack_dashboard.federation import (
     state_path_from_env,
 )
 from tinywebstack_dashboard.members import list_members
+from tinywebstack_dashboard.policy_store import load_policy
 from tinywebstack_dashboard.owntracks_recorder import (
     fetch_all_last,
     fetch_track,
@@ -297,6 +298,95 @@ def _quiet_hours_payload(
             "window": window,
             "timezone": qh.timezone,
         }
+
+
+def _chat_contacts_for_user(
+    cfg: DashboardConfig, username: str, role: str
+) -> List[Dict[str, str]]:
+    parents = list_group_members(cfg.parents_group, cfg.yunohost_cli)
+    kids = list_group_members(cfg.kids_group, cfg.yunohost_cli)
+    server = cfg.server_name
+    self_mxid = f"@{username}:{server}"
+    out: List[Dict[str, str]] = []
+    seen_mxids: set[str] = set()
+
+    def append_contact(entry: Dict[str, str]) -> None:
+        mxid = entry["mxid"]
+        if mxid in seen_mxids:
+            return
+        seen_mxids.add(mxid)
+        out.append(entry)
+
+    def local_entry(u: str, contact_role: str) -> Dict[str, str]:
+        return {
+            "username": u,
+            "mxid": f"@{u}:{server}",
+            "display_name": u,
+            "role": contact_role,
+        }
+
+    if role == "parent":
+        for u in parents:
+            if u != username:
+                append_contact(local_entry(u, "parent"))
+        for u in kids:
+            if u != username:
+                append_contact(local_entry(u, "kid"))
+        return out
+
+    for u in parents:
+        if u != username:
+            append_contact(local_entry(u, "parent"))
+
+    from tinywebstack_permissions.store import PermissionsDB, get_db_path
+
+    db_path = get_db_path()
+    if db_path.is_file():
+        with PermissionsDB(db_path) as db:
+            ps = db.get_permissions(username)
+            if ps is not None:
+                allowlist_mxids = set(ps.allowlist_mxids)
+                allowlist_domains = set(ps.allowlist_domains)
+            else:
+                allowlist_mxids = set()
+                allowlist_domains = set()
+    else:
+        policy = load_policy(Path(cfg.policy_path))
+        kid_entry = (policy.get("kids") or {}).get(self_mxid) or {}
+        allowlist_mxids = {
+            str(x).strip() for x in kid_entry.get("allowlist_mxids", []) if x
+        }
+        allowlist_domains = {
+            str(x).strip() for x in kid_entry.get("allowlist_domains", []) if x
+        }
+
+    if server in allowlist_domains:
+        for u in kids:
+            if u != username:
+                append_contact(local_entry(u, "kid"))
+
+    for mxid in sorted(allowlist_mxids):
+        if not mxid or mxid == self_mxid or mxid in seen_mxids:
+            continue
+        if not (mxid.startswith("@") and ":" in mxid):
+            continue
+        localpart, domain = mxid[1:].split(":", 1)
+        if domain == server and localpart in parents:
+            contact_role = "parent"
+        elif domain == server and localpart in kids:
+            contact_role = "kid"
+        else:
+            contact_role = "contact"
+        append_contact(
+            {
+                "username": localpart,
+                "mxid": mxid,
+                "display_name": localpart,
+                "role": contact_role,
+            }
+        )
+
+    return out
 
 
 def _events_enabled(username: str, role: str) -> bool:
@@ -542,7 +632,18 @@ def create_app_api_router(
                 "mxid": f"@{auth.username}:{cfg.server_name}",
                 "quiet_hours": _quiet_hours_payload(auth.username, role, cfg.server_name, when),
                 "events_enabled": _events_enabled(auth.username, role),
+                "chat_contacts": _chat_contacts_for_user(cfg, auth.username, role),
             }
+        )
+
+    @router.get("/api/app/contacts")
+    async def app_contacts(request: Request):
+        auth = api_user(request, cfg)
+        role = member_role(auth.username)
+        if not role:
+            raise HTTPException(status_code=403, detail="Not a family member")
+        return _no_store(
+            {"contacts": _chat_contacts_for_user(cfg, auth.username, role)}
         )
 
     @router.get("/api/app/devices")

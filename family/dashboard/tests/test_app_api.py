@@ -669,6 +669,64 @@ def test_password_reset_revokes_devices(app_env):
     assert client.get("/api/app/me", headers={"Authorization": f"Bearer {t}"}).status_code == 401
 
 
+def test_chat_contacts_kid_and_parent(app_env, monkeypatch):
+    client, _, db_path = app_env
+    monkeypatch.setenv(
+        "TWS_DASHBOARD_MOCK_GROUPS",
+        json.dumps({"parents": ["parent1"], "kids": ["kid1", "kid2"]}),
+    )
+    from tinywebstack_permissions.store import PermissionsDB
+
+    with PermissionsDB(db_path) as db:
+        db.set_permission(
+            "kid1",
+            "allowlist_mxids",
+            ["@cousin:peer.example"],
+        )
+
+    t_kid = mint_device_token()
+    create_device(
+        username="kid1",
+        role="kid",
+        device_name="Kid",
+        platform="android",
+        token=t_kid,
+    )
+    t_parent = mint_device_token()
+    create_device(
+        username="parent1",
+        role="parent",
+        device_name="Parent",
+        platform="ios",
+        token=t_parent,
+    )
+
+    kid_contacts = client.get(
+        "/api/app/contacts",
+        headers={"Authorization": f"Bearer {t_kid}"},
+    )
+    assert kid_contacts.status_code == 200
+    kid_mxids = {c["mxid"] for c in kid_contacts.json()["contacts"]}
+    assert "@parent1:family-a.test" in kid_mxids
+    assert "@cousin:peer.example" in kid_mxids
+    assert "@kid1:family-a.test" not in kid_mxids
+    assert "@kid2:family-a.test" not in kid_mxids
+
+    kid_me = client.get("/api/app/me", headers={"Authorization": f"Bearer {t_kid}"})
+    assert kid_me.status_code == 200
+    assert {c["mxid"] for c in kid_me.json()["chat_contacts"]} == kid_mxids
+
+    parent_contacts = client.get(
+        "/api/app/contacts",
+        headers={"Authorization": f"Bearer {t_parent}"},
+    )
+    assert parent_contacts.status_code == 200
+    parent_mxids = {c["mxid"] for c in parent_contacts.json()["contacts"]}
+    assert "@parent1:family-a.test" not in parent_mxids
+    assert "@kid1:family-a.test" in parent_mxids
+    assert "@kid2:family-a.test" in parent_mxids
+
+
 def test_members_and_invites_parent_only(app_env):
     client, _, _ = app_env
     assert client.get("/api/members").status_code == 401

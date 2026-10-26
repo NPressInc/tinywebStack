@@ -227,6 +227,23 @@ class FamilyApiClient {
     _throwForStatus(response);
   }
 
+  Future<List<ChatContact>> fetchChatContacts(EnrollmentBundle bundle) async {
+    final response = await _client.get(
+      Uri.parse(_apiUrl(bundle, '/app/contacts')),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      final json = _jsonFromResponse(response);
+      final list = json is List
+          ? json
+          : (json as Map<String, dynamic>)['contacts'] as List<dynamic>? ?? [];
+      return list
+          .map((e) => ChatContact.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    _throwForStatus(response);
+  }
+
   Future<List<FamilyMember>> fetchMembers(EnrollmentBundle bundle) async {
     final base = bundle.serverOrigin.endsWith('/')
         ? bundle.serverOrigin.substring(0, bundle.serverOrigin.length - 1)

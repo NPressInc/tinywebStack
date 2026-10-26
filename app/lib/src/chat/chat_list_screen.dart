@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../api/family_api.dart';
+import '../api/models.dart';
 import '../app_session.dart';
 import '../brand.dart';
 import '../enroll/secure_recovery_screen.dart';
@@ -12,10 +13,12 @@ class ChatListScreen extends StatefulWidget {
     super.key,
     required this.session,
     required this.chat,
+    this.apiClient,
   });
 
   final AppSession session;
   final ChatService chat;
+  final FamilyApiClient? apiClient;
 
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
@@ -23,6 +26,8 @@ class ChatListScreen extends StatefulWidget {
 
 class _ChatListScreenState extends State<ChatListScreen> {
   bool _recoverySkipped = false;
+
+  FamilyApiClient get _api => widget.apiClient ?? FamilyApiClient();
 
   @override
   void initState() {
@@ -106,58 +111,58 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
           Expanded(
             child: RefreshIndicator(
-        onRefresh: widget.chat.refreshRooms,
-        child: rooms.isEmpty
-            ? ListView(
-                children: const [
-                  SizedBox(height: 120),
-                  Center(child: Text('No conversations yet')),
-                ],
-              )
-            : ListView.builder(
-                itemCount: rooms.length,
-                itemBuilder: (context, index) {
-                  final room = rooms[index];
-                  return ListTile(
-                    leading: room.encrypted
-                        ? const Icon(Icons.lock, size: 20)
-                        : null,
-                    title: Text(room.title),
-                    subtitle: Text(
-                      room.lastMessage ?? 'No messages yet',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        if (room.lastTsMs != null)
-                          Text(
-                            _formatTime(room.lastTsMs!),
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                        if (room.unread > 0)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 4),
-                            child: CircleAvatar(
-                              radius: 10,
-                              backgroundColor: TinyWebColors.blueDeep,
-                              child: Text(
-                                '${room.unread}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ),
-                          ),
+              onRefresh: widget.chat.refreshRooms,
+              child: rooms.isEmpty
+                  ? ListView(
+                      children: const [
+                        SizedBox(height: 120),
+                        Center(child: Text('No conversations yet')),
                       ],
+                    )
+                  : ListView.builder(
+                      itemCount: rooms.length,
+                      itemBuilder: (context, index) {
+                        final room = rooms[index];
+                        return ListTile(
+                          leading: room.encrypted
+                              ? const Icon(Icons.lock, size: 20)
+                              : null,
+                          title: Text(room.title),
+                          subtitle: Text(
+                            room.lastMessage ?? 'No messages yet',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          trailing: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              if (room.lastTsMs != null)
+                                Text(
+                                  _formatTime(room.lastTsMs!),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                ),
+                              if (room.unread > 0)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 4),
+                                  child: CircleAvatar(
+                                    radius: 10,
+                                    backgroundColor: TinyWebColors.blueDeep,
+                                    child: Text(
+                                      '${room.unread}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 11,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          onTap: () => _openRoom(room.roomId, room.title),
+                        );
+                      },
                     ),
-                    onTap: () => _openRoom(room.roomId, room.title),
-                  );
-                },
-              ),
             ),
           ),
         ],
@@ -189,93 +194,40 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  Future<void> _startNewChat() async {
-    final bundle = widget.session.enrollment!;
-    final profile = widget.session.profile!;
-    final isParent = profile.role == 'parent';
-
-    String? targetMxid;
-
-    if (isParent) {
-      try {
-        final members = await FamilyApiClient().fetchMembers(bundle);
-        final others = members
-            .where((m) => m.mxid.isNotEmpty && m.mxid != bundle.mxid)
-            .toList();
-        if (others.isEmpty) {
-          if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No family members found')),
-          );
-          return;
-        }
-        if (!mounted) return;
-        targetMxid = await showModalBottomSheet<String>(
-          context: context,
-          builder: (ctx) => SafeArea(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text(
-                    'New chat',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-                ...others.map(
-                  (m) => ListTile(
-                    title: Text(m.displayName ?? m.username),
-                    subtitle: Text(m.mxid),
-                    onTap: () => Navigator.pop(ctx, m.mxid),
-                  ),
-                ),
-              ],
+  Future<String?> _showManualMxidDialog() {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('New chat'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: '@user:your.family.server',
             ),
+            autofocus: true,
           ),
-        );
-      } catch (e) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not load family members: $e')),
-        );
-        return;
-      }
-    } else {
-      targetMxid = await showDialog<String>(
-        context: context,
-        builder: (ctx) {
-          final controller = TextEditingController();
-          return AlertDialog(
-            title: const Text('New chat'),
-            content: TextField(
-              controller: controller,
-              decoration: const InputDecoration(
-                hintText: '@user:your.family.server',
-              ),
-              autofocus: true,
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-                child: const Text('Start'),
-              ),
-            ],
-          );
-        },
-      );
-    }
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Start'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
-    if (targetMxid == null || targetMxid.isEmpty) {
-      return;
-    }
-
+  Future<void> _finishNewChat({
+    required Future<String> Function() createRoom,
+  }) async {
     try {
-      final roomId = await widget.chat.createDirectChat(targetMxid);
+      final roomId = await createRoom();
       await widget.chat.refreshRooms();
       if (!mounted) return;
       final room = widget.chat.rooms.firstWhere(
@@ -290,4 +242,224 @@ class _ChatListScreenState extends State<ChatListScreen> {
       );
     }
   }
+
+  Future<void> _startNewChatParent(EnrollmentBundle bundle) async {
+    try {
+      final members = await _api.fetchMembers(bundle);
+      final others = members
+          .where((m) => m.mxid.isNotEmpty && m.mxid != bundle.mxid)
+          .toList();
+      if (others.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No family members found')),
+        );
+        return;
+      }
+      if (!mounted) return;
+      final result = await showModalBottomSheet<_ParentNewChatResult>(
+        context: context,
+        isScrollControlled: true,
+        builder: (ctx) {
+          final selected = <String>{};
+          final groupNameController = TextEditingController();
+          return SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(
+                bottom: MediaQuery.viewInsetsOf(ctx).bottom,
+              ),
+              child: StatefulBuilder(
+                builder: (context, setSheetState) {
+                  final selectedMxids = others
+                      .where((m) => selected.contains(m.mxid))
+                      .map((m) => m.mxid)
+                      .toList();
+                  final groupName = groupNameController.text.trim();
+                  final createGroup = selectedMxids.length >= 2 ||
+                      (groupName.isNotEmpty && selectedMxids.isNotEmpty);
+                  final canStart = selectedMxids.isNotEmpty;
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.all(16),
+                        child: Text(
+                          'New chat',
+                          style: TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: TextField(
+                          key: const Key('group_name_field'),
+                          controller: groupNameController,
+                          decoration: const InputDecoration(
+                            labelText: 'Group name (optional)',
+                            hintText: 'Family',
+                          ),
+                          onChanged: (_) => setSheetState(() {}),
+                        ),
+                      ),
+                      Flexible(
+                        child: ListView(
+                          shrinkWrap: true,
+                          children: others
+                              .map(
+                                (m) => CheckboxListTile(
+                                  value: selected.contains(m.mxid),
+                                  onChanged: (checked) {
+                                    setSheetState(() {
+                                      if (checked == true) {
+                                        selected.add(m.mxid);
+                                      } else {
+                                        selected.remove(m.mxid);
+                                      }
+                                    });
+                                  },
+                                  title: Text(m.displayLabel),
+                                  subtitle: Text(m.mxid),
+                                ),
+                              )
+                              .toList(),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: FilledButton(
+                          key: const Key('start_chat_button'),
+                          onPressed: canStart
+                              ? () {
+                                  Navigator.pop(
+                                    ctx,
+                                    _ParentNewChatResult(
+                                      selectedMxids: selectedMxids,
+                                      groupName: groupName,
+                                      createGroup: createGroup,
+                                    ),
+                                  );
+                                }
+                              : null,
+                          child: Text(
+                            createGroup ? 'Create Group' : 'Start Chat',
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          );
+        },
+      );
+      if (result == null || result.selectedMxids.isEmpty) {
+        return;
+      }
+      await _finishNewChat(
+        createRoom: () {
+          if (result.createGroup) {
+            return widget.chat.createGroupChat(
+              result.groupName,
+              result.selectedMxids,
+            );
+          }
+          return widget.chat.createDirectChat(result.selectedMxids.first);
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load family members: $e')),
+      );
+    }
+  }
+
+  Future<void> _startNewChatKid(
+    EnrollmentBundle bundle,
+    AppMeProfile profile,
+  ) async {
+    List<ChatContact> contacts = [];
+    try {
+      contacts = await _api.fetchChatContacts(bundle);
+    } catch (_) {}
+    if (contacts.isEmpty) {
+      contacts = profile.chatContacts;
+    }
+
+    String? targetMxid;
+
+    if (contacts.isNotEmpty) {
+      if (!mounted) return;
+      const manualPicker = '__manual_mxid__';
+      final picked = await showModalBottomSheet<String>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'New chat',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              ...contacts.map(
+                (c) => ListTile(
+                  title: Text(c.displayLabel),
+                  subtitle: Text(c.mxid),
+                  onTap: () => Navigator.pop(ctx, c.mxid),
+                ),
+              ),
+              ListTile(
+                leading: const Icon(Icons.alternate_email),
+                title: const Text('Type Matrix ID...'),
+                onTap: () => Navigator.pop(ctx, manualPicker),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (picked == null) {
+        return;
+      }
+      if (picked == manualPicker) {
+        targetMxid = await _showManualMxidDialog();
+      } else {
+        targetMxid = picked;
+      }
+    } else {
+      targetMxid = await _showManualMxidDialog();
+    }
+
+    if (targetMxid == null || targetMxid.isEmpty) {
+      return;
+    }
+
+    await _finishNewChat(
+      createRoom: () => widget.chat.createDirectChat(targetMxid!),
+    );
+  }
+
+  Future<void> _startNewChat() async {
+    final bundle = widget.session.enrollment!;
+    final profile = widget.session.profile!;
+    if (profile.role == 'parent') {
+      await _startNewChatParent(bundle);
+    } else {
+      await _startNewChatKid(bundle, profile);
+    }
+  }
+}
+
+class _ParentNewChatResult {
+  _ParentNewChatResult({
+    required this.selectedMxids,
+    required this.groupName,
+    required this.createGroup,
+  });
+
+  final List<String> selectedMxids;
+  final String groupName;
+  final bool createGroup;
 }
