@@ -23,6 +23,7 @@ TWS_ETC_DIR="${TWS_ETC_DIR:-/etc/tinywebstack}"
 TINYWEB_INSTALL_LOG="${TINYWEB_INSTALL_LOG:-/var/log/tinywebstack-install.log}"
 SKIP_SELFCHECK=0
 CONFIG_PATH=""
+CLI_TWS_DOMAIN=""
 INSTALL_DRY_RUN=0
 
 INSTALL_STEPS=(
@@ -42,10 +43,11 @@ INSTALL_STEPS=(
 
 usage() {
   cat <<'EOF'
-Usage: install-tinyweb.sh [--config /path/tinyweb.env] [--skip-selfcheck] [--dry-run]
+Usage: install-tinyweb.sh [--config /path/tinyweb.env] [--family <name-or-domain>] [--domain <name-or-domain>] [--skip-selfcheck] [--dry-run]
 
 Install tinywebStack on this machine (no control machine). Requires root.
 Default config: /etc/tinywebstack/tinyweb.env, else ./tinyweb.env at repo root.
+When --family/--domain is set, a config file is optional (TWS_DOMAIN is taken from the flag).
 EOF
   exit 1
 }
@@ -64,6 +66,10 @@ while [[ $# -gt 0 ]]; do
       INSTALL_DRY_RUN=1
       export DRY_RUN=1
       shift
+      ;;
+    --family|--domain)
+      CLI_TWS_DOMAIN=$2
+      shift 2
       ;;
     -h|--help)
       usage
@@ -84,10 +90,10 @@ install_log() {
   fi
 }
 
-resolve_config_path() {
+find_config_path() {
   if [[ -n "$CONFIG_PATH" ]]; then
-    printf '%s\n' "$CONFIG_PATH"
-    return 0
+    [[ -f "$CONFIG_PATH" ]] && printf '%s\n' "$CONFIG_PATH"
+    return
   fi
   if [[ -f "${TWS_ETC_DIR}/tinyweb.env" ]]; then
     printf '%s\n' "${TWS_ETC_DIR}/tinyweb.env"
@@ -97,7 +103,16 @@ resolve_config_path() {
     printf '%s\n' "${REPO_ROOT}/tinyweb.env"
     return 0
   fi
-  die "No config found (use --config or create ${TWS_ETC_DIR}/tinyweb.env)"
+  return 1
+}
+
+resolve_config_path() {
+  local p
+  if p="$(find_config_path)"; then
+    printf '%s\n' "$p"
+    return 0
+  fi
+  die "No config found (use --config, --family/--domain, or create ${TWS_ETC_DIR}/tinyweb.env)"
 }
 
 step_banner() {
@@ -366,8 +381,24 @@ step_tls() {
       fi
     done < <(node_all_domains "$TWS_DOMAIN")
   else
+    if [[ "${TWS_TLS_SINGLE_SAN_CERT:-0}" == "1" ]]; then
+      local san_script="${REPO_ROOT}/scripts/vm/tinyweb-subdomain-ddns.sh"
+      if [[ "${DRY_RUN:-0}" == "1" ]]; then
+        install_log "DRY_RUN: would provision single SAN/wildcard LE cert via ${san_script}"
+        bash "$san_script" --provision-san-cert --domain "$TWS_DOMAIN" --dry-run || true
+      else
+        install_log "Provisioning single SAN/wildcard Let's Encrypt cert for ${TWS_DOMAIN}"
+        bash "$san_script" --provision-san-cert --domain "$TWS_DOMAIN"
+      fi
+    fi
     if [[ "${DRY_RUN:-0}" == "1" ]]; then
       install_log "DRY_RUN: would run yunohost domain cert install (Let's Encrypt) per app domain"
+      step_done 3
+      return 0
+    fi
+    if [[ "${TWS_TLS_SINGLE_SAN_CERT:-0}" == "1" ]]; then
+      install_log "TWS_TLS_SINGLE_SAN_CERT=1 — skipping per-domain LE cert install"
+      write_production_dashboard_tls_insecure
       step_done 3
       return 0
     fi
@@ -858,10 +889,16 @@ print_dry_run_plan() {
 
 main() {
   local cfg _xt=0
-  cfg="$(resolve_config_path)"
   [[ $- == *x* ]] && _xt=1
   set +x
-  load_tinyweb_env_file "$cfg"
+  if cfg="$(find_config_path)"; then
+    load_tinyweb_env_file "$cfg"
+  elif [[ -z "$CLI_TWS_DOMAIN" ]]; then
+    die "No config found (use --config, --family/--domain, or create ${TWS_ETC_DIR}/tinyweb.env)"
+  fi
+  if [[ -n "$CLI_TWS_DOMAIN" ]]; then
+    TWS_DOMAIN="$CLI_TWS_DOMAIN"
+  fi
   apply_tinyweb_env_defaults
 
   if [[ "$INSTALL_DRY_RUN" -eq 1 ]]; then

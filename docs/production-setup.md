@@ -23,6 +23,31 @@ script is lab-coupled, it says so; all such gaps are collected in
 or server you run the scripts from. Node ids must match
 `^[a-zA-Z][a-zA-Z0-9_-]*$` (see `scripts/lib/secrets.sh`).
 
+### Default `tinyweb.win` families
+
+For TinyWeb-hosted families, the default scheme is **`<family>.tinyweb.win`**
+(for example `smith.tinyweb.win`, `matrix.smith.tinyweb.win`,
+`mobilizon.smith.tinyweb.win`, `push.smith.tinyweb.win`,
+`owntracks.smith.tinyweb.win`, `nextcloud.smith.tinyweb.win`). The one-box
+installer accepts a bare slug (`scripts/install-on-box.sh smith` or
+`install-tinyweb.sh --family smith`) and resolves it to the full name.
+
+**Dynamic DNS:** `scripts/vm/tinyweb-subdomain-ddns.sh` updates `A`/`AAAA`
+records for `<family>.tinyweb.win` and `*.<family>.tinyweb.win` via either
+`TWS_DDNS_ENDPOINT` + `TWS_DDNS_TOKEN` or Cloudflare (`CF_API_TOKEN`,
+`CF_ZONE_ID` for the `tinyweb.win` zone). Use `--install-timer` on the box for
+a 5-minute systemd timer.
+
+**TLS:** Set `TWS_TLS_SINGLE_SAN_CERT=1` in `tinyweb.env` so the installer
+requests **one** Let's Encrypt certificate covering `<family>.tinyweb.win` and
+`*.<family>.tinyweb.win` (linked into each YunoHost service domain) instead of
+six or seven separate cert orders against the shared `tinyweb.win` registered
+domain (Let's Encrypt rate limits per registered domain).
+
+The **TinyWeb app** expands bare family names on enrollment (`smith` →
+`https://smith.tinyweb.win`) and bare server parts in Matrix IDs (`@user:smith`
+→ `@user:smith.tinyweb.win`); custom full domains continue to work unchanged.
+
 ---
 
 ## 0. What you end up with (per node)

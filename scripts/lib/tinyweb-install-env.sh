@@ -14,6 +14,13 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/family_users.sh"
 tinyweb_install_known_keys() {
   cat <<'EOF'
 TWS_DOMAIN
+TWS_BASE_DOMAIN
+TWS_FAMILY_SUBDOMAIN
+TWS_TLS_SINGLE_SAN_CERT
+TWS_DDNS_ENDPOINT
+TWS_DDNS_TOKEN
+CF_API_TOKEN
+CF_ZONE_ID
 TWS_NODE_NAME
 TWS_MODE
 TWS_ADMIN_USER
@@ -55,6 +62,22 @@ default_tws_node_name() {
   printf '%s' "${domain%%.*}"
 }
 
+# Expand bare family slug `smith` → `smith.tinyweb.win` (or [base_domain]).
+resolve_tws_domain() {
+  local raw_domain="${1:-}"
+  local base_domain="${2:-${TWS_BASE_DOMAIN:-tinyweb.win}}"
+  if [[ -z "$raw_domain" ]]; then
+    printf '%s' "$raw_domain"
+    return 0
+  fi
+  if [[ "$raw_domain" != *.* ]] \
+    && [[ "$raw_domain" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?$ ]]; then
+    printf '%s' "${raw_domain,,}.${base_domain}"
+  else
+    printf '%s' "$raw_domain"
+  fi
+}
+
 # Load tinyweb.env into the current shell (caller must not log this file).
 load_tinyweb_env_file() {
   local f=$1
@@ -86,6 +109,15 @@ apply_tinyweb_env_defaults() {
     lab|production) ;;
     *) die "TWS_MODE must be lab or production (got '${TWS_MODE}')" ;;
   esac
+
+  TWS_BASE_DOMAIN="${TWS_BASE_DOMAIN:-tinyweb.win}"
+  if [[ -z "${TWS_DOMAIN:-}" && -n "${TWS_FAMILY_SUBDOMAIN:-}" ]]; then
+    TWS_DOMAIN="$TWS_FAMILY_SUBDOMAIN"
+  fi
+  if [[ -n "${TWS_DOMAIN:-}" ]]; then
+    TWS_DOMAIN="$(resolve_tws_domain "$TWS_DOMAIN" "$TWS_BASE_DOMAIN")"
+    export TWS_DOMAIN
+  fi
 
   validate_tws_domain "${TWS_DOMAIN:-}"
   TWS_NODE_NAME="${TWS_NODE_NAME:-$(default_tws_node_name "$TWS_DOMAIN")}"

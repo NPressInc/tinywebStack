@@ -4,6 +4,7 @@ import '../api/family_api.dart';
 import '../api/models.dart';
 import '../app_session.dart';
 import '../brand.dart';
+import '../enroll/enroll_link.dart';
 import '../enroll/secure_recovery_screen.dart';
 import 'chat_service.dart';
 import 'room_screen.dart';
@@ -204,7 +205,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           content: TextField(
             controller: controller,
             decoration: const InputDecoration(
-              hintText: '@user:your.family.server',
+              hintText: '@user:smith or @user:smith.tinyweb.win',
             ),
             autofocus: true,
           ),
@@ -233,7 +234,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           content: TextField(
             controller: controller,
             decoration: const InputDecoration(
-              hintText: '@user:other.family',
+              hintText: '@user:smith or @user:smith.tinyweb.win',
             ),
             autofocus: true,
           ),
@@ -252,13 +253,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
-  String _normalizeMxid(String raw) {
-    final trimmed = raw.trim();
-    if (trimmed.isEmpty) {
-      return trimmed;
-    }
-    return trimmed.startsWith('@') ? trimmed : '@$trimmed';
-  }
+  String _normalizeMxid(String raw) => normalizeEnteredMxid(raw);
 
   Future<void> _finishNewChat({
     required Future<String> Function() createRoom,
@@ -509,6 +504,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     if (targetMxid == null || targetMxid.isEmpty) {
       return;
     }
+    targetMxid = normalizeEnteredMxid(targetMxid);
 
     await _finishNewChat(
       createRoom: () => widget.chat.createDirectChat(targetMxid!),

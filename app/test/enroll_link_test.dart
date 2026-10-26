@@ -10,6 +10,39 @@ void main() {
     expect(data.code, 'ABC123');
   });
 
+  test('parses tinyweb enroll deep link with bare family slug', () {
+    final data = parseEnrollLink(
+      'tinyweb://enroll?server=smith&code=ABC',
+    );
+    expect(data.serverOrigin, 'https://smith.tinyweb.win');
+    expect(data.code, 'ABC');
+  });
+
+  test('normalizeFamilyServerInput expands bare slug and preserves full domains', () {
+    expect(normalizeFamilyServerInput('smith'), 'smith.tinyweb.win');
+    expect(
+      normalizeFamilyServerInput('https://smith'),
+      'https://smith.tinyweb.win',
+    );
+    expect(
+      normalizeFamilyServerInput('family-b.family.test'),
+      'family-b.family.test',
+    );
+  });
+
+  test('normalizeServerOrigin expands bare family slug', () {
+    expect(normalizeServerOrigin('smith'), 'https://smith.tinyweb.win');
+  });
+
+  test('normalizeEnteredMxid expands bare server name', () {
+    expect(normalizeEnteredMxid('@dad:jones'), '@dad:jones.tinyweb.win');
+    expect(normalizeEnteredMxid('dad:jones'), '@dad:jones.tinyweb.win');
+    expect(
+      normalizeEnteredMxid('@dad:family-a.family.test'),
+      '@dad:family-a.family.test',
+    );
+  });
+
   test('parses bare enroll code', () {
     final data = parseEnrollLink('XYZZY99');
     expect(data.code, 'XYZZY99');

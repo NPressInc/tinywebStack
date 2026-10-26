@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../api/family_api.dart';
 import '../api/models.dart';
 import '../app_session.dart';
+import '../enroll/enroll_link.dart';
 class KidDetailScreen extends StatefulWidget {
   const KidDetailScreen({
     super.key,
@@ -401,7 +402,7 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
         content: TextField(
           controller: controller,
           decoration: const InputDecoration(
-            hintText: '@friend:other.family',
+            hintText: '@friend:smith or @friend:smith.tinyweb.win',
           ),
           autocorrect: false,
         ),
@@ -420,7 +421,7 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
     if (added == null || added.isEmpty) {
       return;
     }
-    final mxid = added.startsWith('@') ? added : '@$added';
+    final mxid = normalizeEnteredMxid(added);
     final current = _permissions!;
     if (current.allowlistMxids.contains(mxid)) {
       return;
@@ -490,7 +491,9 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
         title: const Text('Trusted domain'),
         content: TextField(
           controller: controller,
-          decoration: const InputDecoration(hintText: 'other.family'),
+          decoration: const InputDecoration(
+            hintText: 'smith or smith.tinyweb.win',
+          ),
           autocorrect: false,
         ),
         actions: [
@@ -508,7 +511,7 @@ class _KidDetailScreenState extends State<KidDetailScreen> {
     if (added == null || added.isEmpty) {
       return;
     }
-    final domain = added.toLowerCase();
+    final domain = normalizeFamilyServerInput(added.toLowerCase());
     final current = _permissions!;
     if (current.allowlistDomains.contains(domain)) {
       return;
