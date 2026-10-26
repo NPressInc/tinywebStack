@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import os
+import subprocess
 from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, HTTPException, Request
@@ -31,6 +32,13 @@ from tinywebstack_dashboard.auth import (
 )
 
 log = logging.getLogger(__name__)
+
+
+def _run_events_permissions_sync() -> None:
+    cmd = os.environ.get("TWS_EVENTS_PERMS_CMD", "").strip()
+    if cmd:
+        subprocess.run(cmd.split(), check=False, timeout=120)
+
 
 # Fields a kid (or any non-parent) may never modify, even on their own record.
 PARENT_ONLY_FIELDS = ("mobilizon_role",)
@@ -237,7 +245,9 @@ def create_permissions_router(cfg: DashboardConfig, *, prefix: str = "") -> APIR
                     raise HTTPException(status_code=404, detail=str(exc)) from exc
                 except ValueError as exc:
                     raise HTTPException(status_code=400, detail=str(exc)) from exc
-            return _permissions_response(pdb, target)
+            response = _permissions_response(pdb, target)
+        _run_events_permissions_sync()
+        return response
 
     def _is_parent_admin_store(pdb, caller: str) -> bool:
         ps = pdb.get_permissions(caller)

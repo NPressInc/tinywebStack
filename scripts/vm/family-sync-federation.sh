@@ -33,12 +33,8 @@ for d in sorted(set(data.get("trusted_domains") or [])):
 PY
 )
 
-if [[ ${#PEERS[@]} -gt 0 ]]; then
-  if ! "${TW_STACK_ROOT}/vm/synapse-federation-allowlist.sh" "$MAIN_DOMAIN" "${PEERS[@]}"; then
-    die "Synapse federation allowlist sync failed for ${MAIN_DOMAIN}"
-  fi
-else
-  log "No trusted_domains peers for Synapse allowlist on ${MAIN_DOMAIN}"
+if ! "${TW_STACK_ROOT}/vm/synapse-federation-allowlist.sh" "$MAIN_DOMAIN" "${PEERS[@]}"; then
+  die "Synapse federation allowlist sync failed for ${MAIN_DOMAIN}"
 fi
 
 if [[ -x "${TW_STACK_ROOT}/vm/mobilizon-federation-sync.sh" ]]; then

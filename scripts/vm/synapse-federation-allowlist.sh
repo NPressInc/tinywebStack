@@ -22,7 +22,8 @@ load_config
 usage() {
   cat <<'EOF'
 Usage:
-  synapse-federation-allowlist.sh LOCAL_DOMAIN ALLOWED_DOMAIN [ALLOWED_DOMAIN...]
+  synapse-federation-allowlist.sh LOCAL_DOMAIN [ALLOWED_DOMAIN...]
+  synapse-federation-allowlist.sh --clear LOCAL_DOMAIN
   synapse-federation-allowlist.sh --from-state LOCAL_DOMAIN STATE_FILE
   synapse-federation-allowlist.sh --from-state LOCAL_DOMAIN base64:BASE64JSON
 
@@ -34,6 +35,7 @@ EOF
 }
 
 FROM_STATE=0
+CLEAR_MODE=0
 STATE_REF=""
 if [[ "${1:-}" == "--from-state" ]]; then
   FROM_STATE=1
@@ -41,8 +43,14 @@ if [[ "${1:-}" == "--from-state" ]]; then
   [[ $# -eq 2 ]] || usage
   LOCAL_DOMAIN=$1
   STATE_REF=$2
+elif [[ "${1:-}" == "--clear" ]]; then
+  CLEAR_MODE=1
+  shift
+  [[ $# -eq 1 ]] || usage
+  LOCAL_DOMAIN=$1
+  shift
 else
-  [[ $# -ge 2 ]] || usage
+  [[ $# -ge 1 ]] || usage
   LOCAL_DOMAIN=$1
   shift
 fi
@@ -88,6 +96,8 @@ for d in domains:
         print(d)
 PY
   )
+elif [[ "$CLEAR_MODE" -eq 1 ]]; then
+  ALLOWED=()
 else
   ALLOWED=("$@")
 fi
@@ -101,11 +111,15 @@ fi
 
 render_snippet() {
   echo "# Managed by tinywebStack"
-  echo "federation_domain_whitelist:"
-  local d
-  for d in "${ALLOWED[@]+"${ALLOWED[@]}"}"; do
-    printf '  - "%s"\n' "$d"
-  done
+  if [[ ${#ALLOWED[@]} -eq 0 ]]; then
+    echo "federation_domain_whitelist: []"
+  else
+    echo "federation_domain_whitelist:"
+    local d
+    for d in "${ALLOWED[@]}"; do
+      printf '  - "%s"\n' "$d"
+    done
+  fi
   echo "ip_range_whitelist:"
   printf '  - "%s"\n' "$IP_RANGE"
   if [[ -f "$LAB_CA_SRC" || -f "$LAB_CA_DST" ]]; then

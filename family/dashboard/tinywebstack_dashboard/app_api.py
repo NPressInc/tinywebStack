@@ -59,12 +59,15 @@ from tinywebstack_dashboard.member_ops import (
     revoke_member_app_device,
 )
 from tinywebstack_dashboard.federation import (
+    InvalidDomain,
+    normalize_domain,
     read_nodes_conf,
     reconcile_state_with_policy,
+    save_state,
     state_path_from_env,
 )
 from tinywebstack_dashboard.members import list_members
-from tinywebstack_dashboard.policy_store import load_policy
+from tinywebstack_dashboard.policy_store import load_policy, save_policy
 from tinywebstack_dashboard.owntracks_recorder import (
     fetch_all_last,
     fetch_track,
@@ -442,6 +445,7 @@ def create_app_api_router(
     trusted_domains: Callable[[], List[str]],
     add_trusted_domain: Callable[[str], None],
     run_federation_sync: Callable[[], Tuple[str, str]],
+    schedule_federation_sync: Callable[[], None],
     decline_remote_invite: Callable[[str, str], None] = decline_link_invite_remote,
 ) -> APIRouter:
     router = APIRouter(tags=["app"])
@@ -927,5 +931,41 @@ def create_app_api_router(
         require_parent_user(api_user(request, cfg), cfg)
         families = linked_families_payload(trusted_domains(), cfg.server_name)
         return _no_store({"linked_families": families})
+
+    @router.delete("/api/trusted-domains/{domain}")
+    async def api_trusted_domains_delete(domain: str, request: Request):
+        require_parent_user(api_user(request, cfg), cfg)
+        try:
+            domain = normalize_domain(domain)
+        except InvalidDomain as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if domain == cfg.server_name:
+            raise HTTPException(status_code=409, detail="Cannot remove your own domain")
+        state_file = state_path_from_env()
+        policy_file = Path(cfg.policy_path)
+        current = reconcile_state_with_policy(
+            state_file,
+            policy_file,
+            server_name=cfg.server_name,
+            include_synapse_snippet=False,
+        )
+        if domain not in current:
+            raise HTTPException(status_code=404, detail=f"Domain not trusted: {domain}")
+        remaining = sorted(d for d in current if d != domain)
+        save_state(state_file, remaining)
+        policy = load_policy(policy_file)
+        policy["trusted_domains"] = remaining
+        save_policy(policy_file, policy)
+        from tinywebstack_permissions.store import PermissionsDB, get_db_path
+
+        db_path = get_db_path()
+        if db_path.is_file():
+            try:
+                with PermissionsDB(db_path) as pdb:
+                    pdb.trusted_domains = remaining
+            except OSError:
+                pass
+        schedule_federation_sync()
+        return _no_store({"ok": True, "removed": domain, "trusted_domains": remaining})
 
     return router
