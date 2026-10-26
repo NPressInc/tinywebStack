@@ -81,6 +81,26 @@ FamilyApiClient _parentApi() {
   );
 }
 
+FamilyApiClient _parentOnlyApi() {
+  return FamilyApiClient(
+    client: MockClient((request) async {
+      if (request.url.path.endsWith('/members')) {
+        return http.Response(
+          jsonEncode([
+            {
+              'username': 'parent1',
+              'role': 'parent',
+              'mxid': '@parent1:family.example',
+            },
+          ]),
+          200,
+        );
+      }
+      return http.Response('not found', 404);
+    }),
+  );
+}
+
 FamilyApiClient _kidApi() {
   return FamilyApiClient(
     client: MockClient((request) async {
@@ -189,6 +209,107 @@ void main() {
 
     expect(chat.lastCreatedGroupUserIds, isNull);
     expect(chat.rooms.first.isDirect, isTrue);
+    expect(find.byType(RoomScreen), findsOneWidget);
+  });
+
+  testWidgets('parent starts direct chat with external mxid when alone',
+      (tester) async {
+    final chat = FakeChatService();
+    final session = _session(
+      role: 'parent',
+      username: 'parent1',
+      mxid: '@parent1:family.example',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatListScreen(
+          session: session,
+          chat: chat,
+          apiClient: _parentOnlyApi(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.add_comment_outlined));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('parent-add-external-mxid')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('parent-add-external-mxid')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      '@dad:jones.family.test',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('@dad:jones.family.test'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('start_chat_button')));
+    await tester.pumpAndSettle();
+
+    expect(chat.lastCreatedGroupUserIds, isNull);
+    expect(chat.rooms.first.isDirect, isTrue);
+    expect(chat.rooms.first.title, '@dad:jones.family.test');
+    expect(find.byType(RoomScreen), findsOneWidget);
+  });
+
+  testWidgets('parent creates group with local member and external mxid',
+      (tester) async {
+    final chat = FakeChatService();
+    final session = _session(
+      role: 'parent',
+      username: 'parent1',
+      mxid: '@parent1:family.example',
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatListScreen(
+          session: session,
+          chat: chat,
+          apiClient: _parentApi(),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byIcon(Icons.add_comment_outlined));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('kid1'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('parent-add-external-mxid')));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byType(TextField),
+      ),
+      '@dad:jones.family.test',
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Create Group'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('start_chat_button')));
+    await tester.pumpAndSettle();
+
+    expect(chat.lastCreatedGroupUserIds, [
+      '@kid1:family.example',
+      '@dad:jones.family.test',
+    ]);
+    expect(chat.rooms.first.isDirect, isFalse);
     expect(find.byType(RoomScreen), findsOneWidget);
   });
 

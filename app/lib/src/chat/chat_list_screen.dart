@@ -223,6 +223,43 @@ class _ChatListScreenState extends State<ChatListScreen> {
     );
   }
 
+  Future<String?> _showAddExternalMxidDialog() {
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('Add Matrix ID'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: '@user:other.family',
+            ),
+            autofocus: true,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+              child: const Text('Add'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  String _normalizeMxid(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) {
+      return trimmed;
+    }
+    return trimmed.startsWith('@') ? trimmed : '@$trimmed';
+  }
+
   Future<void> _finishNewChat({
     required Future<String> Function() createRoom,
   }) async {
@@ -249,19 +286,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
       final others = members
           .where((m) => m.mxid.isNotEmpty && m.mxid != bundle.mxid)
           .toList();
-      if (others.isEmpty) {
-        if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No family members found')),
-        );
-        return;
-      }
       if (!mounted) return;
       final result = await showModalBottomSheet<_ParentNewChatResult>(
         context: context,
         isScrollControlled: true,
         builder: (ctx) {
           final selected = <String>{};
+          final externalMxids = <String>[];
           final groupNameController = TextEditingController();
           return SafeArea(
             child: Padding(
@@ -270,10 +301,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
               ),
               child: StatefulBuilder(
                 builder: (context, setSheetState) {
-                  final selectedMxids = others
-                      .where((m) => selected.contains(m.mxid))
-                      .map((m) => m.mxid)
-                      .toList();
+                  final selectedMxids = [
+                    ...others
+                        .where((m) => selected.contains(m.mxid))
+                        .map((m) => m.mxid),
+                    ...externalMxids.where((id) => selected.contains(id)),
+                  ];
                   final groupName = groupNameController.text.trim();
                   final createGroup = selectedMxids.length >= 2 ||
                       (groupName.isNotEmpty && selectedMxids.isNotEmpty);
@@ -303,24 +336,65 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       Flexible(
                         child: ListView(
                           shrinkWrap: true,
-                          children: others
-                              .map(
-                                (m) => CheckboxListTile(
-                                  value: selected.contains(m.mxid),
-                                  onChanged: (checked) {
-                                    setSheetState(() {
-                                      if (checked == true) {
-                                        selected.add(m.mxid);
-                                      } else {
-                                        selected.remove(m.mxid);
-                                      }
-                                    });
-                                  },
-                                  title: Text(m.displayLabel),
-                                  subtitle: Text(m.mxid),
-                                ),
-                              )
-                              .toList(),
+                          children: [
+                            ...others.map(
+                              (m) => CheckboxListTile(
+                                value: selected.contains(m.mxid),
+                                onChanged: (checked) {
+                                  setSheetState(() {
+                                    if (checked == true) {
+                                      selected.add(m.mxid);
+                                    } else {
+                                      selected.remove(m.mxid);
+                                    }
+                                  });
+                                },
+                                title: Text(m.displayLabel),
+                                subtitle: Text(m.mxid),
+                              ),
+                            ),
+                            ...externalMxids.map(
+                              (mxid) => CheckboxListTile(
+                                value: selected.contains(mxid),
+                                onChanged: (checked) {
+                                  setSheetState(() {
+                                    if (checked == true) {
+                                      selected.add(mxid);
+                                    } else {
+                                      selected.remove(mxid);
+                                    }
+                                  });
+                                },
+                                title: Text(mxid),
+                              ),
+                            ),
+                            ListTile(
+                              key: const Key('parent-add-external-mxid'),
+                              leading: const Icon(Icons.alternate_email),
+                              title: const Text(
+                                'Add Matrix ID (@user:domain)...',
+                              ),
+                              onTap: () async {
+                                final raw = await _showAddExternalMxidDialog();
+                                if (raw == null || raw.isEmpty) {
+                                  return;
+                                }
+                                final mxid = _normalizeMxid(raw);
+                                if (mxid.isEmpty) {
+                                  return;
+                                }
+                                setSheetState(() {
+                                  final inOthers =
+                                      others.any((m) => m.mxid == mxid);
+                                  if (!inOthers &&
+                                      !externalMxids.contains(mxid)) {
+                                    externalMxids.add(mxid);
+                                  }
+                                  selected.add(mxid);
+                                });
+                              },
+                            ),
+                          ],
                         ),
                       ),
                       Padding(
