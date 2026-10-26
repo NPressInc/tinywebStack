@@ -7,6 +7,7 @@ import os
 import secrets
 import subprocess
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -199,12 +200,38 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             return invite_secret
         raise HTTPException(status_code=500, detail="TWS_INVITE_SECRET not configured")
 
+    def _federation_followup_delay_sec() -> float:
+        raw = os.environ.get("TWS_FEDERATION_FOLLOWUP_DELAY_SEC", "8.0").strip()
+        if not raw:
+            return 0.0
+        try:
+            val = float(raw)
+        except ValueError:
+            return 8.0
+        return max(0.0, val)
+
+    def _run_federation_sync_cmd() -> None:
+        subprocess.run(federation_sync_cmd.split(), check=False, timeout=180)
+
+    def _schedule_federation_followup() -> None:
+        if not federation_sync_cmd:
+            return
+        delay = _federation_followup_delay_sec()
+
+        def _followup() -> None:
+            if delay > 0:
+                time.sleep(delay)
+            _run_federation_sync_cmd()
+
+        threading.Thread(target=_followup, daemon=True).start()
+
     def schedule_federation_sync() -> None:
         if not federation_sync_cmd:
             return
 
         def _run() -> None:
-            subprocess.run(federation_sync_cmd.split(), check=False, timeout=180)
+            _run_federation_sync_cmd()
+            _schedule_federation_followup()
 
         threading.Thread(target=_run, daemon=True).start()
 
@@ -218,6 +245,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 timeout=180,
                 capture_output=True,
             )
+            _schedule_federation_followup()
             return ("ok", "ok")
         except subprocess.CalledProcessError as exc:
             err = (exc.stderr or b"").decode("utf-8", errors="replace")[:120]
@@ -272,6 +300,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
             trusted_domains=trusted_domain_list,
             add_trusted_domain=add_trusted_domain_no_sync,
             run_federation_sync=run_federation_sync_blocking,
+            schedule_federation_sync=schedule_federation_sync,
             decline_remote_invite=decline_link_invite_remote,
         )
     )

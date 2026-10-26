@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional
+
+log = logging.getLogger(__name__)
 
 from fastapi import HTTPException
 
 from tinywebstack_dashboard.auth import DashboardConfig, list_group_members, user_in_group
 from tinywebstack_dashboard.app_devices import create_enroll_code, get_device, list_devices_for_user, revoke_device
 from tinywebstack_dashboard.invite_store import add_pending, load_pending, pop_pending
+from tinywebstack_dashboard.policy_store import load_policy, save_policy
 from tinywebstack_dashboard.yunohost_actions import (
     create_member,
     delete_member,
@@ -52,6 +57,90 @@ class CreateMemberResult:
     enroll_qr_payload: Optional[str] = None
 
 
+def _permissions_db_path(cfg: DashboardConfig) -> Path:
+    from tinywebstack_permissions.store import get_db_path
+
+    explicit = getattr(cfg, "permissions_db_path", None)
+    if explicit:
+        return Path(str(explicit))
+    return get_db_path()
+
+
+def _should_touch_permissions_db(db_path: Path, cfg: DashboardConfig) -> bool:
+    if db_path.is_file():
+        return True
+    if os.environ.get("TWS_PERMISSIONS_DB", "").strip():
+        return True
+    if getattr(cfg, "permissions_db_path", None):
+        return True
+    parent = db_path.parent
+    if parent.exists() and os.access(parent, os.W_OK):
+        return True
+    return False
+
+
+def _policy_writable(policy_path: Path) -> bool:
+    if not str(policy_path).strip():
+        return False
+    if policy_path.is_file():
+        return os.access(policy_path, os.W_OK)
+    parent = policy_path.parent
+    return parent.exists() and os.access(parent, os.W_OK)
+
+
+def _seed_member_permissions_and_policy(
+    cfg: DashboardConfig, uname: str, role: Role
+) -> None:
+    """Best-effort: permissions DB + family-policy.json for new members."""
+    db_path = _permissions_db_path(cfg)
+    if _should_touch_permissions_db(db_path, cfg):
+        try:
+            from tinywebstack_permissions.store import (
+                PermissionsDB,
+                default_role_seed_files,
+            )
+
+            with PermissionsDB(db_path) as db:
+                if not db.role_is_admin("parent"):
+                    role_files = [p for p in default_role_seed_files() if p.is_file()]
+                    if role_files:
+                        db.seed_roles(role_files)
+                    else:
+                        db.seed_default_roles()
+                if cfg.server_name:
+                    db.set_server_name(cfg.server_name)
+                mxid = f"@{uname}:{cfg.server_name}"
+                db.set_role(mxid, role, username=uname, server_name=cfg.server_name)
+        except (OSError, RuntimeError) as exc:
+            log.warning("Skipping permissions DB seed for %s: %s", uname, exc)
+
+    policy_path = Path(cfg.policy_path) if cfg.policy_path else None
+    if policy_path and _policy_writable(policy_path):
+        try:
+            policy = load_policy(policy_path)
+            mxid = f"@{uname}:{cfg.server_name}"
+            if role == "kid":
+                policy.setdefault("kids", {})
+                policy["kids"].setdefault(
+                    mxid,
+                    {
+                        "allowlist_mxids": [],
+                        "allowlist_domains": [],
+                        "events_enabled": True,
+                    },
+                )
+            elif role == "parent":
+                parents = list(policy.setdefault("parent_mxids", []))
+                if mxid not in parents:
+                    parents.append(mxid)
+                    policy["parent_mxids"] = parents
+            if cfg.server_name:
+                policy["server_name"] = cfg.server_name
+            save_policy(policy_path, policy)
+        except OSError as exc:
+            log.warning("Skipping family-policy seed for %s: %s", uname, exc)
+
+
 def create_family_member(
     cfg: DashboardConfig,
     *,
@@ -72,6 +161,7 @@ def create_family_member(
         raise HTTPException(status_code=400, detail="display_name required")
     password = generate_password()
     create_member(uname, name, role, cfg.server_name, password)
+    _seed_member_permissions_and_policy(cfg, uname, role)
     out = CreateMemberResult(username=uname, role=role, password=password)
     if issue_enroll_code:
         code, expires_at = create_enroll_code(uname, enroll_issued_by)

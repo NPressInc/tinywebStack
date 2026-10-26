@@ -289,6 +289,26 @@ def test_allowlist_from_state_base64_dry_run_yaml(tmp_path):
     assert doc["federation_domain_whitelist"] == ["family-b.test", "family-c.test"]
 
 
+def test_allowlist_static_zero_peers_renders_empty_list(tmp_path):
+    pytest.importorskip("yaml")
+    import yaml
+
+    proc = _run_allowlist_dry_run(["family-a.test"])
+    assert proc.returncode == 0, proc.stderr
+    doc = yaml.safe_load(proc.stdout)
+    assert doc["federation_domain_whitelist"] == []
+
+
+def test_allowlist_clear_mode_renders_empty_list(tmp_path):
+    pytest.importorskip("yaml")
+    import yaml
+
+    proc = _run_allowlist_dry_run(["--clear", "family-a.test"])
+    assert proc.returncode == 0, proc.stderr
+    doc = yaml.safe_load(proc.stdout)
+    assert doc["federation_domain_whitelist"] == []
+
+
 def test_allowlist_static_mode_unchanged_dry_run(tmp_path):
     pytest.importorskip("yaml")
     import yaml
@@ -307,6 +327,77 @@ def test_allowlist_missing_state_file_fails(tmp_path):
     )
     assert proc.returncode != 0
     assert "Missing federation state file" in proc.stderr + proc.stdout
+
+
+def test_family_sync_federation_always_invokes_allowlist_script():
+    script = REPO_ROOT / "scripts" / "vm" / "family-sync-federation.sh"
+    text = script.read_text(encoding="utf-8")
+    assert "synapse-federation-allowlist.sh" in text
+    assert "No trusted_domains peers" not in text
+
+
+def test_api_delete_trusted_domain(fed_env, monkeypatch, tmp_path):
+    from tinywebstack_dashboard.app_devices import create_device, init_db, mint_device_token
+
+    devices_db = tmp_path / "app-devices.db"
+    init_db(devices_db)
+    monkeypatch.setenv("TWS_APP_DEVICES_DB", str(devices_db))
+    sync_calls = []
+    monkeypatch.setenv("TWS_FEDERATION_SYNC_CMD", "echo fed-sync")
+
+    import subprocess as sp
+
+    def track_run(cmd, **kwargs):
+        sync_calls.append(cmd)
+        return sp.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(sp, "run", track_run)
+    make_client, _, state, policy, _ = fed_env
+    c = make_client()
+    assert c.post("/federation/domains", headers=HEADERS, json={"domain": "peer.test"}).status_code == 200
+    token = mint_device_token()
+    create_device(
+        username="parent1",
+        role="parent",
+        device_name="P",
+        platform="ios",
+        token=token,
+    )
+    r = c.delete(
+        "/api/trusted-domains/peer.test",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"ok": True, "removed": "peer.test", "trusted_domains": []}
+    assert json.loads(state.read_text(encoding="utf-8"))["trusted_domains"] == []
+    assert json.loads(policy.read_text(encoding="utf-8"))["trusted_domains"] == []
+    assert sync_calls
+
+
+def test_api_delete_trusted_domain_errors(fed_env, monkeypatch, tmp_path):
+    from tinywebstack_dashboard.app_devices import create_device, init_db, mint_device_token
+
+    devices_db = tmp_path / "app-devices.db"
+    init_db(devices_db)
+    monkeypatch.setenv("TWS_APP_DEVICES_DB", str(devices_db))
+    make_client, _, _, _, _ = fed_env
+    c = make_client()
+    token = mint_device_token()
+    create_device(
+        username="parent1",
+        role="parent",
+        device_name="P",
+        platform="ios",
+        token=token,
+    )
+    h = {"Authorization": f"Bearer {token}"}
+    assert c.delete("/api/trusted-domains/family-a.test", headers=h).status_code == 409
+    assert c.delete("/api/trusted-domains/nope.test", headers=h).status_code == 404
+    assert c.delete("/api/trusted-domains/not%20a%20domain", headers=h).status_code == 400
+    t_kid = mint_device_token()
+    create_device(username="kid1", role="kid", device_name="K", platform="android", token=t_kid)
+    assert c.delete("/api/trusted-domains/peer.test", headers={"Authorization": f"Bearer {t_kid}"}).status_code == 403
 
 
 def test_allowlist_empty_state_refuses_open_whitelist(tmp_path):

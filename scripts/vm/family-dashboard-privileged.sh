@@ -135,6 +135,23 @@ case "$CMD" in
     G="$KIDS_GROUP"
     [[ "$ROLE" == parent ]] && G="$PARENTS_GROUP"
     yunohost_group_add "$G" "$USER"
+    mapfile -t TWS_FAMILY_GROUPS < <(yunohost user group list --output-as json | python3 -c '
+import json, re, sys
+d = json.load(sys.stdin)
+groups = d.get("groups", d)
+if not isinstance(groups, dict):
+    sys.exit(0)
+pat = re.compile(r"^tws-family(-.*)?$")
+for name in sorted(groups):
+    if pat.match(name):
+        print(name)
+')
+    for fam_grp in "${TWS_FAMILY_GROUPS[@]}"; do
+      yunohost_group_add "$fam_grp" "$USER" || true
+      if declare -F run_nextcloud_occ >/dev/null 2>&1; then
+        run_nextcloud_occ ldap:check-group "$fam_grp" --update 2>/dev/null || true
+      fi
+    done
     if ! "${TW_STACK_ROOT}/vm/family-groups.sh"; then
       log "WARN: family-groups sync failed after creating ${USER} (user is in ${G})"
     fi
