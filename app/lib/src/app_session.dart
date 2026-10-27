@@ -1,4 +1,9 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 
 import 'api/discovery.dart';
 import 'api/family_api.dart';
@@ -42,6 +47,17 @@ class AppSession extends ChangeNotifier {
   bool get isLoading => route == AppRoute.loading;
 
   Future<void> bootstrap() async {
+    if (!kIsWeb && _store is SecureCredentialStore) {
+      try {
+        final dir = await getApplicationSupportDirectory();
+        final marker = File('${dir.path}/tinyweb_install_marker_v1');
+        if (!marker.existsSync()) {
+          await _store.clear();
+          await dir.create(recursive: true);
+          await marker.writeAsString('1', flush: true);
+        }
+      } catch (_) {}
+    }
     enrollBannerMessage = null;
     pendingEnrollPassword = null;
     enrollment = await _store.read();
@@ -61,7 +77,30 @@ class AppSession extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    await _refreshMe(clearOnUnauthorized: true);
+    try {
+      await _refreshMe(clearOnUnauthorized: true);
+    } on TimeoutException {
+      await _clearStaleCredentialsForNetworkFailure();
+    } on SocketException {
+      await _clearStaleCredentialsForNetworkFailure();
+    } on http.ClientException {
+      await _clearStaleCredentialsForNetworkFailure();
+    } on EnrollException catch (e) {
+      await _clearStaleCredentialsForNetworkFailure(
+        e.message ??
+            'Could not verify enrollment on this device. Please enroll again.',
+      );
+    }
+  }
+
+  Future<void> _clearStaleCredentialsForNetworkFailure([String? message]) async {
+    await _store.clear();
+    enrollment = null;
+    profile = null;
+    enrollBannerMessage = message ??
+        'Could not reach your family server. Check your connection and enroll again.';
+    route = AppRoute.enroll;
+    notifyListeners();
   }
 
   Future<bool> _needsE2eeSetup() async {
@@ -172,12 +211,24 @@ class AppSession extends ChangeNotifier {
       return;
     }
     try {
-      profile = await _familyApi.fetchMe(bundle);
+      profile = await _familyApi
+          .fetchMe(bundle)
+          .timeout(const Duration(seconds: 5));
       route = AppRoute.home;
-      await _startKidLocationSharingIfNeeded();
+      notifyListeners();
+      unawaited(
+        _startKidLocationSharingIfNeeded()
+            .timeout(const Duration(seconds: 5))
+            .catchError((_) {}),
+      );
       final enroll = enrollment;
       if (enroll != null) {
-        await pushService.syncFromEnrollment(enroll);
+        unawaited(
+          pushService
+              .syncFromEnrollment(enroll)
+              .timeout(const Duration(seconds: 5))
+              .catchError((_) {}),
+        );
       }
     } on EnrollException catch (e) {
       if (clearOnUnauthorized &&
