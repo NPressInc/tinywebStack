@@ -269,7 +269,9 @@ class PushService {
       return cached;
     }
     try {
-      final token = await _iosChannel.invokeMethod<String>('requestToken');
+      final token = await _iosChannel
+          .invokeMethod<String>('requestToken')
+          .timeout(const Duration(seconds: 5));
       if (token != null && token.isNotEmpty) {
         await store.writeApnsTokenHex(token);
         return token;

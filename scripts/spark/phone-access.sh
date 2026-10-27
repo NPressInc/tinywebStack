@@ -76,8 +76,7 @@ install_nat_unit() {
   cat >"/etc/systemd/system/${NAT_UNIT}" <<EOF
 [Unit]
 Description=TinyWeb phone NAT (Tailscale -> libvirt VM)
-After=network-online.target tailscaled.service
-Before=libvirtd.service
+After=network-online.target tailscaled.service libvirtd.service docker.service
 
 [Service]
 Type=oneshot
@@ -113,6 +112,14 @@ _nat_up() {
     iptables -I FORWARD 1 -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -j ACCEPT
     iptables -t nat -I POSTROUTING 1 -o virbr0 -j MASQUERADE
   fi
+  if command -v iptables >/dev/null 2>&1; then
+    if iptables -L LIBVIRT_FWI -n >/dev/null 2>&1; then
+      iptables -C LIBVIRT_FWI -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -p tcp -m multiport --dports 80,443 -j ACCEPT 2>/dev/null \
+        || iptables -I LIBVIRT_FWI 1 -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -p tcp -m multiport --dports 80,443 -j ACCEPT
+    fi
+    iptables -C FORWARD -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -j ACCEPT 2>/dev/null \
+      || iptables -I FORWARD 1 -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -j ACCEPT
+  fi
   log "NAT: ${TS_IF} tcp/80,443 -> ${TW_VM_IP}"
 }
 
@@ -124,6 +131,10 @@ _nat_down() {
     iptables -t nat -D PREROUTING -i "${TS_IF}" -p tcp -m multiport --dports 80,443 -j DNAT --to-destination "${TW_VM_IP}" 2>/dev/null || true
     iptables -D FORWARD -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -j ACCEPT 2>/dev/null || true
     iptables -t nat -D POSTROUTING -o virbr0 -j MASQUERADE 2>/dev/null || true
+  fi
+  if command -v iptables >/dev/null 2>&1; then
+    iptables -D LIBVIRT_FWI -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -p tcp -m multiport --dports 80,443 -j ACCEPT 2>/dev/null || true
+    iptables -D FORWARD -i "${TS_IF}" -o virbr0 -d "${TW_VM_IP}" -j ACCEPT 2>/dev/null || true
   fi
 }
 
