@@ -148,7 +148,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Later
 
-- Media (**Jellyfin**, **Immich**) from [PLAN.md](../PLAN.md). Complex optional media apps like **Jellyfin** stay as separate native apps (phone/TV) rather than being built into the TinyWeb mega-app; family members sign into them using their same TinyWeb server URL, username, and password via YunoHost's shared LDAP directory (with a helper on Home in the TinyWeb app to copy the server URL and username).
+- Media: optional **Jellyfin** ([JELLYFIN.md](JELLYFIN.md), [PLAN.md](../PLAN.md)). It stays in the official Jellyfin apps. When `jellyfin.enabled` is set in family discovery, Home shows that server address (not the family home URL), says sign-in is the same username and password and not single sign-on, and can open the site in the browser. The app does not play media and does not edit libraries. Quiet hours are not applied. **Immich** is not part of this integration.
 - **Parent-key oversight** for kids' encrypted rooms ([FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) P3.8, deferred).
 
 ---

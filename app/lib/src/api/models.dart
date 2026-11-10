@@ -1,5 +1,42 @@
 // JSON models for family discovery, enrollment, and /app/me.
 
+class JellyfinDiscovery {
+  const JellyfinDiscovery({
+    required this.enabled,
+    this.url,
+    this.sso = false,
+    this.auth = 'unavailable',
+    this.quietHoursEnforced = false,
+  });
+
+  final bool enabled;
+  final String? url;
+  final bool sso;
+  final String auth;
+  final bool quietHoursEnforced;
+
+  bool get canOpen =>
+      enabled && url != null && url!.startsWith('https://') && sso == false;
+
+  factory JellyfinDiscovery.fromJson(Object? raw) {
+    if (raw is! Map) {
+      return const JellyfinDiscovery(enabled: false);
+    }
+    final map = Map<String, dynamic>.from(raw);
+    final url = map['url'] as String?;
+    final https = url != null && url.startsWith('https://');
+    return JellyfinDiscovery(
+      enabled: map['enabled'] == true && https,
+      url: https ? url : null,
+      // A server that claims SSO is still the LDAP password prompt. Do not
+      // surface that claim in the app.
+      sso: false,
+      auth: map['auth'] as String? ?? 'unavailable',
+      quietHoursEnforced: false,
+    );
+  }
+}
+
 class FamilyDiscovery {
   FamilyDiscovery({
     required this.serverOrigin,
@@ -12,6 +49,7 @@ class FamilyDiscovery {
     this.caldavRoot,
     this.eventsUrl,
     this.locationUrl,
+    this.jellyfin,
   });
 
   final String serverOrigin;
@@ -24,6 +62,7 @@ class FamilyDiscovery {
   final String? caldavRoot;
   final String? eventsUrl;
   final String? locationUrl;
+  final JellyfinDiscovery? jellyfin;
 
   bool get hasEnrollUrl => enrollUrl != null && enrollUrl!.isNotEmpty;
 
@@ -53,6 +92,7 @@ class FamilyDiscovery {
       caldavRoot: json['caldav_root'] as String?,
       eventsUrl: json['events_url'] as String?,
       locationUrl: json['location_url'] as String?,
+      jellyfin: JellyfinDiscovery.fromJson(json['jellyfin']),
     );
   }
 }

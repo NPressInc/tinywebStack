@@ -41,7 +41,7 @@ For implementation planning, see [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md). F
 
 **Source:** [TinyWebC `PLAN.md`](https://github.com/NPressInc/TinyWebC/blob/main/PLAN.md) — roadmap repeatedly defers “extensions,” dashboard, and mobile apps while prioritizing user management and permissions; [tinywebStack `PLAN.md`](../PLAN.md) states explicitly that gossip, message store, and location storage already exist elsewhere.
 
-**tinywebStack:** **Carries over (sharpened).** Engineering effort goes into **parent-managed identity, linking trusted households, parental controls, and location visibility**—not another chat protocol or GPS database. Synapse, OwnTracks Recorder, Traccar, Jellyfin, Immich, and Nextcloud come from mature projects and the YunoHost catalog; **backends can be open-source apps; the frontend is unified** via the **TinyWeb app** and parent dashboard.
+**tinywebStack:** **Carries over (sharpened).** Engineering effort goes into **parent-managed identity, linking trusted households, parental controls, and location visibility**—not another chat protocol or GPS database. Synapse, OwnTracks Recorder, Traccar, Jellyfin, Immich, and Nextcloud come from mature projects and the YunoHost catalog; **backends can be open-source apps; the frontend is unified** via the **TinyWeb app** and parent dashboard. Optional Jellyfin is the exception that stays in Jellyfin’s own clients ([JELLYFIN.md](JELLYFIN.md)).
 
 ---
 

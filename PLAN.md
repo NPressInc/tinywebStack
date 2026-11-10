@@ -23,7 +23,7 @@ Bare family slugs are expanded automatically in the **TinyWeb app** (enrollment 
 - **Base OS:** [YunoHost](https://yunohost.org), a Debian-based self-hosting OS with an app catalog, user accounts and groups, single sign-on (one login for every app), per-app permissions, domains, and HTTPS.
 - **Texting and calling:** Matrix on **Synapse** (homeserver). Families use the **TinyWeb app** for chat; voice/video calls land in a later app stage (Element Call on the box). Synapse uses YunoHost logins and can federate between homes.
 - **Location:** OwnTracks Recorder or Traccar on the box; kids publish from the **TinyWeb app** (not the OwnTracks app).
-- **Media and apps:** Jellyfin, Immich, Nextcloud, and others from the YunoHost catalog. Complex optional media apps like **Jellyfin** stay as their own separate native apps (phone/TV) rather than being built into the TinyWeb mega-app; family members sign into them automatically using their same TinyWeb username and password via YunoHost's shared LDAP directory.
+- **Media:** Optional [Jellyfin](docs/JELLYFIN.md) from the official YunoHost package, off unless `TWS_JELLYFIN=1`, at `jellyfin.<family>.tinyweb.win`. Playback stays in Jellyfin’s phone and TV apps (the browser is only a fallback). People sign in again with their TinyWeb username and password. That is LDAP, not single sign-on. Children are not allowed to sign in until a parent grants it, and the packaged “all libraries” default for new accounts is turned off. Parents add folders and per-person library access in Jellyfin’s own dashboard. TinyWeb only shows the address. Quiet hours are not applied to Jellyfin. Immich and other catalog apps stay out of this integration.
 
 ## What we build (the family layer)
 

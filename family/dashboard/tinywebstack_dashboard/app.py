@@ -67,6 +67,7 @@ from tinywebstack_dashboard.link_invite import (
     LinkInviteError,
 )
 from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
+from tinywebstack_dashboard.jellyfin import jellyfin_public_discovery
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -328,6 +329,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "location_url": cfg.location_base_url,
                 "push_enabled": os.environ.get("TWS_PUSH_ENABLE", "1").strip()
                 not in ("0", "false", "no", "off"),
+                "jellyfin": jellyfin_public_discovery(os.environ.get("TWS_JELLYFIN_URL")),
             }
         )
 
@@ -479,6 +481,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "location_url": cfg.location_base_url,
                 "events_url": cfg.events_base_url,
                 "member_count": len(list_members(cfg)),
+                "jellyfin": jellyfin_public_discovery(os.environ.get("TWS_JELLYFIN_URL")),
             },
         )
 
