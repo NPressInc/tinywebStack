@@ -187,6 +187,8 @@ class Service:
         slug = str(unit["slug"])
         existing = self.store.active_tunnel(unit_id)
         if existing is not None:
+            if self.provider.publishes:
+                existing = self._refresh_certificate(existing)
             return self._handoff_from_row(existing, replayed=True)
         domain = family_domain(slug, self.settings.base_domain)
         try:
@@ -379,6 +381,27 @@ class Service:
             "domain": name,
             "records": "cname",
         }
+
+    def _refresh_certificate(self, row: Any) -> Any:
+        """Re-read an edge certificate that was still pending when the tunnel was issued.
+
+        The fake provider does not publish, so it never takes this path and cannot
+        report a certificate that was not issued.
+        """
+        cert = json.loads(row["cert_json"])
+        if cert.get("ready") is True:
+            return row
+        hosts = cert.get("hosts") if isinstance(cert.get("hosts"), list) else []
+        method = str(cert.get("method") or "advanced_certificate_manager")
+        try:
+            refreshed = self.provider.ensure_edge_certificate(
+                CertRequest(method=method, hosts=[str(host) for host in hosts])
+            )
+        except (ProviderError, ProviderNotConfigured):
+            return row
+        self.store.update_tunnel_cert(int(row["id"]), json.dumps(refreshed.as_dict()))
+        updated = self.store.active_tunnel(str(row["unit_id"]))
+        return updated if updated is not None else row
 
     def _rollback(self, issued: IssuedTunnel | None, names: list[str]) -> None:
         for name in names:

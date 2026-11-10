@@ -201,3 +201,83 @@ def test_total_tls_requests_coverage_for_proxied_nested_names(tmp_path) -> None:
     assert "matrix.smith.tinyweb.win" in hosts
     assert "jellyfin.smith.tinyweb.win" not in hosts
     assert issued.json()["published"] is False
+
+
+def test_replay_refreshes_a_pending_edge_certificate(tmp_path) -> None:
+    """A publishing provider can report the certificate on a later read.
+
+    The default fake provider never enters this path.
+    """
+    from tinyweb_controlplane.providers import EdgeCertificate, IssuedTunnel
+
+    class PendingThenReady:
+        publishes = True
+        name = "cloudflare"
+
+        def __init__(self) -> None:
+            self.cert_calls = 0
+            self.create_calls = 0
+
+        def create_tunnel(self, spec):
+            self.create_calls += 1
+            return IssuedTunnel(
+                tunnel_id="00000000-0000-4000-8000-0000000000aa",
+                account_tag="account",
+                token="live-tunnel-token-example",
+                credentials_file={"TunnelID": "00000000-0000-4000-8000-0000000000aa"},
+                name=spec.name,
+            )
+
+        def delete_tunnel(self, tunnel_id: str) -> None:
+            return None
+
+        def upsert_cname(self, record) -> None:
+            return None
+
+        def delete_cname(self, name: str) -> None:
+            return None
+
+        def ensure_edge_certificate(self, request):
+            self.cert_calls += 1
+            ready = self.cert_calls >= 2
+            return EdgeCertificate(
+                method=request.method,
+                hosts=list(request.hosts),
+                status="active" if ready else "pending_validation",
+                pack_id="pack",
+                ready=ready,
+            )
+
+    provider = PendingThenReady()
+    settings = Settings(
+        db_path=str(tmp_path / "cp.sqlite"),
+        operator_token="operator-test-token",
+        provider_name="fake",
+        base_domain="tinyweb.win",
+        public_origin="https://tinyweb.win",
+    )
+    app = create_app(settings, provider=provider)
+    from fastapi.testclient import TestClient
+
+    with TestClient(app) as client:
+        minted = client.post(
+            "/v1/operator/units",
+            headers={"Authorization": "Bearer operator-test-token"},
+        ).json()
+        claimed = client.post(
+            "/v1/setup/claim",
+            json={"setup_code": minted["setup_code"], "slug": "smith"},
+        ).json()
+        headers = {"Authorization": f"Bearer {claimed['claim_token']}"}
+        first = client.post("/v1/tunnels", headers=headers, json={})
+        second = client.post("/v1/tunnels", headers=headers, json={})
+    assert first.status_code == 200, first.text
+    assert first.json()["published"] is True
+    assert first.json()["edge_certificate_ready"] is False
+    assert second.status_code == 200, second.text
+    assert second.json()["replayed"] is True
+    assert second.json()["published"] is True
+    assert second.json()["edge_certificate_ready"] is True
+    assert second.json()["certificate"]["ready"] is True
+    assert provider.create_calls == 1
+    assert provider.cert_calls == 2

@@ -1,9 +1,12 @@
 """Local-only setup API for an unprovisioned TinyWeb box.
 
 The process binds a private LAN address, checks the printed setup code, and
-starts the existing one-box installer. Name publication, Let's Encrypt, and
-the tunnel stay gated until those workstreams exist. This module does not
-report them as done.
+starts the existing one-box installer. When TWS_CONTROL_PLANE_URL is set it
+asks the control plane to reserve the slug, issue a tunnel, and mark setup
+complete, then runs scripts/cloudflared-apply.sh. Those gates become ready
+only when that service says DNS was published and the edge certificate is
+ready. A missing control plane, missing Cloudflare credentials, or an
+unpublished handoff stays blocked. This module does not invent a hostname.
 """
 
 from __future__ import annotations
@@ -24,6 +27,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+from tinyweb_setup.control_plane import (
+    ControlPlaneClient,
+    ControlPlaneError,
+    PublishDecision,
+    evaluate_handoff,
+    handoff_proxies_jellyfin,
+)
 from tinyweb_setup.mdns import Announcer
 
 SETUP_PORT = 4734
@@ -242,6 +252,10 @@ class SetupConfig:
         gate_override: bool,
         gate_control_plane: str | None,
         gate_tunnel: str | None,
+        control_plane_url: str | None = None,
+        cloudflared_dest: Path | None = None,
+        cert_polls: int = 0,
+        cert_poll_seconds: float = 0,
         post_limit: int = 10,
         post_window_s: float = 600,
     ) -> None:
@@ -259,6 +273,10 @@ class SetupConfig:
         self.gate_override = gate_override
         self.gate_control_plane = gate_control_plane
         self.gate_tunnel = gate_tunnel
+        self.control_plane_url = control_plane_url.strip() if control_plane_url else None
+        self.cloudflared_dest = cloudflared_dest
+        self.cert_polls = cert_polls
+        self.cert_poll_seconds = cert_poll_seconds
         self.post_limit = post_limit
         self.post_window_s = post_window_s
 
@@ -281,6 +299,26 @@ class SetupConfig:
     @property
     def consumed_file(self) -> Path:
         return self.etc_dir / "setup-code.consumed"
+
+    @property
+    def claim_token_file(self) -> Path:
+        return self.etc_dir / "cloudflared" / "claim-token"
+
+    @property
+    def handoff_file(self) -> Path:
+        return self.etc_dir / "cloudflared" / "handoff.json"
+
+    def cloudflared_apply_script(self) -> Path:
+        starts: list[Path] = []
+        if self.repo_root is not None:
+            starts.append(self.repo_root)
+        starts.extend(Path(__file__).resolve().parents)
+        for root in starts:
+            for relative in (Path("scripts") / "cloudflared-apply.sh", Path("cloudflared-apply.sh")):
+                candidate = root / relative
+                if candidate.is_file():
+                    return candidate
+        raise SetupBindError("Could not find cloudflared-apply.sh")
 
     def install_script(self) -> tuple[Path, Path]:
         starts = []
@@ -305,6 +343,8 @@ class SetupConfig:
         allow_loopback = bool(bind) and all(is_loopback(ip) for ip in bind or [])
         install_raw = os.environ.get("TWS_SETUP_INSTALL_CMD", "").strip()
         repo = os.environ.get("TWS_SETUP_REPO_ROOT", "").strip()
+        plane = os.environ.get("TWS_CONTROL_PLANE_URL", "").strip()
+        dest = os.environ.get("TWS_SETUP_CLOUDFLARED_DEST", "").strip()
         return cls(
             etc_dir=etc,
             state_dir=Path(os.environ.get("TWS_SETUP_STATE_DIR", "/var/lib/tinywebstack")),
@@ -320,6 +360,10 @@ class SetupConfig:
             gate_override=os.environ.get("TWS_SETUP_ALLOW_GATE_OVERRIDE", "") == "1",
             gate_control_plane=os.environ.get("TWS_SETUP_GATE_CONTROL_PLANE") or None,
             gate_tunnel=os.environ.get("TWS_SETUP_GATE_TUNNEL") or None,
+            control_plane_url=plane or None,
+            cloudflared_dest=Path(dest) if dest else None,
+            cert_polls=int(os.environ.get("TWS_SETUP_CERT_POLLS", "4")),
+            cert_poll_seconds=float(os.environ.get("TWS_SETUP_CERT_POLL_SECONDS", "2")),
             post_limit=int(os.environ.get("TWS_SETUP_POST_LIMIT", "10")),
             post_window_s=float(os.environ.get("TWS_SETUP_POST_WINDOW_S", "600")),
         )
@@ -338,6 +382,7 @@ class SetupStore:
         self.install_detail = ""
         self.install_exit: int | None = None
         self.gates: dict[str, str] = {}
+        self.gate_details: dict[str, str] = {}
         self.enroll_origin: str | None = None
         self.ready_at: float | None = None
         self.logs: list[str] = []
@@ -389,6 +434,8 @@ class SetupStore:
         self.parent_name = data.get("parent_name")
         self.install_exit = data.get("install_exit")
         self.gates = data.get("gates") if isinstance(data.get("gates"), dict) else {}
+        details = data.get("gate_details")
+        self.gate_details = details if isinstance(details, dict) else {}
         self.enroll_origin = data.get("enroll_origin")
         if self.phase == "failed" and not self.error:
             self.error = data.get("error")
@@ -403,6 +450,7 @@ class SetupStore:
             "parent_name": self.parent_name,
             "install_exit": self.install_exit,
             "gates": self.gates,
+            "gate_details": self.gate_details,
             "enroll_origin": self.enroll_origin,
             "error": self.error,
         }
@@ -465,22 +513,25 @@ class SetupStore:
             install = "pending"
 
         def gated(gate: str, blocked_detail: str, done_detail: str) -> tuple[str, str]:
-            if phase == "ready" and gate == "ready":
+            if gate == "ready":
                 return "done", done_detail
-            if phase == "blocked" and gate != "ready":
+            if phase == "blocked":
                 return "blocked", blocked_detail
             return "pending", ""
 
         cp = self.gates.get("control_plane", "missing")
+        certificate = self.gates.get("certificate", cp)
         tunnel = self.gates.get("tunnel", "missing")
         name_state, name_detail = gated(
             cp,
-            f"TinyWeb will publish {domain}. That step is not running yet, so setup stops here.",
+            self.gate_details.get("name")
+            or f"TinyWeb will publish {domain}. That step is not running yet, so setup stops here.",
             f"{domain} is published.",
         )
         cert_state, cert_detail = gated(
-            cp,
-            (
+            certificate,
+            self.gate_details.get("certificate")
+            or (
                 f"TinyWeb will get a real Let's Encrypt certificate for {domain}. "
                 "That step is not running yet, so setup stops here instead of showing a certificate warning."
             ),
@@ -488,7 +539,8 @@ class SetupStore:
         )
         tunnel_state, tunnel_detail = gated(
             tunnel,
-            "TinyWeb will open its own path to the internet so you do not change the router. That step is not running yet.",
+            self.gate_details.get("tunnel")
+            or "TinyWeb will open its own path to the internet so you do not change the router. That step is not running yet.",
             "The internet path is open.",
         )
         if phase == "ready":
@@ -549,7 +601,12 @@ class SetupStore:
             self._remember_secret(token)
             if not hmac.compare_digest(expected, token):
                 raise SetupRejected(401, "That setup code does not match this TinyWeb.")
-            if self.phase in {"installing", "blocked"}:
+            retry_publish = (
+                self.phase == "blocked"
+                and self.install_exit == 0
+                and bool(self.config.control_plane_url)
+            )
+            if self.phase in {"installing", "blocked"} and not retry_publish:
                 raise SetupRejected(409, "This TinyWeb is already being set up.")
             slug = slugify_family_name(family_name)
             username = username_from_parent_name(parent_name)
@@ -558,6 +615,17 @@ class SetupStore:
             if len(password) < 8 or len(password) > 128 or any(ord(ch) < 32 for ch in password):
                 raise SetupRejected(400, "Use at least 8 characters for the password.")
             self._remember_secret(password)
+        if retry_publish:
+            if self.config.control_plane_url:
+                self._publish_and_record()
+            return self.public_status()
+        if self.config.control_plane_url:
+            self._reserve_name(slug, token)
+        with self._lock:
+            if self.phase in {"installing", "ready"} or (
+                self.phase == "blocked" and self.install_exit == 0
+            ):
+                raise SetupRejected(409, "This TinyWeb is already being set up.")
             self._write_env(slug, username, display_parent)
             self._write_password(username, password)
             self.family_slug = slug
@@ -570,6 +638,7 @@ class SetupStore:
             self.install_exit = None
             self.install_detail = "Installing."
             self.gates = {}
+            self.gate_details = {}
             self.enroll_origin = None
             self.ready_at = None
             self._persist()
@@ -590,6 +659,7 @@ class SetupStore:
             f"TWS_DOMAIN={slug}",
             "TWS_MODE=production",
             "TWS_TLS_SINGLE_SAN_CERT=1",
+            "TWS_TLS_EDGE_CERT=1",
             f"TWS_BASE_DOMAIN={self.config.base_domain}",
             f"TWS_FAMILY_USERS={username}",
             f"TWS_FAMILY_PARENTS={username}",
@@ -619,7 +689,11 @@ class SetupStore:
         env["TWS_ETC_DIR"] = str(self.config.etc_dir)
         env["TWS_SETUP_FAMILY_SLUG"] = self.family_slug or ""
         for key in list(env):
-            if key.endswith("_PASSWORD") or key in {"TWS_SETUP_CODE", "SETUP_CODE"}:
+            if key.endswith("_PASSWORD") or key in {
+                "TWS_SETUP_CODE",
+                "SETUP_CODE",
+                "TWS_CONTROL_PLANE_OPERATOR_TOKEN",
+            }:
                 env.pop(key, None)
         try:
             proc = subprocess.Popen(
@@ -666,22 +740,199 @@ class SetupStore:
                 self._persist()
                 self.note(f"install failed ({code})")
                 return
-            control = self._resolve_gate("control_plane", self.config.gate_control_plane)
-            tunnel = self._resolve_gate("tunnel", self.config.gate_tunnel)
-            self.gates = {"control_plane": control, "tunnel": tunnel}
-            if control == "ready" and tunnel == "ready":
-                self.phase = "ready"
-                self.error = None
-                self.enroll_origin = f"https://{self.family_slug}.{self.config.base_domain}"
-                self._consume_code()
-                _atomic_write(self.config.marker_file, b"ready\n", 0o644)
-                self.ready_at = time.monotonic()
-                self.note(f"setup ready for {self.domain}")
+            use_plane = bool(self.config.control_plane_url)
+        if use_plane:
+            try:
+                self._publish_and_record()
+            except Exception:
+                with self._lock:
+                    if self.phase != "ready":
+                        self.phase = "blocked"
+                        self.enroll_origin = None
+                        self.error = (
+                            "TinyWeb could not publish the family name. No public name was published."
+                        )
+                        self._persist()
+                self.note("setup publish failed")
+            return
+        with self._lock:
+            self._apply_local_gates()
+
+    def _apply_local_gates(self) -> None:
+        control = self._resolve_gate("control_plane", self.config.gate_control_plane)
+        tunnel = self._resolve_gate("tunnel", self.config.gate_tunnel)
+        self.gates = {"control_plane": control, "tunnel": tunnel}
+        self.gate_details = {}
+        if control == "ready" and tunnel == "ready":
+            self._mark_ready()
+        else:
+            self.phase = "blocked"
+            self.enroll_origin = None
+            self.error = None
+            self.note("setup blocked until name, certificate, and tunnel gates are ready")
+        self._persist()
+
+    def _mark_ready(self) -> None:
+        self.phase = "ready"
+        self.error = None
+        self.enroll_origin = f"https://{self.family_slug}.{self.config.base_domain}"
+        self._consume_code()
+        _atomic_write(self.config.marker_file, b"ready\n", 0o644)
+        self.ready_at = time.monotonic()
+        self.note(f"setup ready for {self.domain}")
+
+    def _reserve_name(self, slug: str, setup_code: str) -> None:
+        client = ControlPlaneClient(self.config.control_plane_url or "")
+        try:
+            client.check_slug(slug)
+            claimed = client.claim(setup_code, slug)
+        except ControlPlaneError as exc:
+            raise _rejected(exc) from None
+        token = str(claimed.get("claim_token") or "")
+        if not re.fullmatch(r"[A-Za-z0-9_-]{22,256}", token):
+            raise SetupRejected(
+                502,
+                "TinyWeb could not reserve the family name. No public name was published.",
+            )
+        with self._lock:
+            self._remember_secret(token)
+        _atomic_write(self.config.claim_token_file, (token + "\n").encode("utf-8"), 0o600)
+        self.note(f"reserved {slug} with the control plane")
+
+    def _read_claim_token(self) -> str | None:
+        path = self.config.claim_token_file
+        if not path.is_file():
+            return None
+        text = path.read_text(encoding="utf-8").strip()
+        if not text:
+            return None
+        with self._lock:
+            self._remember_secret(text)
+        return text
+
+    def _publish_and_record(self) -> None:
+        with self._lock:
+            if self.phase == "installing":
+                self.install_detail = "Publishing the family name."
+        decision, details, error = self._publish_once()
+        polls = 0
+        while (
+            decision.reason == "certificate_pending"
+            and polls < self.config.cert_polls
+            and self.config.cert_poll_seconds > 0
+        ):
+            polls += 1
+            time.sleep(self.config.cert_poll_seconds)
+            decision, details, error = self._publish_once()
+        self._record_publish(decision, details, error)
+
+    def _publish_once(self) -> tuple[PublishDecision, dict[str, str], str | None]:
+        client = ControlPlaneClient(self.config.control_plane_url or "")
+        slug = self.family_slug or ""
+        try:
+            client.check_slug(slug)
+        except ControlPlaneError as exc:
+            return _stopped(exc, self.domain)
+        token = self._read_claim_token()
+        if not token:
+            with self._lock:
+                setup_code = self.current_code()
+            if not setup_code:
+                decision = PublishDecision(False, False, False, False, "missing")
+                return decision, _blocked_details(decision, self.domain), (
+                    "This TinyWeb has no setup code yet."
+                )
+            try:
+                claimed = client.claim(setup_code, slug)
+            except ControlPlaneError as exc:
+                return _stopped(exc, self.domain)
+            token = str(claimed.get("claim_token") or "")
+            if not re.fullmatch(r"[A-Za-z0-9_-]{22,256}", token):
+                decision = PublishDecision(False, False, False, False, "missing")
+                return decision, _blocked_details(decision, self.domain), (
+                    "TinyWeb could not reserve the family name. No public name was published."
+                )
+            with self._lock:
+                self._remember_secret(token)
+            _atomic_write(self.config.claim_token_file, (token + "\n").encode("utf-8"), 0o600)
+        try:
+            handoff = client.issue_tunnel(token, jellyfin=False)
+        except ControlPlaneError as exc:
+            return _stopped(exc, self.domain)
+        tunnel = handoff.get("tunnel")
+        tunnel_token = str(tunnel.get("token") or "") if isinstance(tunnel, dict) else ""
+        with self._lock:
+            self._remember_secret(token)
+            if tunnel_token:
+                self._remember_secret(tunnel_token)
+        if handoff_proxies_jellyfin(handoff):
+            decision = evaluate_handoff(handoff, None)
+            return decision, _blocked_details(decision, self.domain), (
+                "TinyWeb will not put Jellyfin on the internet path. No tunnel was started."
+            )
+        _atomic_write(
+            self.config.handoff_file,
+            (json.dumps(handoff) + "\n").encode("utf-8"),
+            0o600,
+        )
+        apply_exit = self._run_apply()
+        decision = evaluate_handoff(handoff, apply_exit)
+        if decision.complete:
+            try:
+                client.complete(token)
+            except ControlPlaneError as exc:
+                failed = PublishDecision(
+                    decision.name_ready,
+                    decision.certificate_ready,
+                    decision.tunnel_ready,
+                    False,
+                    "complete_failed",
+                )
+                return failed, _blocked_details(failed, self.domain), _parent_message(exc)
+        return decision, _blocked_details(decision, self.domain), None
+
+    def _run_apply(self) -> int:
+        try:
+            script = self.config.cloudflared_apply_script()
+        except SetupBindError:
+            self.note("cloudflared-apply.sh is missing")
+            return 1
+        cmd = ["bash", str(script), "--credentials", str(self.config.handoff_file)]
+        if self.config.cloudflared_dest is not None:
+            cmd.extend(["--dest-dir", str(self.config.cloudflared_dest)])
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60, check=False)
+        except (OSError, subprocess.TimeoutExpired):
+            self.note("cloudflared-apply failed to run")
+            return 1
+        combined = redact((proc.stdout or "") + "\n" + (proc.stderr or ""), self._secrets)
+        self.note(f"cloudflared-apply exited {proc.returncode}")
+        if proc.returncode != 0:
+            tail = [line for line in combined.splitlines() if line.strip()]
+            self.note((tail[-1] if tail else "cloudflared-apply refused the handoff")[:300])
+        return proc.returncode
+
+    def _record_publish(
+        self,
+        decision: PublishDecision,
+        details: dict[str, str],
+        error: str | None,
+    ) -> None:
+        with self._lock:
+            self.gates = {
+                "control_plane": "ready" if decision.name_ready else "missing",
+                "certificate": "ready" if decision.certificate_ready else "missing",
+                "tunnel": "ready" if decision.tunnel_ready else "missing",
+            }
+            self.gate_details = details
+            self.install_detail = ""
+            if decision.complete:
+                self._mark_ready()
             else:
                 self.phase = "blocked"
                 self.enroll_origin = None
-                self.error = None
-                self.note("setup blocked until name, certificate, and tunnel gates are ready")
+                self.error = error
+                self.note("setup blocked until the control plane publishes the name, certificate, and tunnel")
             self._persist()
 
     def _resolve_gate(self, name: str, forced: str | None) -> str:
@@ -702,6 +953,82 @@ class SetupStore:
             path.unlink()
         stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         _atomic_write(self.config.consumed_file, f"consumed {stamp}\n".encode("utf-8"), 0o600)
+
+
+def _parent_message(exc: ControlPlaneError) -> str:
+    messages = {
+        "unknown_setup_code": "That setup code was not recognized. Scan the card in the box again.",
+        "slug_taken": "That family name is already in use. Try a different name.",
+        "slug_already_reserved": "This TinyWeb is already reserving a different family name.",
+        "setup_already_complete": "This TinyWeb is already set up.",
+        "invalid_slug": "Use a family name with letters, such as Floyd.",
+        "reserved_slug": "Use a family name with letters, such as Floyd.",
+        "cloudflare_not_configured": (
+            "TinyWeb's service is missing the credentials it needs to publish the family name. "
+            "No public name was published."
+        ),
+        "unreachable": (
+            "TinyWeb could not reach its service. The box is still on your home network. "
+            "You can try again with the same setup code."
+        ),
+        "secret_in_query": "TinyWeb refused to send the setup code in a web address.",
+    }
+    return messages.get(
+        exc.code,
+        "TinyWeb could not publish the family name. No public name was published.",
+    )
+
+
+def _rejected(exc: ControlPlaneError) -> SetupRejected:
+    if exc.code == "unknown_setup_code":
+        status = 401
+    elif exc.code in {"slug_taken", "slug_already_reserved", "setup_already_complete"}:
+        status = 409
+    elif exc.code in {"invalid_slug", "reserved_slug"}:
+        status = 400
+    elif exc.code == "unreachable":
+        status = 503
+    else:
+        status = 503
+    return SetupRejected(status, _parent_message(exc))
+
+
+def _blocked_details(decision: PublishDecision, domain: str | None) -> dict[str, str]:
+    name = domain or "the family name"
+    if decision.reason == "jellyfin":
+        return {
+            "name": f"TinyWeb has not published {name}. Jellyfin is not part of that path.",
+            "certificate": (
+                f"TinyWeb will get a real Let's Encrypt certificate for {name}. "
+                "Setup stops here instead of showing a certificate warning."
+            ),
+            "tunnel": "TinyWeb did not start a tunnel. Jellyfin stays off the internet path.",
+        }
+    if not decision.name_ready:
+        return {
+            "name": f"TinyWeb has not published {name}. No public name was published, so setup stops here.",
+            "certificate": (
+                f"TinyWeb will get a real Let's Encrypt certificate for {name}. "
+                "That certificate is not ready, so setup stops here instead of showing a certificate warning."
+            ),
+            "tunnel": "TinyWeb did not start a tunnel. The control plane has not published the name.",
+        }
+    return {
+        "name": f"{name} is published.",
+        "certificate": (
+            f"TinyWeb does not have a real Let's Encrypt certificate for {name} yet, "
+            "so setup stops here instead of showing a certificate warning."
+        ),
+        "tunnel": "TinyWeb could not open its path to the internet, so setup stops here.",
+    }
+
+
+def _stopped(
+    exc: ControlPlaneError,
+    domain: str | None,
+) -> tuple[PublishDecision, dict[str, str], str]:
+    decision = PublishDecision(False, False, False, False, exc.code or "unreachable")
+    return decision, _blocked_details(decision, domain), _parent_message(exc)
 
 
 def _step_title(line: str) -> str | None:

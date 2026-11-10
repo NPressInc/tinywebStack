@@ -62,6 +62,17 @@ def test_apply_refuses_unpublished_handoff(tmp_path: Path) -> None:
     assert not (tmp_path / "tunnel.env").exists()
 
 
+def test_apply_refuses_when_published_is_omitted(tmp_path: Path) -> None:
+    path = tmp_path / "handoff.json"
+    _handoff(path, published=None)
+    proc = _run(APPLY, "--credentials", str(path), "--dest-dir", str(tmp_path / "out"))
+    assert proc.returncode != 0
+    assert "published=true" in proc.stderr
+    assert not (tmp_path / "out").exists()
+    assert TOKEN not in proc.stdout
+    assert TOKEN not in proc.stderr
+
+
 def test_apply_dry_run_does_not_start_or_write(tmp_path: Path) -> None:
     path = tmp_path / "handoff.json"
     _handoff(path, published=True, nested=True)

@@ -7,7 +7,7 @@ Operators still use [production-setup.md](production-setup.md). Do not send a pa
 ## What the parent does
 
 1. Plug in power and ethernet. The phone is on the same home Wi-Fi. The box does not join Wi-Fi itself in v1.
-2. Open the TinyWeb app. If it is not installed, the setup QR's https link is what should reach the App Store or Play Store (workstream D; the store listing is not shipped).
+2. Open the TinyWeb app. If it is not installed, the setup QR's https link is what should reach the App Store or Play Store. Listing text is in the repo; the app is not submitted, and the https page is not hosted yet.
 3. The phone finds the box on the LAN. The parent scans the setup QR, or types the code.
 4. The parent types the family name, their name, and a password they choose.
 5. The app stays on a progress screen while the box becomes `<family>.tinyweb.win`, gets a real Let's Encrypt certificate, and finishes install.
@@ -28,13 +28,11 @@ The token is the secret. It sits in the URL **fragment**, so a request to tinywe
 
 The QR must not contain the parent password, a session token, or a Matrix recovery key.
 
-The token is one-time **after provisioning succeeds**, not after a scan. A failed or unfinished setup keeps the same QR. After the family is set up, that QR cannot take over or reclaim the box. Reclaiming needs the parent (not built in this slice).
+The token is one-time **after provisioning succeeds**, not after a scan. A failed or unfinished setup keeps the same QR. After the family is set up, that QR cannot take over or reclaim the box. Reclaiming needs the parent (not built).
 
-The same token is how the box will prove itself to the control plane when it claims `<family>.tinyweb.win` (workstream B). This slice checks the token locally and does not send it to tinyweb.win.
+The phone sends the token only to the box on the LAN. The box then sends it in a JSON body to the control plane (`POST /v1/setup/claim`) when it reserves `<family>.tinyweb.win`. It is not placed in a query string, and the phone does not POST the fragment to tinyweb.win.
 
-Factory image (not built here): write the token to `/etc/tinywebstack/setup-code` (mode `600`, one line, URL-safe, at least 128 bits) and print the https QR. Do not log the token. This repo does not include a print pipeline.
-
-On success the setup service deletes that file and writes `/etc/tinywebstack/setup-code.consumed` with a timestamp only. On failure it leaves the code in place.
+On success the setup service deletes `/etc/tinywebstack/setup-code` and writes `/etc/tinywebstack/setup-code.consumed` with a timestamp only. On failure it leaves the code in place.
 
 ## Recovery key
 
@@ -55,7 +53,7 @@ The POST body is `{ "code", "family_name", "parent_name", "password" }`. `code` 
 
 The service writes `/etc/tinywebstack/tinyweb.env` (no password) and pre-seeds `<USER>_PASSWORD` in `/etc/tinywebstack/secrets/install.env` (mode `600`) so `scripts/install-on-box.sh` keeps that password. Display name is `TWS_FAMILY_OWNER_FULLNAME`. It does not log the password or the setup code.
 
-Progress steps, in order: name the family, install, reserve `<family>.tinyweb.win`, Let's Encrypt certificate, internet path, ready. Install is the existing one-box installer. The name, certificate, and tunnel steps stay `blocked` until their gates exist. The API does not report them done, and it does not report `ready`, while a gate is missing.
+Progress steps, in order: name the family, install, reserve `<family>.tinyweb.win`, Let's Encrypt certificate, internet path, ready. Install is the existing one-box installer. The name, certificate, and tunnel steps stay blocked until the control plane has published DNS, the edge certificate is ready, and the tunnel apply succeeds. The API does not report them done, and it does not report `ready`, while any of those is missing.
 
 Shippable disk image (design only):
 
@@ -65,38 +63,63 @@ Shippable disk image (design only):
 - systemd unit `scripts/setup/tinyweb-setupd.service` (`ConditionPathExists=!/etc/tinywebstack/unboxing-complete`).
 - After a successful unboxing the marker `/etc/tinywebstack/unboxing-complete` exists and the unit does not listen. A box that already has `/etc/yunohost/installed` and no in-progress setup state does not listen either, so an operator install is left alone.
 
-Wi-Fi-only first boot for the box is a later image change, not this slice.
+Wi-Fi-only first boot for the box is a later image change.
 
-### B. Control plane — later
+### Before the box ships
 
-William's service at tinyweb.win (host name vivo) reserves the family slug, publishes DNS for `<family>.tinyweb.win` and `*.<family>.tinyweb.win`, and obtains one real Let's Encrypt certificate (`TWS_TLS_SINGLE_SAN_CERT=1` is the on-box hook that already expects that shape).
+The Debian image and the flashing step are not in this repo. On a box that already has this tree (a git checkout, or the flat `/opt/tinywebstack` copy the installer uses), William runs:
 
-The box presents its setup token when it claims the name. vivo does not see family chat, calendars, files, or location. It only coordinates names, certificates, and tunnel credentials (workstream C).
+```bash
+sudo TWS_CONTROL_PLANE_URL=https://tinyweb.win \
+  TWS_CONTROL_PLANE_OPERATOR_TOKEN='…' \
+  python3 scripts/setup/pre-ship.py
+```
 
-Gate, when it exists: an executable at `/etc/tinywebstack/setup-gates/control_plane`, exit 0 only after the name is published and a real Let's Encrypt cert is installed. A lab CA is not success. Stdout must not contain secrets. This slice ships no gate, so the step stays blocked.
+From the flat image path, that is `python3 /opt/tinywebstack/setup/pre-ship.py`.
 
-`TWS_SETUP_ALLOW_GATE_OVERRIDE=1` plus `TWS_SETUP_GATE_CONTROL_PLANE=ready` is a test switch. Do not set it on an image.
+The script:
 
-### C. Tunnel — later
+- Calls `POST /v1/operator/units` and receives the setup code once.
+- Writes `/etc/tinywebstack/setup-code` (mode `600`, one line, URL-safe, at least 128 bits).
+- Writes `/etc/tinywebstack/setup-qr.svg` (mode `600`) for the lid card and the bottom sticker. Both print the same `https://tinyweb.win/setup#code=<token>`. Stdout also prints that URL and `tinyweb://setup#code=<token>`. Stdout is the print surface. The token is not written to a log file, and the operator token is read from the environment, not the command line.
+- Enables `tinyweb-setupd.service` for the next boot and does not start it in the factory. The unit calls the same control plane URL this script used (`https://tinyweb.win` unless `--url` says otherwise).
+- Does not set the family name or the parent password. The parent does that in the app.
+- Does not print a Matrix recovery key. The box still ships with a blank card for that key.
+
+If the control plane is unreachable or `TWS_CONTROL_PLANE_OPERATOR_TOKEN` is missing, the script exits with an error and does not invent a code. `--dry-run` checks that the token is set and does not call the network. Tests point `--url` at the control plane's fake provider.
+
+Copy the SVG off the box, print two copies, and do not leave the SVG on a shared printer. The setup-code file stays on the box. Then power the box off.
+
+### B. Control plane
+
+William's service at tinyweb.win (`controlplane/`) reserves the family slug, publishes DNS for `<family>.tinyweb.win` and the service hosts, and orders one real edge certificate (Advanced Certificate Manager by default, Let's Encrypt). See [CONTROL_PLANE.md](CONTROL_PLANE.md).
+
+The box presents its setup token when it claims the name. The control plane does not see family chat, calendars, files, or location. It only coordinates names, certificates, and tunnel credentials.
+
+During setup the box calls, in order: `GET /v1/slugs/{slug}`, `POST /v1/setup/claim`, `POST /v1/tunnels`, `scripts/cloudflared-apply.sh`, and, only when DNS is published and the edge certificate is ready, `POST /v1/setup/complete`. The installer sets `TWS_TLS_SINGLE_SAN_CERT=1` and `TWS_TLS_EDGE_CERT=1`. The edge flag skips on-box Let's Encrypt, because the box does not open port 80. The certificate the phone sees is the edge certificate. The name, certificate, and tunnel steps stay blocked when the control plane is missing, Cloudflare credentials are missing, or the handoff says DNS was not published. The API does not report those steps done, and it does not report `ready`, in that case.
+
+`TWS_SETUP_ALLOW_GATE_OVERRIDE=1` is a test switch for a box that is not talking to the control plane. Do not set it on an image. When `TWS_CONTROL_PLANE_URL` is set, the control plane's answer wins.
+
+### C. Tunnel
 
 Many home ISPs use CGNAT. The parent must not open ports 80 or 443.
 
-v1 default: a per-box tunnel to an edge. Cloudflare is the default edge because tinyweb.win already uses Cloudflare. vivo issues the tunnel credentials to the box and does not forward family traffic through itself. Phone ↔ edge ↔ box.
+v1 default: a per-box Cloudflare Tunnel. The control plane issues the tunnel credentials. It does not forward family traffic through itself. Phone ↔ Cloudflare edge ↔ box.
 
-Gate: `/etc/tinywebstack/setup-gates/tunnel`, exit 0 only when that path works. Absent in this slice, so the step stays blocked. Same test-only override: `TWS_SETUP_GATE_TUNNEL`.
+`scripts/cloudflared-apply.sh` refuses to start `cloudflared` when the token is missing or `published` is not true. Jellyfin is not placed on that HTTP proxy. The tunnel step stays blocked until apply succeeds for a published handoff.
 
-### D. Stores — later
+### D. Stores
 
-App Store and Play Store listings, plus the site behavior for `https://tinyweb.win/setup`:
+Store listing text, privacy drafts, and local build scripts are in the repo. Nothing is uploaded to the App Store or Play Store. See [APP_STORES.md](APP_STORES.md).
 
-- App installed: the link opens TinyWeb and the fragment fills the setup code. Android declares the `tinyweb://setup` scheme and `https://tinyweb.win/setup`. iOS opens `tinyweb://setup` from the existing `tinyweb` scheme. Associated domains / Digital Asset Links for the https host are not hosted yet, so a scan of the https QR may still open a browser until workstream D lands.
+The site behavior for `https://tinyweb.win/setup` is still not hosted:
+
+- App installed: the link opens TinyWeb and the fragment fills the setup code. Android declares the `tinyweb://setup` scheme and `https://tinyweb.win/setup`. iOS opens `tinyweb://setup` from the existing `tinyweb` scheme. Associated domains / Digital Asset Links for the https host are not hosted yet, so a scan of the https QR may still open a browser.
 - App not installed: the page (not in this repo) reads the fragment in the browser, sends the phone to the right store, and does not POST the fragment to tinyweb.win. The fragment will not survive a store install; the parent scans the card again or types the code.
 
-Do not add fake listing screenshots or a pretend store release.
+### E. Push credentials
 
-### E. Push credentials — later
-
-TinyWeb's own APNs and FCM credentials. A family does not upload a `.p8` or a service-account JSON. The current per-box key files in `tinyweb.env` stay the operator path until this exists.
+TinyWeb's own APNs and FCM keys, the same on every box. A family does not upload a `.p8` or a service-account JSON. See [PUSH.md](PUSH.md). The keys are not in git. Until William places them on the box, production push install stops and a lab box keeps a Sygnal stub that refuses delivery.
 
 ## API
 
@@ -109,7 +132,7 @@ TinyWeb's own APNs and FCM credentials. A family does not upload a `.p8` or a se
 
 Phases: `waiting`, `installing`, `blocked`, `failed`, `ready`.
 
-`ready` and `enroll_origin` (`https://<family>.tinyweb.win`) are set only when the installer exits 0 **and** both gates are ready. The app then enrolls with the existing password enrollment and shows the usual "you're all set" checklist, including chat recovery when Matrix enrollment succeeded. From there the parent uses Family controls to add people (existing QR).
+`ready` and `enroll_origin` (`https://<family>.tinyweb.win`) are set only when the installer exits 0 **and** the control plane has published DNS, the edge certificate is ready, and `cloudflared-apply.sh` succeeded. The app then enrolls with the existing password enrollment and shows the usual "you're all set" checklist, including chat recovery when Matrix enrollment succeeded. From there the parent uses Family controls to add people (existing QR).
 
 While blocked, the app explains the unfinished step in plain language and does not sign the parent in.
 
@@ -142,6 +165,8 @@ Useful environment (none of these are the parent password):
 | `TWS_SETUP_ANNOUNCE` | `0` skips mDNS and the beacon. |
 | `TWS_SETUP_INSTALL_CMD` | Replacement for `install-on-box.sh` (tests). The family slug is appended. |
 | `TWS_YUNOHOST_INSTALLED_FILE` | Default `/etc/yunohost/installed`. If this file exists and setup is not in progress, the service does not listen. |
+| `TWS_CONTROL_PLANE_URL` | Control plane base URL. The setup unit sets `https://tinyweb.win`. Empty means the name and tunnel stay blocked. |
+| `TWS_SETUP_CLOUDFLARED_DEST` | Stage `cloudflared-apply.sh` here instead of installing the system unit. Tests only. |
 
 ## Tests
 
@@ -156,6 +181,6 @@ flutter analyze
 flutter test test/setup_link_test.dart test/unbox_screen_test.dart test/enroll_screen_test.dart test/enroll_link_test.dart test/app_session_test.dart
 ```
 
-## Not in this slice
+## Not built here
 
-Factory QR printing, the vivo control plane, Cloudflare tunnel issuance, store listings, the `https://tinyweb.win/setup` web page, Wi-Fi setup for the box, and reclaim-by-parent. Do not mark name, certificate, or tunnel done until those gates are real.
+A disk image and a flasher. Wi-Fi setup for the box itself. The public `https://tinyweb.win/setup` page. Submitting the app to a store. Reclaim-by-parent. Do not mark the name, certificate, or tunnel done unless the control plane published them.

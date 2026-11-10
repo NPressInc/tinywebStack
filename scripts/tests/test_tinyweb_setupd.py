@@ -197,6 +197,7 @@ def test_status_waiting_and_password_round_trip(tmp_path: Path, monkeypatch: pyt
         assert "TWS_DOMAIN=floyd" in env_text
         assert "TWS_MODE=production" in env_text
         assert "TWS_TLS_SINGLE_SAN_CERT=1" in env_text
+        assert "TWS_TLS_EDGE_CERT=1" in env_text
         assert "TWS_FAMILY_USERS=william" in env_text
         assert "TWS_FAMILY_PARENTS=william" in env_text
         assert "TWS_FAMILY_KIDS=" in env_text
@@ -361,6 +362,30 @@ def test_main_refuses_public_bind(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv("TWS_SETUP_ANNOUNCE", "0")
     monkeypatch.setenv("TWS_SETUP_BIND", "8.8.8.8")
     assert main() == 1
+
+
+def test_edge_cert_skips_on_box_lets_encrypt() -> None:
+    script = f"""
+set -euo pipefail
+export TWS_INSTALL_NO_MAIN=1
+source "{ROOT}/scripts/install-tinyweb.sh"
+export TWS_MODE=production
+export TWS_DOMAIN=floyd.tinyweb.win
+export TWS_TLS_SINGLE_SAN_CERT=1
+export TWS_TLS_EDGE_CERT=1
+export DRY_RUN=1
+step_tls
+"""
+    proc = subprocess.run(
+        ["bash", "-c", script],
+        cwd=ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "Skipping on-box Let's Encrypt" in proc.stderr + proc.stdout
+    assert "Provisioning single SAN" not in proc.stderr + proc.stdout
 
 
 def test_local_env_quotes_owner_fullname(tmp_path: Path) -> None:

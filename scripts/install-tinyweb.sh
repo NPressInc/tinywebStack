@@ -384,6 +384,12 @@ step_tls() {
       fi
     done < <(node_all_domains "$TWS_DOMAIN")
   else
+    if [[ "${TWS_TLS_EDGE_CERT:-0}" == "1" ]]; then
+      install_log "Edge certificate is ordered by the control plane (tinyweb.win). Skipping on-box Let's Encrypt; the box does not open port 80."
+      write_production_dashboard_tls_insecure
+      step_done 3
+      return 0
+    fi
     if [[ "${TWS_TLS_SINGLE_SAN_CERT:-0}" == "1" ]]; then
       local san_script="${REPO_ROOT}/scripts/vm/tinyweb-subdomain-ddns.sh"
       if [[ "${DRY_RUN:-0}" == "1" ]]; then

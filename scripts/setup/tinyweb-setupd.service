@@ -6,6 +6,7 @@ ConditionPathExists=!/etc/tinywebstack/unboxing-complete
 
 [Service]
 Type=simple
+Environment=TWS_CONTROL_PLANE_URL=https://tinyweb.win
 ExecStart=/usr/bin/python3 /opt/tinywebstack/setup/tinyweb-setupd.py
 Restart=on-failure
 RestartSec=2

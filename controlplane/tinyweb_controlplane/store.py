@@ -283,6 +283,13 @@ class Store:
                 ),
             )
 
+    def update_tunnel_cert(self, tunnel_row_id: int, cert_json: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE tunnels SET cert_json = ? WHERE id = ?",
+                (cert_json, tunnel_row_id),
+            )
+
     def active_tunnel(self, unit_id: str) -> sqlite3.Row | None:
         with self._lock:
             return self._conn.execute(

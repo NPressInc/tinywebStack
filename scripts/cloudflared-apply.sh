@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Apply a TinyWeb control-plane tunnel handoff on the home box.
 #
-# Standalone installer hook. First-boot setup can call this after it saves the
-# POST /v1/tunnels JSON. scripts/install-tinyweb.sh does not call it.
+# The first-boot setup service calls this after it saves the POST /v1/tunnels
+# JSON. scripts/install-tinyweb.sh does not call it.
 #
 # This script does not create DNS. It refuses to start cloudflared when the
 # credentials are missing or when the control plane says it did not publish.
@@ -97,15 +97,18 @@ if not token or any(char in token for char in "\r\n\x00 "):
 if not re.fullmatch(r"[A-Za-z0-9_-]{8,80}", tunnel_id):
     fail("Cloudflare tunnel credentials file has no tunnel id. Refusing to publish a public hostname.")
 
-published = "unset"
-if "published" in data:
-    if data["published"] is True:
-        published = "true"
-    else:
-        fail(
-            "Refusing to publish a public hostname: the control plane marked these "
-            "credentials published=false."
-        )
+if data.get("published") is True:
+    published = "true"
+elif data.get("published") is False:
+    fail(
+        "Refusing to publish a public hostname: the control plane marked these "
+        "credentials published=false."
+    )
+else:
+    fail(
+        "Refusing to publish a public hostname: the control plane did not mark these "
+        "credentials published=true."
+    )
 
 if mode == "write":
     parent = os.path.dirname(env_out)

@@ -23,11 +23,11 @@ Workstreams, in order:
 
 | | Workstream | Where it stands |
 | --- | --- | --- |
-| A | Pre-imaged box, plus a first-boot wizard the phone can talk to on the LAN | **This repo starts the software slice:** mDNS (and a LAN beacon), a local setup API, and the app wizard with progress. The setup code can be scanned or typed. A shippable disk image is specified in the unboxing doc and is not built here. |
-| B | Control plane for family-slug reservation, DNS, and certificates | **Later.** Runs on William's service at tinyweb.win (vivo). It publishes `<family>.tinyweb.win` and `*.<family>.tinyweb.win` and obtains real Let's Encrypt certificates. Family traffic (chat, calendars, files, location) does not pass through that server. |
-| C | Built-in tunnel so port forwarding is not required | **Later.** v1 default is a per-box tunnel to an edge. Cloudflare is the pragmatic default because tinyweb.win already uses it. vivo only issues tunnel credentials. The tunnel carries family traffic to the edge, not through vivo. |
-| D | TinyWeb in the Apple App Store and Google Play Store | **Later.** Listing assets are not shipped. The setup QR's https link depends on this so a phone without the app can reach a store. |
-| E | Push with TinyWeb-owned APNs/FCM credentials | **Later.** A family does not upload a `.p8` or a key file. |
+| A | Pre-imaged box, plus a first-boot wizard the phone can talk to on the LAN | **Software is in this repo.** The LAN setup API, the app wizard, and `scripts/setup/pre-ship.py` are real. William runs that script on an already-imaged box to mint the setup code and print the lid and sticker QR. Building or flashing the Debian image is not in this repo. |
+| B | Control plane for family-slug reservation, DNS, and certificates | **In this repo** (`controlplane/`). It is William's service at tinyweb.win. During first boot the box calls it to reserve `<family>.tinyweb.win`, order the edge certificate, and fetch tunnel credentials. Family traffic (chat, calendars, files, location) does not pass through that server. A name is published only when Cloudflare credentials are configured on that service. |
+| C | Built-in tunnel so port forwarding is not required | **In this repo.** The setup service calls `scripts/cloudflared-apply.sh` after the tunnel handoff. The script does not start a tunnel unless the control plane says DNS was published. Cloudflare is the default edge because tinyweb.win already uses it. The tunnel carries family traffic to the edge, not through the control plane. |
+| D | TinyWeb in the Apple App Store and Google Play Store | **Packaging is in this repo** ([docs/APP_STORES.md](docs/APP_STORES.md)). Nothing is submitted. The setup QR's https link still needs the store listing, and the `https://tinyweb.win/setup` page is not hosted yet. |
+| E | Push with TinyWeb-owned APNs/FCM credentials | **In this repo** ([docs/PUSH.md](docs/PUSH.md)). Every box uses TinyWeb's own keys. A family does not upload a `.p8`. The key files are not in git. |
 
 Today an operator still follows [docs/production-setup.md](docs/production-setup.md): flash Debian/YunoHost, SSH, clone, edit `tinyweb.env`, run `scripts/install-tinyweb.sh` or `scripts/install-on-box.sh`, DNS and ports, copy secrets off the box, sideload the app, then QR enroll. That runbook stays for operators. Customers use the unboxing path.
 
@@ -35,7 +35,7 @@ v1 assumes the box is on ethernet and the phone is on the same home Wi-Fi. Wi-Fi
 
 Build on these pieces. Do not replace them: the one-box installer, bare family slug → `<family>.tinyweb.win`, `scripts/vm/tinyweb-subdomain-ddns.sh`, `TWS_TLS_SINGLE_SAN_CERT=1` (one SAN certificate), the parent dashboard, the health page, and QR join at `/family/join`.
 
-The setup QR carries only that unit's pairing code (`https://tinyweb.win/setup#code=…` or `tinyweb://setup#code=…`, secret in the fragment). It is not the parent password and not a chat recovery key. The same code is how the box will prove itself to the control plane when claiming `<family>.tinyweb.win`. It stays valid if setup fails partway, and it is not enough to reclaim a box after the family is set up. The parent chooses the password in the app. The Matrix recovery key is generated on the first phone, shown once, and written on a blank card that ships in the box.
+The setup QR carries only that unit's pairing code (`https://tinyweb.win/setup#code=…` or `tinyweb://setup#code=…`, secret in the fragment). It is not the parent password and not a chat recovery key. The same code is how the box proves itself to the control plane when claiming `<family>.tinyweb.win`. It stays valid if setup fails partway, and it is not enough to reclaim a box after the family is set up. The parent chooses the password in the app. The Matrix recovery key is generated on the first phone, shown once, and written on a blank card that ships in the box. William mints the code and prints the QR with `scripts/setup/pre-ship.py` before the box ships. He does not set the family name or the password there.
 
 ## Target hardware
 

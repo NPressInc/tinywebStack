@@ -172,7 +172,7 @@ The box receives only the tunnel token. `cloudflared tunnel run` with `TUNNEL_TO
 
 ## Box hook
 
-These scripts are not called by `scripts/install-tinyweb.sh` or `scripts/install-on-box.sh`. The first-boot work can call them after it has the handoff JSON.
+`scripts/install-tinyweb.sh` does not call these scripts. The first-boot setup service does, after it saves the handoff JSON from `POST /v1/tunnels`. `scripts/setup/pre-ship.py` is what William runs before the box ships: it mints the unit, writes the setup code, prints the QR, and enables the setup service. It does not set the family name or the parent password.
 
 ```bash
 sudo scripts/cloudflared-install.sh
@@ -181,7 +181,7 @@ sudo scripts/cloudflared-apply.sh --credentials /etc/tinywebstack/cloudflared/ha
 
 `cloudflared-install.sh` installs the package and does not start a tunnel.
 
-`cloudflared-apply.sh` fails if the file is missing, the token is empty, or `published` is false. It does not create DNS. On success it writes `TUNNEL_TOKEN` to `/etc/tinywebstack/cloudflared/tunnel.env` (mode `0600`) and enables `tinyweb-cloudflared.service`. The token is not placed on the `cloudflared` command line. `--dry-run` validates and prints `service_started=no` and `dns_changed=no`. `--dest-dir` stages those files without calling `systemctl`, for tests and image builds.
+`cloudflared-apply.sh` fails if the file is missing, the token is empty, or `published` is not true. It does not create DNS. On success it writes `TUNNEL_TOKEN` to `/etc/tinywebstack/cloudflared/tunnel.env` (mode `0600`) and enables `tinyweb-cloudflared.service`. The token is not placed on the `cloudflared` command line. `--dry-run` validates and prints `service_started=no` and `dns_changed=no`. `--dest-dir` stages those files without calling `systemctl`, for tests and image builds.
 
 Save the whole `POST /v1/tunnels` response as the handoff file, mode `0600`. The script accepts the token at the top level or under `tunnel`.
 
