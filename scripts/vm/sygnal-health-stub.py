@@ -1,11 +1,36 @@
 #!/usr/bin/env python3
-"""Loopback health + Matrix push noop when Sygnal has no APNs/FCM apps configured."""
+"""Loopback health when TinyWeb APNs/FCM credentials are not configured.
+
+GET /health stays up so the unit can be supervised. POST notify refuses
+delivery. It does not answer 200 with an empty rejected list.
+"""
 
 from __future__ import annotations
 
 import json
 import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+HEALTH_STATUS = 200
+HEALTH_BODY = {
+    "status": "ok",
+    "mode": "stub",
+    "configured": False,
+    "delivery": "refused",
+}
+NOTIFY_STATUS = 503
+NOTIFY_BODY = {
+    "error": "TinyWeb push operator credentials are not configured",
+    "delivery": "refused",
+}
+
+
+def health_response() -> tuple[int, dict]:
+    return HEALTH_STATUS, dict(HEALTH_BODY)
+
+
+def notify_response() -> tuple[int, dict]:
+    return NOTIFY_STATUS, dict(NOTIFY_BODY)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -14,13 +39,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         if self.path.rstrip("/") in ("/health", ""):
-            self._json(200, {"status": "ok", "mode": "stub"})
+            code, body = health_response()
+            self._json(code, body)
             return
         self._json(404, {"error": "not found"})
 
     def do_POST(self) -> None:
         if self.path.rstrip("/") == "/_matrix/push/v1/notify":
-            self._json(200, {"rejected": []})
+            code, body = notify_response()
+            self._json(code, body)
             return
         self._json(404, {"error": "not found"})
 

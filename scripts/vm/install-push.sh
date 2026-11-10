@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Install ntfy (UnifiedPush / Matrix gateway) and Sygnal (APNs/optional FCM) on the family box.
+# Install ntfy (UnifiedPush / Matrix gateway) and Sygnal (APNs/FCM) on the family box.
+# APNs/FCM keys are TinyWeb-operated credentials, loaded by configure-push-credentials.sh.
+# A parent does not upload a key file. See docs/PUSH.md.
 set -euo pipefail
 
 _script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,10 +56,8 @@ NTFY_AUTH_DB="${NTFY_STATE}/user.db"
 SYGNAL_USER="${TWS_SYGNAL_USER:-tinywebstack-sygnal}"
 CSRF_FILE="${TWS_DASHBOARD_ENV_FILE:-${TWS_ETC_DIR}/dashboard.env}"
 APNS_BUNDLE="${TWS_APNS_BUNDLE_ID:-win.tinyweb.tinyweb}"
-APNS_KEY_ID="${TWS_APNS_KEY_ID:-}"
-APNS_TEAM_ID="${TWS_APNS_TEAM_ID:-}"
-APNS_ENV="${TWS_APNS_ENV:-sandbox}"
-APNS_KEY_PATH="${TWS_APNS_KEY_PATH:-${TWS_ETC_DIR}/secrets/apns/AuthKey.p8}"
+PUSH_CREDENTIAL_SOURCE="${TWS_PUSH_CREDENTIAL_SOURCE:-tinyweb}"
+PUSH_CREDENTIALS_READY=0
 VERSIONS_FILE="${_script_dir}/push-versions.env"
 if [[ ! -f "$VERSIONS_FILE" ]]; then
   VERSIONS_FILE="${TW_STACK_ROOT}/config/push-versions.env"
@@ -240,77 +240,62 @@ EOF
   yunohost service reload nginx || systemctl reload nginx
 }
 
+push_operator_keys_required() {
+  # Production refuses to finish push install without TinyWeb operator keys.
+  # Lab keeps ntfy and a Sygnal stub that refuses notify (not a fake success).
+  # TWS_PUSH_REQUIRE_OPERATOR_KEYS=1 forces the failure. =0 allows the stub.
+  local flag="${TWS_PUSH_REQUIRE_OPERATOR_KEYS:-}"
+  case "$flag" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    0|false|FALSE|no|NO|off|OFF) return 1 ;;
+  esac
+  [[ "${TWS_MODE:-lab}" == "production" ]]
+}
+
 write_sygnal_config() {
-  local cfg="${TWS_ETC_DIR}/sygnal.yaml"
-  local apns_enabled=0
-  if sygnal_apns_enabled; then
-    apns_enabled=1
-  fi
+  local helper="${_script_dir}/configure-push-credentials.sh"
+  [[ -f "$helper" ]] || helper="${TW_STACK_ROOT}/vm/configure-push-credentials.sh"
   if dry_run_is_active; then
-    log "DRY_RUN: write ${cfg} (APNs enabled=${apns_enabled})"
+    log "DRY_RUN: ${helper} --write-sygnal (source=${PUSH_CREDENTIAL_SOURCE})"
     return 0
   fi
-  mkdir -p "$(dirname "$APNS_KEY_PATH")" "${TWS_ETC_DIR}/secrets/fcm"
-  local ios_app="${APNS_BUNDLE}.ios"
-  if [[ "$apns_enabled" -eq 1 ]]; then
-    cat >"$cfg" <<EOF
-# Managed by tinywebStack install-push.sh
-log:
-  setup:
-    version: 1
-    formatters:
-      precise:
-        format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s'
-    handlers:
-      console:
-        class: logging.StreamHandler
-        formatter: precise
-    root:
-      level: INFO
-      handlers: [console]
-http:
-  bind_addresses: ['127.0.0.1']
-  port: ${SYGNAL_PORT}
-apps:
-  ${ios_app}:
-    type: apns
-    keyfile: ${APNS_KEY_PATH}
-    key_id: ${APNS_KEY_ID}
-    team_id: ${APNS_TEAM_ID}
-    topic: ${APNS_BUNDLE}
-    platform: ${APNS_ENV}
-    default_payload:
-      aps:
-        alert:
-          title: TinyWeb
-          body: New message
-        mutable-content: 1
-EOF
-    log "Sygnal APNs enabled for ${ios_app} (${APNS_ENV})"
-  else
-    cat >"$cfg" <<EOF
-# Managed by tinywebStack install-push.sh — APNs disabled until AuthKey.p8 is installed.
-log:
-  setup:
-    version: 1
-    formatters:
-      precise:
-        format: '%(asctime)s - %(name)s - %(lineno)d - %(levelname)s - %(message)s'
-    handlers:
-      console:
-        class: logging.StreamHandler
-        formatter: precise
-    root:
-      level: INFO
-      handlers: [console]
-http:
-  bind_addresses: ['127.0.0.1']
-  port: ${SYGNAL_PORT}
-apps: {}
-EOF
-    log "Sygnal installed; APNs disabled (place ${APNS_KEY_PATH} and set TWS_APNS_KEY_ID / TWS_APNS_TEAM_ID, then re-run install-push.sh)"
+  [[ -f "$helper" ]] || die "Missing configure-push-credentials.sh"
+  local err rc
+  err="$(mktemp)"
+  set +e
+  # Inherit operator credentials from the environment. Do not invent a source
+  # here: an unset source stays unset so secrets/push/operator.env can select
+  # override, and the loader defaults to tinyweb.
+  TWS_ETC_DIR="$TWS_ETC_DIR" TWS_SYGNAL_PORT="$SYGNAL_PORT" \
+    bash "$helper" --write-sygnal >"$err" 2>&1
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 0 ]]; then
+    PUSH_CREDENTIALS_READY=1
+    if [[ -s "$err" ]]; then
+      log "$(cat "$err")"
+    fi
+    rm -f "$err"
+    chmod 640 "${TWS_ETC_DIR}/sygnal.yaml" 2>/dev/null || true
+    return 0
   fi
-  chmod 640 "$cfg"
+  if [[ "$rc" -eq 2 ]]; then
+    PUSH_CREDENTIALS_READY=0
+    if [[ -s "$err" ]]; then
+      log "$(cat "$err")"
+    fi
+    rm -f "$err"
+    if push_operator_keys_required; then
+      die "TinyWeb push operator credentials are missing. Delivery is not configured. See docs/PUSH.md."
+    fi
+    log "Sygnal will refuse delivery until TinyWeb operator APNs/FCM keys are configured (source=${PUSH_CREDENTIAL_SOURCE})."
+    return 0
+  fi
+  if [[ -s "$err" ]]; then
+    log "$(cat "$err")"
+  fi
+  rm -f "$err"
+  die "configure-push-credentials.sh failed (exit ${rc})"
 }
 
 install_sygnal_venv() {
@@ -340,12 +325,20 @@ ensure_sygnal_system_user() {
   chown "${SYGNAL_USER}:${SYGNAL_USER}" /var/lib/tinywebstack-sygnal
   chmod 750 /var/lib/tinywebstack-sygnal
   local sec="${TWS_ETC_DIR}/secrets"
-  mkdir -p "${sec}/apns" "${sec}/fcm"
-  chown root:"${SYGNAL_USER}" "$sec" "${sec}/apns" "${sec}/fcm"
-  chmod 750 "$sec" "${sec}/apns" "${sec}/fcm"
-  if [[ -f "$APNS_KEY_PATH" ]]; then
-    chown root:"${SYGNAL_USER}" "$APNS_KEY_PATH"
-    chmod 640 "$APNS_KEY_PATH"
+  local push_sec="${sec}/push"
+  mkdir -p "$push_sec"
+  chown root:"${SYGNAL_USER}" "$sec" "$push_sec"
+  chmod 750 "$sec" "$push_sec"
+  local keyf
+  for keyf in "${push_sec}/tinyweb-apns-authkey.p8" "${push_sec}/tinyweb-fcm-service-account.json"; do
+    if [[ -f "$keyf" ]]; then
+      chown root:"${SYGNAL_USER}" "$keyf"
+      chmod 640 "$keyf"
+    fi
+  done
+  if [[ -f "${push_sec}/operator.env" ]]; then
+    chown root:root "${push_sec}/operator.env"
+    chmod 600 "${push_sec}/operator.env"
   fi
   local cfg="${TWS_ETC_DIR}/sygnal.yaml"
   if [[ -f "$cfg" ]]; then
@@ -365,19 +358,15 @@ install_sygnal_stub() {
   install -m 755 "$stub_src" "$dest"
 }
 
-sygnal_apns_enabled() {
-  [[ -f "$APNS_KEY_PATH" && -n "$APNS_KEY_ID" && -n "$APNS_TEAM_ID" ]]
-}
-
 install_sygnal_unit() {
   local unit=/etc/systemd/system/tinywebstack-sygnal.service
   local venv="/opt/tinywebstack/push/sygnal/venv"
   local use_sygnal=0
-  if sygnal_apns_enabled; then
+  if [[ "$PUSH_CREDENTIALS_READY" -eq 1 ]]; then
     use_sygnal=1
   fi
   if dry_run_is_active; then
-    log "DRY_RUN: write ${unit} (sygnal=${use_sygnal})"
+    log "DRY_RUN: write ${unit} (real Sygnal only when TinyWeb operator keys are configured)"
     return 0
   fi
   if [[ "$use_sygnal" -eq 1 ]]; then
@@ -404,7 +393,7 @@ EOF
     install_sygnal_stub
     cat >"$unit" <<EOF
 [Unit]
-Description=tinywebStack Sygnal health stub (APNs not configured)
+Description=tinywebStack Sygnal health stub (operator APNs/FCM keys missing; delivery refused)
 After=network-online.target
 Wants=network-online.target
 
@@ -420,7 +409,7 @@ RestartSec=3
 [Install]
 WantedBy=multi-user.target
 EOF
-    log "Sygnal APNs disabled — running loopback health stub on 127.0.0.1:${SYGNAL_PORT} (re-run after AuthKey.p8)"
+    log "Sygnal operator keys missing — refusing delivery on 127.0.0.1:${SYGNAL_PORT} (re-run install-push.sh after TinyWeb APNs/FCM secrets are installed)"
   fi
   systemctl daemon-reload
   systemctl enable tinywebstack-sygnal.service
@@ -452,6 +441,14 @@ EOF
 }
 
 update_dashboard_env() {
+  local status_file="${TWS_ETC_DIR}/push/credential-status.json"
+  if [[ -f "$status_file" ]]; then
+    local parsed
+    parsed="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("source",""))' "$status_file" 2>/dev/null || true)"
+    if [[ "$parsed" == "tinyweb" || "$parsed" == "override" ]]; then
+      PUSH_CREDENTIAL_SOURCE="$parsed"
+    fi
+  fi
   if [[ ! -f "$CSRF_FILE" ]]; then
     log "WARN: ${CSRF_FILE} missing — run install-family-dashboard.sh first"
     return 0
@@ -478,6 +475,9 @@ update_dashboard_env() {
   grep -q '^TWS_APNS_BUNDLE_ID=' "$CSRF_FILE" \
     && sed -i "s|^TWS_APNS_BUNDLE_ID=.*|TWS_APNS_BUNDLE_ID=${APNS_BUNDLE}|" "$CSRF_FILE" \
     || printf 'TWS_APNS_BUNDLE_ID=%s\n' "$APNS_BUNDLE" >>"$CSRF_FILE"
+  grep -q '^TWS_PUSH_CREDENTIAL_SOURCE=' "$CSRF_FILE" \
+    && sed -i "s|^TWS_PUSH_CREDENTIAL_SOURCE=.*|TWS_PUSH_CREDENTIAL_SOURCE=${PUSH_CREDENTIAL_SOURCE}|" "$CSRF_FILE" \
+    || printf 'TWS_PUSH_CREDENTIAL_SOURCE=%s\n' "$PUSH_CREDENTIAL_SOURCE" >>"$CSRF_FILE"
 }
 
 install_ntfy_binary
@@ -523,4 +523,10 @@ if ! dry_run_is_active; then
   fi
 fi
 
-log "Push stack ready: ntfy 127.0.0.1:${NTFY_PORT}, Sygnal 127.0.0.1:${SYGNAL_PORT}, public https://${PUSH_D}/"
+if dry_run_is_active; then
+  log "Push stack dry-run complete for https://${PUSH_D}/ (credential source ${PUSH_CREDENTIAL_SOURCE})"
+elif [[ "$PUSH_CREDENTIALS_READY" -eq 1 ]]; then
+  log "Push stack ready: ntfy 127.0.0.1:${NTFY_PORT}, Sygnal 127.0.0.1:${SYGNAL_PORT} using TinyWeb operator APNs/FCM keys, public https://${PUSH_D}/"
+else
+  log "Push stack ready: ntfy 127.0.0.1:${NTFY_PORT}, Sygnal refusing delivery on 127.0.0.1:${SYGNAL_PORT} until TinyWeb operator keys are configured, public https://${PUSH_D}/"
+fi
