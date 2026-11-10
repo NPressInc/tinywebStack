@@ -1,4 +1,8 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../api/models.dart';
@@ -32,11 +36,16 @@ class EnrollScreen extends StatefulWidget {
     super.key,
     required this.session,
     this.bannerMessage,
+    this.initialLink,
     this.qrScannerBuilder = defaultEnrollQrScanner,
   });
 
   final AppSession session;
   final String? bannerMessage;
+
+  /// `tinyweb://` or `https://<family>/family/join#code=...` from the OS.
+  /// When the phone cannot deliver a link, the fields below are the fallback.
+  final String? initialLink;
   final EnrollQrScannerBuilder qrScannerBuilder;
 
   @override
@@ -52,6 +61,32 @@ class _EnrollScreenState extends State<EnrollScreen> {
   _EnrollMode _mode = _EnrollMode.code;
   bool _busy = false;
   String? _error;
+  String? _linkedOrigin;
+  String? _lastAutoLink;
+
+  @override
+  void initState() {
+    super.initState();
+    final initial = widget.initialLink;
+    if (initial != null && initial.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _applyIncomingLink(initial, autoSubmit: true);
+        }
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(EnrollScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = widget.initialLink;
+    if (next != null &&
+        next.trim().isNotEmpty &&
+        next != oldWidget.initialLink) {
+      _applyIncomingLink(next, autoSubmit: true);
+    }
+  }
 
   @override
   void dispose() {
@@ -65,15 +100,34 @@ class _EnrollScreenState extends State<EnrollScreen> {
   void _applyScan(String raw) {
     final parsed = parseEnrollLink(raw);
     if (parsed.serverOrigin != null) {
+      _linkedOrigin = parsed.serverOrigin;
       _serverController.text = parsed.serverHost ?? parsed.serverOrigin!;
     }
-    if (parsed.code != null) {
+    if (parsed.code != null && parsed.code!.isNotEmpty) {
       _codeController.text = parsed.code!;
       _mode = _EnrollMode.code;
-    } else if (parsed.code == null && !raw.contains('://')) {
+    } else if (!raw.contains('://')) {
       _codeController.text = raw;
     }
     setState(() {});
+  }
+
+  Future<void> _applyIncomingLink(String raw, {required bool autoSubmit}) async {
+    _applyScan(raw);
+    if (!autoSubmit || _busy) {
+      return;
+    }
+    final parsed = parseEnrollLink(raw);
+    if (parsed.serverOrigin == null ||
+        parsed.code == null ||
+        parsed.code!.isEmpty) {
+      return;
+    }
+    if (_lastAutoLink == raw) {
+      return;
+    }
+    _lastAutoLink = raw;
+    await _submit();
   }
 
   Future<void> _submit() async {
@@ -90,6 +144,16 @@ class _EnrollScreenState extends State<EnrollScreen> {
           'Enter a family name (e.g. smith) or HTTPS server (e.g. smith.tinyweb.win)',
         );
       }
+      final linked = _linkedOrigin;
+      if (linked != null && !familyHostsMatch(linked, origin)) {
+        throw EnrollException(
+          EnrollErrorKind.wrongServer,
+          wrongServerMessage(
+            askedFor: hostOf(linked),
+            reached: hostOf(origin),
+          ),
+        );
+      }
 
       final discovery = await widget.session.discoverServer(origin);
 
@@ -97,7 +161,7 @@ class _EnrollScreenState extends State<EnrollScreen> {
       if (_mode == _EnrollMode.code) {
         final code = _codeController.text.trim();
         if (code.isEmpty) {
-          throw EnrollException(EnrollErrorKind.network, 'Enter an enroll code');
+          throw EnrollException(EnrollErrorKind.invalidCode, 'Enter the one-time code from the parent');
         }
         bundle = await widget.session.enrollWithCode(
           discovery: discovery,
@@ -118,6 +182,14 @@ class _EnrollScreenState extends State<EnrollScreen> {
       );
     } on EnrollException catch (e) {
       setState(() => _error = _messageFor(e));
+    } on TimeoutException {
+      setState(() => _error = unreachableBoxMessage(_serverController.text));
+    } on SocketException {
+      setState(() => _error = unreachableBoxMessage(_serverController.text));
+    } on http.ClientException {
+      setState(() => _error = unreachableBoxMessage(_serverController.text));
+    } on TlsException {
+      setState(() => _error = unreachableBoxMessage(_serverController.text));
     } catch (_) {
       setState(() => _error = 'Something went wrong. Try again.');
     } finally {
@@ -137,9 +209,17 @@ class _EnrollScreenState extends State<EnrollScreen> {
         return 'Too many attempts. Wait a moment and try again.';
       case EnrollErrorKind.needsUpdate:
         return e.message ?? 'This TinyWeb box needs an update';
+      case EnrollErrorKind.codeExpired:
+        return e.message ?? expiredCodeMessage();
+      case EnrollErrorKind.codeUsed:
+        return e.message ?? usedCodeMessage();
+      case EnrollErrorKind.invalidCode:
+        return e.message ?? invalidCodeMessage();
+      case EnrollErrorKind.wrongServer:
+        return e.message ?? 'This phone reached a different family server.';
       case EnrollErrorKind.network:
       case EnrollErrorKind.server:
-        return e.message ?? 'Could not reach your TinyWeb box';
+        return e.message ?? unreachableBoxMessage(_serverController.text);
     }
   }
 
@@ -167,10 +247,19 @@ class _EnrollScreenState extends State<EnrollScreen> {
                   fontWeight: FontWeight.w600,
                 ),
           ),
+          const SizedBox(height: 8),
+          const Text(
+            'Scan the code from a parent, or type your family name and the one-time code. '
+            'If a link opened this app, those fields are filled in for you.',
+          ),
           const SizedBox(height: 16),
           SizedBox(
             height: 180,
-            child: widget.qrScannerBuilder(onDetect: _applyScan),
+            child: widget.qrScannerBuilder(
+              onDetect: (raw) {
+                _applyIncomingLink(raw, autoSubmit: true);
+              },
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
@@ -197,7 +286,10 @@ class _EnrollScreenState extends State<EnrollScreen> {
           if (_mode == _EnrollMode.code)
             TextField(
               controller: _codeController,
-              decoration: const InputDecoration(labelText: 'Enroll code'),
+              decoration: const InputDecoration(
+                labelText: 'Enroll code',
+                helperText: 'Works once. Ask a parent for a new one if it has expired.',
+              ),
               autocorrect: false,
             )
           else ...[

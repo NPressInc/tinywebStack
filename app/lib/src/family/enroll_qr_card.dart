@@ -10,7 +10,7 @@ class EnrollQrCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Column(
       children: [
-        const Text('Scan with the TinyWeb app on the new phone'),
+        const Text('Point the phone camera at this code'),
         const SizedBox(height: 12),
         Center(
           child: Container(

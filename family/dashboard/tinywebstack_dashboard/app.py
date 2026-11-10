@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
+import re
 import secrets
 import subprocess
 import threading
@@ -54,6 +56,7 @@ from tinywebstack_dashboard.member_ops import (
     revoke_member_app_device,
 )
 from tinywebstack_dashboard.app_devices import list_devices_for_user
+from tinywebstack_dashboard.enroll_links import enroll_qr_data_uri
 from tinywebstack_dashboard.yunohost_actions import (
     issue_owntracks,
     synapse_user_status,
@@ -72,6 +75,32 @@ from tinywebstack_dashboard.health import register_health_routes, summary_line
 from tinywebstack_dashboard.jellyfin import jellyfin_public_discovery
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
+
+_CODE_IN_LOG = re.compile(r"(code=)[^&\s\"']+", re.IGNORECASE)
+
+
+class _RedactEnrollCodeLogFilter(logging.Filter):
+    """Drop one-time enroll codes from access logs. Passwords are never logged here."""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        try:
+            rendered = record.getMessage()
+        except Exception:
+            return True
+        if "code=" not in rendered.lower():
+            return True
+        rendered = _CODE_IN_LOG.sub(r"\1REDACTED", rendered)
+        record.msg = rendered.replace("%", "%%")
+        record.args = ()
+        return True
+
+
+def _install_enroll_log_redaction() -> None:
+    filt = _RedactEnrollCodeLogFilter()
+    for name in ("uvicorn.access", "uvicorn", "uvicorn.error"):
+        logger = logging.getLogger(name)
+        if not any(isinstance(existing, _RedactEnrollCodeLogFilter) for existing in logger.filters):
+            logger.addFilter(filt)
 
 
 def _username_from_kid_mxid(kid_mxid: str) -> str:
@@ -153,6 +182,7 @@ def config_from_env() -> DashboardConfig:
 
 
 def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | None = None) -> FastAPI:
+    _install_enroll_log_redaction()
     cfg = cfg or config_from_env()
     root_path = dashboard_root_path()
     TEMPLATES.env.globals["url"] = lambda path="/": dash_url(path, root_path)
@@ -327,6 +357,7 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 "app_api_version": 1,
                 "dashboard_base": "/family",
                 "enroll_url": "/family/api/app/enroll",
+                "phone_join_path": "/family/join",
                 "matrix_homeserver_url": matrix_homeserver_public_url(),
                 "caldav_root": cfg.caldav_root,
                 "events_url": cfg.events_base_url,
@@ -335,6 +366,15 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 not in ("0", "false", "no", "off"),
                 "jellyfin": jellyfin_public_discovery(os.environ.get("TWS_JELLYFIN_URL")),
             }
+        )
+
+    @app.get("/join", response_class=HTMLResponse)
+    async def phone_join(request: Request):
+        """Public phone setup page. The one-time code stays in the URL fragment."""
+        return TEMPLATES.TemplateResponse(
+            request,
+            "join.html",
+            {"server_name": cfg.server_name},
         )
 
     @app.post("/api/invite/verify")
@@ -522,7 +562,7 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 username=username,
                 role=role,
                 display_name=full_name,
-                issue_enroll_code=False,
+                issue_enroll_code=True,
                 enroll_issued_by=user,
             )
             uname = result.username
@@ -540,6 +580,7 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 "member_add.html",
                 {"user": user, "csrf": csrf_token(request), "error": str(exc)},
             )
+        join_url = result.enroll_qr_payload or ""
         return TEMPLATES.TemplateResponse(
             request,
             "member_created.html",
@@ -548,6 +589,10 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 "password": password,
                 "role": role,
                 "server_name": cfg.server_name,
+                "enroll_code": result.enroll_code or "",
+                "enroll_expires": result.enroll_expires_at or "",
+                "join_url": join_url,
+                "qr_data_uri": enroll_qr_data_uri(join_url) if join_url else "",
             },
         )
 
@@ -568,10 +613,11 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 "matrix_label": matrix_status_label(st),
                 "csrf": csrf_token(request),
                 "new_password": "",
+                "server_name": cfg.server_name,
                 "app_code": "",
                 "app_expires": "",
                 "app_qr_payload": "",
-                "app_qr_img_url": "",
+                "app_qr_data_uri": "",
                 "app_devices": devices,
             },
         )
@@ -598,10 +644,11 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 "matrix_label": matrix_status_label(st),
                 "csrf": csrf_token(request),
                 "new_password": pw,
+                "server_name": cfg.server_name,
                 "app_code": "",
                 "app_expires": "",
                 "app_qr_payload": "",
-                "app_qr_img_url": "",
+                "app_qr_data_uri": "",
                 "app_devices": devices,
             },
         )
@@ -618,13 +665,6 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
         code = issued["code"]
         expires_at = issued["expires_at"]
         qr_payload = issued["qr_payload"]
-        from urllib.parse import quote
-
-        qr_img_url = (
-            dash_url(f"/members/{username}/app-qr.png", root_path)
-            + "?p="
-            + quote(qr_payload, safe="")
-        )
         role = member_role(cfg, username)
         st = synapse_user_status(username, cfg.server_name)
         devices = list_devices_for_user(username)
@@ -638,32 +678,14 @@ def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | No
                 "matrix_label": matrix_status_label(st),
                 "csrf": csrf_token(request),
                 "new_password": "",
+                "server_name": cfg.server_name,
                 "app_code": code,
                 "app_expires": expires_at,
                 "app_qr_payload": qr_payload,
-                "app_qr_img_url": qr_img_url,
+                "app_qr_data_uri": enroll_qr_data_uri(qr_payload),
                 "app_devices": devices,
             },
         )
-
-    @app.get("/members/{username}/app-qr.png")
-    async def member_app_qr(
-        username: str,
-        p: str = "",
-        user: str = Depends(current_user),
-    ):
-        if not member_role(cfg, username):
-            raise HTTPException(status_code=404, detail="Not found")
-        if not p.startswith("tinyweb://"):
-            raise HTTPException(status_code=400, detail="Invalid payload")
-        import io
-
-        import qrcode
-
-        img = qrcode.make(p)
-        buf = io.BytesIO()
-        img.save(buf, format="PNG")
-        return Response(content=buf.getvalue(), media_type="image/png")
 
     @app.post("/members/{username}/app-devices/{device_id}/revoke")
     async def member_app_device_revoke(

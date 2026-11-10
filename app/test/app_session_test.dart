@@ -72,6 +72,8 @@ void main() {
     );
 
     await session.completeEnrollment(bundle);
+    expect(session.route, AppRoute.setupReady);
+    await session.continueFromSetupChecklist();
     expect(session.route, AppRoute.home);
 
     final matrixBundle = EnrollmentBundle(
@@ -95,6 +97,8 @@ void main() {
       },
     );
     await session.completeEnrollment(matrixBundle);
+    expect(session.route, AppRoute.setupReady);
+    await session.continueFromSetupChecklist();
     expect(session.route, AppRoute.secureChats);
     expect((await store.read())?.username, 'kid1');
   });

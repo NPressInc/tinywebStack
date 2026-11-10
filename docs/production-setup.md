@@ -543,7 +543,7 @@ scripts/vm/remote-run.sh "$IP" family-groups.sh
 ```
 
 **Expected:** `yunohost user list` shows the users in `parents`/`kids`;
-enroll each member in the **TinyWeb app** (`POST /family/api/app/enroll` or dashboard QR) and confirm chat/calendar work in-app; portal at `https://home.example.com/`
+enroll each member in the **TinyWeb app** (dashboard QR / `https://<domain>/family/join#code=…`, or `POST /family/api/app/enroll`) and confirm chat/calendar work in-app; portal at `https://home.example.com/`
 shows each user only their permitted apps.
 *If this fails:*
 - password rejected → 8-char minimum, and YunoHost's zxcvbn policy may

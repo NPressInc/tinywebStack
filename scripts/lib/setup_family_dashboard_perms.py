@@ -15,6 +15,7 @@ def _family_permission_urls(main_domain: str | None) -> tuple[str, str, list[str
             [
                 f"{main_domain}/.well-known/tinywebstack-family.json",
                 f"{main_domain}/family/api/app/enroll",
+                f"{main_domain}/family/join",
                 f"{main_domain}/family/api/",
                 f"{main_domain}/family/tiles/",
             ],
@@ -25,6 +26,7 @@ def _family_permission_urls(main_domain: str | None) -> tuple[str, str, list[str
         [
             "/.well-known/tinywebstack-family.json",
             "/family/api/app/enroll",
+            "/family/join",
             "/family/api/",
             "/family/tiles/",
         ],

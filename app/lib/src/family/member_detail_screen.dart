@@ -133,7 +133,8 @@ class _MemberDetailScreenState extends State<MemberDetailScreen> {
         _busy = false;
         _secretTitle = 'TinyWeb app setup';
         _secretValue = result.code;
-        _secretHint = 'One-time code for enrolling a new phone.';
+        _secretHint =
+            'Scan the QR with their camera. It opens TinyWeb or install instructions, fills the family server, and signs in. The code works once and is not the password.';
         _secretQrPayload = result.qrPayload;
       });
     } catch (e) {

@@ -833,6 +833,18 @@ step_selfcheck() {
   tmpcode="$(
     curl -sS -o /dev/null -w '%{http_code}' \
       "${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}" \
+      "https://${TWS_DOMAIN}/family/join" 2>/dev/null || echo 000
+  )"
+  if [[ "$tmpcode" == "200" ]]; then
+    results+=("PASS	family phone join HTTP 200")
+  else
+    results+=("FAIL	family phone join HTTP ${tmpcode}")
+    fail=1
+  fi
+
+  tmpcode="$(
+    curl -sS -o /dev/null -w '%{http_code}' \
+      "${SELFCHECK_CURL_RESOLVE[@]}" "${SELFCHECK_CURL_CA[@]}" \
       -X POST "https://${TWS_DOMAIN}/family/api/invite/verify" \
       -H 'Content-Type: application/json' \
       -d '{}' 2>/dev/null || echo 000

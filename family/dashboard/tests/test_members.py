@@ -39,6 +39,7 @@ def member_client(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setenv("TWS_DASHBOARD_MOCK_GROUPS", json.dumps({"parents": ["parent1"], "kids": ["kid1"]}))
+    monkeypatch.setenv("TWS_APP_DEVICES_DB", str(tmp_path / "app-devices.db"))
     monkeypatch.setenv("TWS_DASHBOARD_MOCK_YUNOHOST", "1")
     monkeypatch.setenv(
         "TWS_DASHBOARD_MOCK_LIST_USERS",
@@ -82,6 +83,14 @@ def test_add_member(member_client):
     )
     assert r.status_code == 200
     assert "sam" in r.text.lower()
+    import re
+
+    link = re.search(r"https://family-a\.test/family/join#code=([A-Z0-9]+)", r.text)
+    assert link, r.text
+    password = re.search(r"Password:</strong> <code>([^<]+)</code>", r.text)
+    assert password
+    assert password.group(1) not in link.group(0)
+    assert "password=" not in link.group(0)
 
 
 def test_location_qr(member_client):

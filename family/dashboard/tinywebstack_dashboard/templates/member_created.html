@@ -5,15 +5,30 @@
 {% endblock %}
 {% block content %}
 <h1>{{ username }} is ready</h1>
-<p class="hint">Save this password now — it is shown once.</p>
+<p>On their phone, scan the code below. It opens TinyWeb (or a short page that explains how to install it), fills in the family server, and signs them in.</p>
+{% if join_url %}
 <div class="card">
+  <h2>Set up their phone</h2>
+  <p><strong>Family server:</strong> <code>{{ server_name }}</code></p>
+  {% if qr_data_uri %}
+  <p><img src="{{ qr_data_uri }}" alt="QR code to set up TinyWeb" width="220" height="220"></p>
+  {% endif %}
+  <p>Link: <code>{{ join_url }}</code></p>
+  {% if enroll_code %}
+  <p><strong>Code if they type it:</strong> <code>{{ enroll_code }}</code></p>
+  {% endif %}
+  <p class="hint">Works once{% if enroll_expires %} · expires {{ enroll_expires }}{% endif %}. The link and QR contain only this code, not the password.</p>
+</div>
+{% endif %}
+<div class="card">
+  <p class="hint">Save this password now — it is shown once. Do not put it in the QR or the link. Events may ask for it once inside the app.</p>
   <p><strong>Username:</strong> {{ username }}</p>
   <p><strong>Password:</strong> <code>{{ password }}</code></p>
   <p><strong>Role:</strong> {{ role }}</p>
   <p class="hint">Chat address: @{{ username }}:{{ server_name }}</p>
 </div>
 {% if role == 'kid' %}
-<p><a href="{{ url('/members/' ~ username ~ '/location') }}">Set up location on their phone</a></p>
+<p><a href="{{ url('/members/' ~ username ~ '/location') }}">Location sharing is included when the app is set up</a></p>
 <p><a href="{{ url('/kid/@' ~ username ~ ':' ~ server_name) }}">Set chat contacts &amp; quiet hours</a></p>
 {% endif %}
 <p><a href="{{ url('/members/' ~ username) }}">Manage {{ username }}</a></p>

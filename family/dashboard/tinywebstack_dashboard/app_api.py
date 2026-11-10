@@ -16,11 +16,13 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from tinywebstack_dashboard.app_devices import (
+    EnrollCodeStatus,
     clear_enroll_failures,
     consume_enroll_code,
     count_devices_for_user,
     create_device,
     create_enroll_code,
+    enroll_code_rate_key,
     enroll_rate_limited,
     get_device,
     list_all_devices,
@@ -28,6 +30,12 @@ from tinywebstack_dashboard.app_devices import (
     mint_device_token,
     record_enroll_failure,
     revoke_device,
+)
+from tinywebstack_dashboard.enroll_links import (
+    CODE_EXPIRED_MESSAGE,
+    CODE_USED_MESSAGE,
+    INVALID_CODE_MESSAGE,
+    build_enroll_links,
 )
 from tinywebstack_dashboard.auth import (
     DashboardConfig,
@@ -467,8 +475,15 @@ def create_app_api_router(
         if not member_role(target):
             raise HTTPException(status_code=404, detail="Not a family member")
         code, expires_at = create_enroll_code(target, parent)
-        qr_payload = f"tinyweb://enroll?server={cfg.server_name}&code={code}"
-        return _no_store({"code": code, "expires_at": expires_at, "qr_payload": qr_payload})
+        links = build_enroll_links(cfg.server_name, code)
+        return _no_store(
+            {
+                "code": code,
+                "expires_at": expires_at,
+                "qr_payload": links["qr_payload"],
+                "deep_link": links["deep_link"],
+            }
+        )
 
     @router.post("/api/app/enroll")
     async def app_enroll(body: EnrollBody, request: Request):
@@ -480,14 +495,27 @@ def create_app_api_router(
             code = (body.code or "").strip().upper()
             if not code:
                 record_enroll_failure(ip, "unknown")
-                return _no_store({"error": "invalid_credentials"}, status=401)
-            if enroll_rate_limited(ip, f"code:{code}"):
+                return _no_store(
+                    {"error": "invalid_code", "message": INVALID_CODE_MESSAGE},
+                    status=401,
+                )
+            rate_key = enroll_code_rate_key(code)
+            if enroll_rate_limited(ip, rate_key):
                 raise HTTPException(status_code=429, detail="Too many attempts")
-            resolved = consume_enroll_code(code)
-            if not resolved:
-                record_enroll_failure(ip, f"code:{code}")
-                return _no_store({"error": "invalid_credentials"}, status=401)
-            username = resolved
+            consumed = consume_enroll_code(code)
+            if consumed.status != EnrollCodeStatus.OK or not consumed.username:
+                record_enroll_failure(ip, rate_key)
+                if consumed.status == EnrollCodeStatus.EXPIRED:
+                    error = "code_expired"
+                    message = CODE_EXPIRED_MESSAGE
+                elif consumed.status == EnrollCodeStatus.USED:
+                    error = "code_used"
+                    message = CODE_USED_MESSAGE
+                else:
+                    error = "invalid_code"
+                    message = INVALID_CODE_MESSAGE
+                return _no_store({"error": error, "message": message}, status=401)
+            username = consumed.username
             clear_enroll_failures(ip, username)
             role = member_role(username)
             if not role:

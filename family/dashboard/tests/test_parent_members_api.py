@@ -134,7 +134,10 @@ def test_post_members_optional_enroll_code(parent_api_env):
     assert r.status_code == 200
     body = r.json()
     assert body["enroll_code"]
-    assert body["enroll_qr_payload"].startswith("tinyweb://enroll?")
+    assert body["enroll_qr_payload"] == (
+        f"https://family-a.test/family/join#code={body['enroll_code']}"
+    )
+    assert body["password"] not in body["enroll_qr_payload"]
 
 
 def test_post_members_kid_forbidden(parent_api_env):

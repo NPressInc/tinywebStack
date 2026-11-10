@@ -14,6 +14,7 @@ from fastapi import HTTPException
 
 from tinywebstack_dashboard.auth import DashboardConfig, list_group_members, user_in_group
 from tinywebstack_dashboard.app_devices import create_enroll_code, get_device, list_devices_for_user, revoke_device
+from tinywebstack_dashboard.enroll_links import build_enroll_links
 from tinywebstack_dashboard.invite_store import add_pending, load_pending, pop_pending
 from tinywebstack_dashboard.policy_store import load_policy, save_policy
 from tinywebstack_dashboard.yunohost_actions import (
@@ -167,7 +168,7 @@ def create_family_member(
         code, expires_at = create_enroll_code(uname, enroll_issued_by)
         out.enroll_code = code
         out.enroll_expires_at = expires_at
-        out.enroll_qr_payload = f"tinyweb://enroll?server={cfg.server_name}&code={code}"
+        out.enroll_qr_payload = build_enroll_links(cfg.server_name, code)["qr_payload"]
     return out
 
 
@@ -212,8 +213,13 @@ def issue_member_enroll_code(
     if not member_role(cfg, username):
         raise HTTPException(status_code=404, detail="Not a family member")
     code, expires_at = create_enroll_code(username, parent_user)
-    qr_payload = f"tinyweb://enroll?server={cfg.server_name}&code={code}"
-    return {"code": code, "expires_at": expires_at, "qr_payload": qr_payload}
+    links = build_enroll_links(cfg.server_name, code)
+    return {
+        "code": code,
+        "expires_at": expires_at,
+        "qr_payload": links["qr_payload"],
+        "deep_link": links["deep_link"],
+    }
 
 
 def list_member_devices_public(username: str) -> list:

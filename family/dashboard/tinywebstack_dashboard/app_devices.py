@@ -11,6 +11,7 @@ import time
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Iterator, List, Optional
 
@@ -116,9 +117,30 @@ def create_enroll_code(username: str, created_by: str) -> tuple[str, str]:
     return code, expires_at
 
 
-def consume_enroll_code(code: str) -> Optional[str]:
-    """Validate code; mark used. Return username or None."""
-    ch = _hash_secret(code.strip().upper())
+class EnrollCodeStatus(str, Enum):
+    OK = "ok"
+    UNKNOWN = "unknown"
+    EXPIRED = "expired"
+    USED = "used"
+
+
+@dataclass(frozen=True)
+class ConsumedEnrollCode:
+    status: EnrollCodeStatus
+    username: Optional[str] = None
+
+
+def enroll_code_rate_key(code: str) -> str:
+    """Rate-limit bucket for a code. Stores a hash, not the code."""
+    return "code:" + _hash_secret(code.strip().upper())
+
+
+def consume_enroll_code(code: str) -> ConsumedEnrollCode:
+    """Validate a code and mark it used. Does not log the code."""
+    normalized = code.strip().upper()
+    if not normalized:
+        return ConsumedEnrollCode(EnrollCodeStatus.UNKNOWN)
+    ch = _hash_secret(normalized)
     now = _now_iso()
     with _connect() as conn:
         row = conn.execute(
@@ -126,17 +148,30 @@ def consume_enroll_code(code: str) -> Optional[str]:
             (ch,),
         ).fetchone()
         if not row:
-            return None
+            return ConsumedEnrollCode(EnrollCodeStatus.UNKNOWN)
         if row["used_at"]:
-            return None
+            return ConsumedEnrollCode(EnrollCodeStatus.USED)
         exp = row["expires_at"]
         if exp and exp < now:
-            return None
-        conn.execute(
-            "UPDATE enroll_codes SET used_at = ? WHERE code_hash = ?",
-            (now, ch),
+            return ConsumedEnrollCode(EnrollCodeStatus.EXPIRED)
+        cur = conn.execute(
+            """
+            UPDATE enroll_codes
+            SET used_at = ?
+            WHERE code_hash = ? AND used_at IS NULL
+              AND (expires_at IS NULL OR expires_at >= ?)
+            """,
+            (now, ch, now),
         )
-        return str(row["username"])
+        if cur.rowcount != 1:
+            again = conn.execute(
+                "SELECT used_at FROM enroll_codes WHERE code_hash = ?",
+                (ch,),
+            ).fetchone()
+            if again and again["used_at"]:
+                return ConsumedEnrollCode(EnrollCodeStatus.USED)
+            return ConsumedEnrollCode(EnrollCodeStatus.EXPIRED)
+        return ConsumedEnrollCode(EnrollCodeStatus.OK, str(row["username"]))
 
 
 def mint_device_token() -> str:

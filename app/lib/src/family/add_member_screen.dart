@@ -87,12 +87,14 @@ class _AddMemberScreenState extends State<AddMemberScreen> {
             OneTimeSecretPanel(
               title: 'Sign-in password',
               secret: _created!.password,
-              hint: 'Share this password securely. It will not be shown again.',
+              hint:
+                  'Shown once. This password is not in the QR code. Events may ask for it later.',
               qrPayload: _created!.enrollQrPayload,
               secondaryLabel: _created!.enrollCode != null
-                  ? 'Or enter this one-time enroll code'
+                  ? 'One-time code if the camera link does not open the app'
                   : null,
               secondarySecret: _created!.enrollCode,
+              secondaryCopyLabel: 'Copy code',
             ),
             FilledButton(
               onPressed: () => Navigator.of(context).pop(true),
