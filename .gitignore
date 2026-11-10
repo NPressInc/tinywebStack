@@ -9,3 +9,4 @@ __pycache__/
 .pytest_cache/
 .tools/validate-ssh/
 build/
+controlplane/var/

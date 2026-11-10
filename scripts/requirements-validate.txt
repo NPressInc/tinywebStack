@@ -5,6 +5,7 @@ wheel==0.45.1
 -e family/dashboard[test]
 -e family/calendar_module[test]
 -e family/permissions[test]
+-e controlplane[test]
 pytest==8.3.4
 pytest-asyncio==0.24.0
 httpx==0.28.1
