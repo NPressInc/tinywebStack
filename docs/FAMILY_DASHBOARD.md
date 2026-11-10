@@ -32,6 +32,7 @@ Parents see (plain language):
 - **Location phone setup** — enroll the **TinyWeb app** on each child’s phone (location publishes in-app); map link for parents only
 - **Household invite** — create or redeem one-time links ([FAMILY_INVITE.md](FAMILY_INVITE.md))
 - Per-child **contacts & quiet hours** (allowlists, bedtime rules)
+- **Jellyfin** — only when it was installed: the server address and a short note to use Jellyfin’s own dashboard for libraries. No media settings live here ([JELLYFIN.md](JELLYFIN.md)).
 
 Kids do **not** receive dashboard or OwnTracks web permissions (`family-groups.sh`).
 

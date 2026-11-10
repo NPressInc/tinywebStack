@@ -419,7 +419,7 @@ additionally runs `create-family-test-users.sh` and `setup-family-calendars.sh`
 `family-init.sh` runs: `family-groups.sh` → `install-mobilizon.sh` →
 `install-family-module.sh` → `family-permissions-seed.sh` →
 `install-family-dashboard.sh` → `family-federation-state-seed.sh` →
-`install-tinyweb-portal-branding.sh`.
+`install-tinyweb-portal-branding.sh`, then `install-jellyfin.sh` (no-op unless `TWS_JELLYFIN=1`).
 
 - `family-groups.sh` creates `parents`, `kids`, `federation-test` groups and
   the permission model (Element/Synapse to family groups only; location web
@@ -453,6 +453,16 @@ dashboard.
   and `journalctl -u tinywebstack-family-dashboard -e` on the node.
 - `Missing .../brand/portal` or `family/synapse_module` → someone ran the
   script from a git clone on the node instead of via `remote-run.sh` (§0).
+
+### 5.5 Optional Jellyfin
+
+Leave this off unless this box should serve media. It is not required on an 8 GB family server. Set `TWS_JELLYFIN=1` in `/etc/tinywebstack/tinyweb.env` and run `family-init.sh` again, or:
+
+```bash
+scripts/vm/remote-run.sh "$IP" install-jellyfin.sh home.example.com
+```
+
+That installs the official YunoHost Jellyfin app at `https://jellyfin.home.example.com/`, turns off the packaged “new users can see every library” LDAP default, and lets parents sign in. Children cannot sign in until a parent grants `jellyfin.main` and then chooses libraries **in Jellyfin**. Details, the LDAP-versus-SSO limit, and the real-hardware smoke list are in [JELLYFIN.md](JELLYFIN.md).
 
 ### 5.4 Hardening the TLS flags for production (manual, required)
 
@@ -785,7 +795,7 @@ Test restore quarterly; an untested backup is not a backup.
 
 - [FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) — feature plan (this doc = S5.2)
 - [test-nodes.md](test-nodes.md) — lab path (spark VMs, private CA)
-- [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), [FAMILY_MODULE.md](FAMILY_MODULE.md),
+- [FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md), [JELLYFIN.md](JELLYFIN.md), [FAMILY_MODULE.md](FAMILY_MODULE.md),
   [module-packaging.md](module-packaging.md),
   [CALENDAR.md](CALENDAR.md), [EVENTS.md](EVENTS.md), [MAP.md](MAP.md),
   [FAMILY_INVITE.md](FAMILY_INVITE.md), [TINYWEB_BRANDING.md](TINYWEB_BRANDING.md),

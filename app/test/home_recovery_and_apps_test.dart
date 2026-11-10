@@ -109,20 +109,51 @@ void main() {
     expect(find.text('REC-KEY-9999'), findsNothing);
   });
 
-  testWidgets('other family apps sheet copies server URL and username', (tester) async {
+  testWidgets('jellyfin tile stays hidden when the server has not enabled it', (
+    tester,
+  ) async {
+    await tester.pumpWidget(MaterialApp(home: HomeScreen(session: _session())));
+    expect(find.text('Jellyfin'), findsNothing);
+    expect(find.text('Other family apps'), findsNothing);
+  });
+
+  testWidgets('jellyfin sheet copies the jellyfin address and not a claim of SSO', (
+    tester,
+  ) async {
     final session = _session();
+    session.enrollment = EnrollmentBundle(
+      deviceId: 'd',
+      username: 'alice',
+      role: 'parent',
+      mxid: '@alice:family.example',
+      serverName: 'family.example',
+      dashboardToken: 'tok',
+      apiBase: '/family/api',
+      serverOrigin: 'https://family.example',
+      discovery: FamilyDiscovery(
+        serverOrigin: 'https://family.example',
+        enrollUrl: '/family/api/app/enroll',
+        jellyfin: const JellyfinDiscovery(
+          enabled: true,
+          url: 'https://jellyfin.family.example/',
+          auth: 'ldap_password',
+        ),
+      ),
+    );
 
     await tester.pumpWidget(MaterialApp(home: HomeScreen(session: session)));
-    await tester.tap(find.text('Other family apps'));
+    await tester.tap(find.text('Jellyfin'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Other family apps (Jellyfin, etc.)'), findsOneWidget);
-    expect(find.text('https://family.example'), findsOneWidget);
-    expect(find.text('alice'), findsWidgets);
+    expect(find.text('https://jellyfin.family.example/'), findsOneWidget);
+    expect(find.textContaining('not single sign-on'), findsOneWidget);
+    expect(find.textContaining('start with none'), findsOneWidget);
+    expect(find.textContaining('Quiet hours do not'), findsOneWidget);
+    expect(find.text('https://family.example'), findsNothing);
 
-    await tester.tap(find.text('Copy server URL'));
+    await tester.tap(find.text('Copy server address'));
     await tester.pumpAndSettle();
-    expect(clipboardText, 'https://family.example');
+    expect(clipboardText, 'https://jellyfin.family.example/');
 
     await tester.tap(find.text('Copy username'));
     await tester.pumpAndSettle();

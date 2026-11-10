@@ -41,6 +41,7 @@ TWS_ALICE_USER
 TWS_BOB_USER
 TWS_PARENT_USER
 TWS_KID_USER
+TWS_JELLYFIN
 EOF
 }
 
@@ -133,6 +134,12 @@ apply_tinyweb_env_defaults() {
   esac
 
   EVENTS_APP="${EVENTS_APP:-mobilizon}"
+  TWS_JELLYFIN="${TWS_JELLYFIN:-0}"
+  case "$TWS_JELLYFIN" in
+    0|1|true|TRUE|false|FALSE|yes|YES|no|NO|on|ON|off|OFF) ;;
+    *) die "TWS_JELLYFIN must be 0 or 1 (got '${TWS_JELLYFIN}')" ;;
+  esac
+  export TWS_JELLYFIN
   TWS_SWAP="${TWS_SWAP:-auto}"
   case "$TWS_SWAP" in
     auto|off) ;;
@@ -164,6 +171,7 @@ tinyweb_config_summary_lines() {
   printf 'EVENTS_APP=%s\n' "$EVENTS_APP"
   printf 'TWS_FAMILY_USERS=%s\n' "${TWS_FAMILY_USERS:-parent,kid (default)}"
   printf 'TWS_SWAP=%s\n' "$TWS_SWAP"
+  printf 'TWS_JELLYFIN=%s\n' "${TWS_JELLYFIN:-0}"
   printf 'TWS_LAB_TLS_INSECURE=%s\n' "$TWS_LAB_TLS_INSECURE"
   if [[ -n "${TWS_LAB_CERTS_DIR:-}" ]]; then
     printf 'TWS_LAB_CERTS_DIR=%s\n' "$TWS_LAB_CERTS_DIR"
