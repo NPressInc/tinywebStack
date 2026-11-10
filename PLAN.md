@@ -2,7 +2,7 @@
 
 tinywebStack is a private, self-hosted app ecosystem for families that runs on hardware at home. It replaces the custom C platform in NPressInc/TinyWebC with existing, proven open-source software plus a thin family layer on top.
 
-**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Test nodes lab](docs/test-nodes.md)
+**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Backups](docs/BACKUP.md) · [Test nodes lab](docs/test-nodes.md)
 
 ## Target hardware
 
@@ -32,6 +32,14 @@ Bare family slugs are expanded automatically in the **TinyWeb app** (enrollment 
 3. **Parental controls.** Contact allowlists, quiet hours, and parent visibility into a kid's activity. These are enforced where the apps allow it (Matrix server modules or admin API, per-app permissions).
 4. **Location in the permission model.** Only a kid's own parents, or users the parents approve, can see that kid's location.
 5. **Setup.** Scripts and docs that turn a fresh YunoHost install into a family node with a small number of steps.
+
+## Backups
+
+Parents manage backups from the dashboard at `/family/backup`. The page can start a backup, show whether it is running or why it failed, and keep a short history. Automatic backups stay **off** until a parent turns them on. Nothing is scheduled by installing the dashboard.
+
+Backups call YunoHost’s `yunohost backup create` for family accounts (LDAP), app databases, and app files. TinyWeb’s own state — the permissions database, phone sign-in database, and `/etc/tinywebstack` — is added by a YunoHost backup hook that snapshots SQLite with the database backup API. Jellyfin and the shared media folder are not included, so a movie library cannot fill an 8 GB disk. A backup that stays on the box is not a spare copy. Restoring onto a replacement computer is a documented YunoHost restore, not a button on the page.
+
+See [docs/BACKUP.md](docs/BACKUP.md).
 
 ## Out of scope for now
 

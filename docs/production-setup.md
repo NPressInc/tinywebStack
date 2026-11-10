@@ -663,29 +663,24 @@ events: nodeinfo public, trusted-instance sync, cross-family RSVP,
 
 ## 9. Backups, updates, upgrades
 
-### Backups (nothing in the repo — fully manual today)
+### Backups
 
-On the node:
+Parents use **Backups** at `https://<main-domain>/family/backup`. The full coverage table, the exact `yunohost backup create` invocation, and the replacement-box restore steps are in [BACKUP.md](BACKUP.md).
 
-```bash
-sudo yunohost backup create --apps synapse,element,nextcloud,mobilizon,owntracks --output /backups
-# plus system config:
-sudo tar czf /backups/etc-tinywebstack-$(date +%F).tgz /etc/tinywebstack \
-  /etc/matrix-synapse/conf.d /etc/nginx/conf.d
-```
+Short version:
 
-Copy off-box (the dashboard's own files, `/opt/tinywebstack`,
-`/opt/tinywebstack-family-dashboard`, `/etc/tinywebstack/family-policy.json`,
-`dashboard.env`, `pending-invites.json`, `synapse-admin-token`, and
-**`/etc/tinywebstack/secrets/`** (`install.env`, `mobilizon-admin.password`,
-`synapse-admin.password` — root-only; one-box installs) plus the control machine's
-`~/.tinywebstack-secrets/passwords.env` when using `remote-run.sh` are **not**
-inside app archives beyond YunoHost's `system` archive — include
-`--apps system` or the tar above). Restore: `yunohost backup restore
-<archive>`, then re-run §5 (the scripts are idempotent) to rebuild the
-module/dashboard.
+- The dashboard starts `yunohost backup create` for the installed family apps (`synapse`, `element`, `nextcloud`, `mobilizon`, `owntracks` or `traccar`) and for the system pieces `conf_ldap`, `conf_ynh_settings`, `conf_ynh_certs` (if present), `conf_manually_modified_files` (if present), and `conf_tinywebstack`. It does **not** pass `jellyfin`, and it does **not** pass `data_multimedia`, `data_home`, or `data_mail`.
+- `conf_tinywebstack` (`/etc/yunohost/hooks.d/backup/99-conf_tinywebstack`) writes SQLite snapshots of `permissions.db` and `app-devices.db` plus TinyWeb settings into the YunoHost work directory. It also stores `tinyweb_restore.py` in that directory. It does not pack the live database files.
+- The matching restore hook uses system `python3` and that script from the archive. It does not need the dashboard virtualenv. Install the dashboard only after `yunohost backup restore`. See [BACKUP.md](BACKUP.md).
+- Archives land in `/home/yunohost.backup/archives/tinyweb-YYYYMMDD-HHMMSS.tar`. Copy that file to another disk. A copy that stays on this box is not a spare copy.
+- Installing or re-running `install-family-dashboard.sh` installs the helper and the hooks. It does not enable `tinywebstack-family-backup.timer` and it does not create a backup.
+- Restore is **not** a dashboard button. On a replacement computer, skip YunoHost postinstall and run `yunohost backup restore tinyweb-YYYYMMDD-HHMMSS`, then re-run `install-family-dashboard.sh` and `family-module-post-upgrade.sh`. Steps and the smoke-test checklist are in [BACKUP.md](BACKUP.md).
+- The control-machine file `~/.tinywebstack-secrets/passwords.env` is still not on the box and is not in the archive. Keep it yourself.
+- Jellyfin libraries stay in `/home/yunohost.multimedia`. Copy that folder separately (`rsync -aH`, no `--delete` unless you mean to delete destination files).
 
-Test restore quarterly; an untested backup is not a backup.
+Do not use a hand-made `tar` of `/etc/tinywebstack` or of a live SQLite file as the family backup. That misses LDAP and the app database dumps, and a live SQLite copy can be corrupt.
+
+Test restore on a spare machine before you need it. An untested backup is not a backup. The automated checks in CI do not run `yunohost backup create` or a live restore.
 
 ### Updates
 
@@ -778,10 +773,7 @@ Test restore quarterly; an untested backup is not a backup.
    <MAIN_DOMAIN>` (§9). No YunoHost post-upgrade hook exists; the manual
    command (or the documented weekly-cron variant) closes the silent-stop
    gap.
-9. **No backup tooling in the repo:** `/etc/tinywebstack`, `/opt/tinywebstack*`
-   and the control machine's `passwords.env` fall outside `yunohost backup
-   --apps`; only a manual tar covers them (§9). Needs a
-   `scripts/vm/backup-family-state.sh`.
+9. **Backups are parent-operated, not yet smoke-tested on hardware.** The dashboard page, YunoHost hook, and helper are in the repo ([BACKUP.md](BACKUP.md)). A real `yunohost backup create` / spare-machine `yunohost backup restore` has not been run here. `~/.tinywebstack-secrets/passwords.env` on the control machine is still outside the archive on purpose.
 10. **`configure-federation-pair.sh` handles only the first two rows of
     `nodes.conf`** and its RAM/VCPU/DISK columns are meaningless on real
     hardware — needs a proper production node registry.
@@ -799,4 +791,5 @@ Test restore quarterly; an untested backup is not a backup.
   [module-packaging.md](module-packaging.md),
   [CALENDAR.md](CALENDAR.md), [EVENTS.md](EVENTS.md), [MAP.md](MAP.md),
   [FAMILY_INVITE.md](FAMILY_INVITE.md), [TINYWEB_BRANDING.md](TINYWEB_BRANDING.md),
+  [BACKUP.md](BACKUP.md),
   [PHILOSOPHY.md](PHILOSOPHY.md)

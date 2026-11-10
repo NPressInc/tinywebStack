@@ -66,6 +66,7 @@ from tinywebstack_dashboard.link_invite import (
     redeem_link_invite,
     LinkInviteError,
 )
+from tinywebstack_dashboard.backup_routes import create_backup_router
 from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
 from tinywebstack_dashboard.jellyfin import jellyfin_public_discovery
 
@@ -306,6 +307,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         )
     )
     app.include_router(create_map_router(cfg))
+    app.include_router(create_backup_router(cfg))
 
     def matrix_homeserver_public_url() -> str:
         host = (matrix_server or cfg.server_name).strip()
