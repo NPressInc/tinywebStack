@@ -1,0 +1,112 @@
+# Draft answers for Play Console > Policy > App content > Data safety.
+# Not submitted by CI or by fastlane. status stays "draft" until a person
+# confirms the form. "Shared" means transferred to a third party. The family's
+# box is not a third party. Do not check Advertising, and do not say data is sold.
+status: draft
+package_name: win.tinyweb.tinyweb
+ads: false
+tracking: false
+sold: false
+encrypted_in_transit: true
+deletion:
+  member_accounts_on_family_box: parent_removes_member
+  control_plane: confirm_before_submission
+  play_data_deletion_url: not_set
+third_party_sharing: false
+service_also_processes:
+  - family name
+  - DNS, including the box public address
+  - certificates for the family name
+  - tunnel credentials that connect the box
+data_types:
+  - category: Location
+    type: Precise location
+    collected: true
+    shared: false
+    optional: true
+    purposes: [App functionality]
+    note: Phone location for parents on the family's box, including background location. The person can deny the permission.
+  - category: Location
+    type: Approximate location
+    collected: true
+    shared: false
+    optional: true
+    purposes: [App functionality]
+    note: >
+      The app requests ACCESS_COARSE_LOCATION. The control plane also stores
+      the box public address for DNS, which can imply an approximate location
+      of the home. Confirm both before you submit the form.
+  - category: Personal info
+    type: Name
+    collected: true
+    shared: false
+    optional: false
+    purposes: [App functionality]
+    note: Family name and member names.
+  - category: Personal info
+    type: User IDs
+    collected: true
+    shared: false
+    optional: false
+    purposes: [App functionality]
+    note: Account id on the family's box.
+  - category: Messages
+    type: Other in-app messages
+    collected: true
+    shared: false
+    optional: false
+    purposes: [App functionality]
+    note: Family chat. Not email and not SMS. Message bodies are encrypted on the device. The box can see chat metadata.
+  - category: Photos and videos
+    type: Photos
+    collected: true
+    shared: false
+    optional: true
+    purposes: [App functionality]
+    note: Only photos the person chooses to send or save in chat.
+  - category: Photos and videos
+    type: Videos
+    collected: true
+    shared: false
+    optional: true
+    purposes: [App functionality]
+    note: Only videos the person chooses to send in chat.
+  - category: Audio
+    type: Voice or sound recordings
+    collected: true
+    shared: false
+    optional: true
+    purposes: [App functionality]
+    note: Microphone audio while recording a video message.
+  - category: Files and docs
+    type: Calendar
+    collected: true
+    shared: false
+    optional: false
+    purposes: [App functionality]
+    note: Events on the family's calendar. There is no separate switch once the phone is enrolled. Confirm required vs optional before submission.
+  - category: Device or other IDs
+    type: Device or other IDs
+    collected: true
+    shared: false
+    optional: true
+    purposes: [App functionality]
+    note: >
+      Push token registered with the family's box. Not the advertising ID.
+      Apple or Google delivers a generic alert. Message text is not in the push.
+      Home has a per-device push toggle.
+not_collected:
+  - Email address
+  - Phone number
+  - Contacts
+  - Advertising ID
+  - Crash logs
+  - Web browsing history
+  - Financial info
+  - Health info
+  - SMS or MMS
+notes:
+  - Do not check Contacts for the device address book. The app does not read it. Household members are Name and User IDs from the family's box.
+  - Collected means it leaves the phone. Chat, calendar, photos, and location go to the family's box. Declare them collected and not shared.
+  - play_data_deletion_url stays not_set until a real deletion page exists. A parent can already remove a member on the box. Releasing the family name (control-plane records) still has to be confirmed.
+  - Apple's nutrition form is a different list. Do not paste it in unchanged. iOS does not declare coarse location.

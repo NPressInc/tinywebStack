@@ -1,0 +1,44 @@
+# Store packaging lanes. They build release artifacts only.
+# They do not upload to App Store Connect or Google Play.
+# There is no deliver, supply, pilot, or upload lane on purpose.
+# Human steps: docs/APP_STORES.md
+
+default_platform(:ios)
+
+opt_out_usage
+
+APP_ROOT = File.expand_path("..", __dir__)
+TEAM_ID = "RC44X9237L"
+BUNDLE_ID = "win.tinyweb.tinyweb"
+
+platform :ios do
+  desc "Build an App Store IPA for #{BUNDLE_ID} (team #{TEAM_ID}). Does not upload."
+  lane :build do
+    UI.message("Building #{BUNDLE_ID} for team #{TEAM_ID}. This lane does not upload.")
+    Dir.chdir(APP_ROOT) do
+      sh(
+        "flutter", "build", "ipa", "--release",
+        "--export-options-plist=ios/ExportOptions.plist"
+      )
+    end
+    UI.important("IPA is under build/ios/ipa. This lane did not upload it.")
+  end
+end
+
+platform :android do
+  desc "Build a Play App Bundle for #{BUNDLE_ID}. Does not upload."
+  lane :build do
+    props = File.join(APP_ROOT, "android", "key.properties")
+    unless File.exist?(props)
+      UI.user_error!(
+        "Missing android/key.properties. See docs/APP_STORES.md. " \
+        "Refusing to build a store bundle with the debug key."
+      )
+    end
+    UI.message("Building #{BUNDLE_ID}. This lane does not upload.")
+    Dir.chdir(APP_ROOT) do
+      sh("flutter", "build", "appbundle", "--release")
+    end
+    UI.important("AAB is under build/app/outputs/bundle/release. This lane did not upload it.")
+  end
+end

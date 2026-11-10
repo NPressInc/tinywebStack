@@ -16,3 +16,9 @@ __pycache__/
 **/AuthKey*.p8
 build/
 controlplane/var/
+
+# Store signing material. Never commit these.
+*.p12
+*.pfx
+*.mobileprovision
+play-service-account.json

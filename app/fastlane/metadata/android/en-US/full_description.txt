@@ -1,0 +1,9 @@
+TinyWeb is the phone app for a family's own home box.
+
+A parent installs TinyWeb, plugs in the home box, opens the app, names the family, and adds each phone. Chat, calendars, events, and location stay on that box. There are no ads.
+
+Each phone has one login. Messages are encrypted on the device. Parents can see the household, including a child's location when that phone is enrolled to share it.
+
+TinyWeb's service is the control plane for the family name, DNS, certificates, and the credentials that connect the box. It does not keep a copy of family messages, photos, calendars, or location.
+
+You need a TinyWeb home box. The app does not replace that box with a cloud account.

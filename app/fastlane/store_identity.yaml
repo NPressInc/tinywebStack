@@ -1,0 +1,14 @@
+# Public store identifiers. Secrets do not belong in this file.
+# privacy_policy_published stays false until docs/PRIVACY.md is actually hosted
+# at privacy_policy_url. CI never submits this listing.
+app_name: TinyWeb
+bundle_id: win.tinyweb.tinyweb
+apple_team_id: RC44X9237L
+privacy_policy_url: https://tinyweb.win/privacy
+privacy_policy_published: false
+support_url: https://tinyweb.win
+marketing_url: https://tinyweb.win
+copyright: "2026 NPress, Inc."
+locale: en-US
+apple_primary_category: LIFESTYLE
+apple_secondary_category: PRODUCTIVITY
