@@ -25,6 +25,8 @@
 <div class="card">
   <h2>Back up now</h2>
   <p>{{ free_text }}</p>
+  <p><strong>Nextcloud files are included, not only calendars.</strong> Chat uploads are included too. On a small disk that can be most of the free space. Jellyfin movies are not included.</p>
+  {% if size_note %}<p>{{ size_note }}</p>{% endif %}
   {% if not helper_ready %}
   <p>Backup tools are not installed on this box yet. Nothing is scheduled and nothing has been copied. Updating this home installs the tools. Until then this page only explains what a backup covers.</p>
   {% elif running %}

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # YunoHost system restore hook (conf_tinywebstack).
-# Runs only when an operator restores an archive. The dashboard never calls it.
+# Uses system python3 and the script stored in the archive. A replacement
+# computer does not have the dashboard virtualenv yet; do not look for it.
 set -eu
 
 if [[ $# -lt 1 || -z "${1:-}" ]]; then
@@ -10,11 +11,27 @@ fi
 
 work_dir=$1
 backup_dir="${work_dir}/conf/tinywebstack"
+script="${backup_dir}/tinyweb_restore.py"
 
-py="${TWS_DASHBOARD_PYTHON:-/opt/tinywebstack-family-dashboard/venv/bin/python}"
-if [[ ! -x "$py" ]]; then
-  echo "TinyWeb restore hook: dashboard Python is missing (${py})" >&2
+if [[ ! -f "$script" || -L "$script" ]]; then
+  echo "TinyWeb restore hook: tinyweb_restore.py is missing from the archive" >&2
   exit 1
 fi
 
-exec "$py" -m tinywebstack_dashboard.backup_hook restore "$backup_dir"
+if [[ -n "${TWS_RESTORE_PYTHON:-}" ]]; then
+  py="${TWS_RESTORE_PYTHON}"
+elif command -v python3 >/dev/null 2>&1; then
+  py="$(command -v python3)"
+else
+  echo "TinyWeb restore hook: system python3 is required" >&2
+  exit 1
+fi
+
+case "$py" in
+  *tinywebstack-family-dashboard*)
+    echo "TinyWeb restore hook: refusing the dashboard virtualenv" >&2
+    exit 1
+    ;;
+esac
+
+exec "$py" "$script" restore "$backup_dir"

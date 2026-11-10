@@ -30,7 +30,9 @@ from tinywebstack_dashboard.backup import (
     connect,
     coverage_rows,
     default_settings,
+    describe_space,
     insert_job,
+    inspect_archive,
     load_settings,
     new_archive_id,
     on_calendar,
@@ -38,6 +40,7 @@ from tinywebstack_dashboard.backup import (
     redact,
     render_systemd_units,
     retention_ids,
+    same_archive_inode,
     select_targets,
     update_job,
     validate_export_path,
@@ -110,6 +113,7 @@ case "$cmd" in
     printf 'tar-bytes'
     ;;
   apply-schedule)
+    exit "${{HELPER_APPLY_RC:-0}}"
     ;;
   *)
     echo unknown >&2
@@ -590,7 +594,18 @@ def test_schedule_units_are_fixed_text(tmp_path):
         return 0
 
     apply_schedule(Settings(frequency="off"), unit_dir=tmp_path, run=run)
+    assert calls == []
+    (tmp_path / TIMER_NAME).write_text("[Timer]\n", encoding="utf-8")
+    apply_schedule(Settings(frequency="off"), unit_dir=tmp_path, run=run)
     assert calls == [["systemctl", "disable", "--now", TIMER_NAME]]
+    calls.clear()
+
+    def fail(argv):
+        calls.append(list(argv))
+        return 1
+
+    with pytest.raises(BackupError):
+        apply_schedule(Settings(frequency="off"), unit_dir=tmp_path, run=fail)
     calls.clear()
     settings = Settings(frequency="weekly", hour=3, minute=15, weekday=6)
     apply_schedule(settings, unit_dir=tmp_path, run=run)
@@ -733,3 +748,126 @@ def test_load_settings_rejects_garbage(tmp_path):
     assert load_settings(path).frequency == "off"
     path.write_text(json.dumps({"frequency": "daily", "hour": 3, "minute": 0, "weekday": 0, "keep_last": 2, "max_age_days": 10, "min_free_gb": 2}), encoding="utf-8")
     assert load_settings(path).frequency == "daily"
+
+
+def test_allowlist_rejects_paths_under_root_without_resolving():
+    with pytest.raises(BackupError):
+        restore_destination("etc/passwd", Path("/"))
+    with pytest.raises(BackupError):
+        restore_destination("etc/tinywebstack/../../etc/passwd", Path("/"))
+    with pytest.raises(BackupError):
+        restore_destination("/etc/tinywebstack/family-policy.json", Path("/"))
+
+
+def test_restore_refuses_symlink_under_allowed_prefix(tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "marker").write_text("keep", encoding="utf-8")
+    root = tmp_path / "restored"
+    root.mkdir()
+    (root / "etc").symlink_to(outside)
+    work = tmp_path / "work"
+    files = work / "files" / "etc" / "tinywebstack"
+    files.mkdir(parents=True)
+    (files / "family-policy.json").write_text("{}\n", encoding="utf-8")
+    (work / "manifest.json").write_text(
+        json.dumps(
+            {
+                "sqlite_method": "backup_api",
+                "snapshots": [],
+                "files": ["etc/tinywebstack/family-policy.json"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(BackupError):
+        restore_state(work, dest_root=root)
+    assert (outside / "marker").read_text(encoding="utf-8") == "keep"
+    assert not (outside / "tinywebstack" / "family-policy.json").exists()
+    assert not (outside / "family-policy.json").exists()
+
+
+def test_archive_inode_ignores_replaced_file(tmp_path):
+    path = tmp_path / "tinyweb-20260101-000000.tar"
+    _write_archive(path, with_marker=True)
+    viewed = inspect_archive(path)
+    assert viewed is not None and viewed[3] is True
+    ident = (viewed[0], viewed[1], viewed[2])
+    path.unlink()
+    path.symlink_to(tmp_path / "other")
+    assert inspect_archive(path) is None
+    assert same_archive_inode(path, ident) is False
+    path.unlink()
+    path.write_bytes(b"x")
+    assert same_archive_inode(path, ident) is False
+
+
+def test_describe_space_warns_when_nextcloud_exceeds_free_space():
+    tight = describe_space(100, 50, 1_000_000)
+    assert tight["ok"] is False
+    assert "Nextcloud files are about" in tight["size_note"]
+    roomy = describe_space(5_000_000_000, 2_000_000_000, None)
+    assert roomy["ok"] is True
+    assert "not only calendars" in roomy["size_note"]
+
+
+def test_failed_schedule_off_keeps_previous_settings(backup_env, monkeypatch):
+    client = backup_env["client"]
+    csrf = _csrf(client)
+    turned_on = client.post(
+        "/backup/settings",
+        headers=PARENT,
+        data={
+            "csrf": csrf,
+            "frequency": "weekly",
+            "hour": "3",
+            "minute": "15",
+            "weekday": "6",
+            "keep_last": "3",
+            "max_age_days": "90",
+            "min_free_gb": "2",
+        },
+        follow_redirects=False,
+    )
+    assert turned_on.status_code == 303
+    monkeypatch.setenv("HELPER_APPLY_RC", "1")
+    csrf = _csrf(client)
+    failed = client.post(
+        "/backup/settings",
+        headers=PARENT,
+        data={
+            "csrf": csrf,
+            "frequency": "off",
+            "hour": "3",
+            "minute": "15",
+            "weekday": "6",
+            "keep_last": "3",
+            "max_age_days": "90",
+            "min_free_gb": "2",
+        },
+    )
+    assert failed.status_code == 502
+    assert "previous schedule" in failed.text
+    stored = json.loads(backup_env["settings"].read_text(encoding="utf-8"))
+    assert stored["frequency"] == "weekly"
+
+
+def test_download_finds_archive_older_than_job_list_limit(backup_env):
+    conn = connect(backup_env["state"])
+    old = "tinyweb-20200101-000000"
+    job = insert_job(conn, kind="backup", actor="parent1", archive_id=old)
+    update_job(conn, job["id"], status="succeeded", phase="succeeded", archive_id=old)
+    for index in range(101):
+        archive_id = f"tinyweb-20260101-{index:06d}"
+        newer = insert_job(conn, kind="backup", actor="parent1", archive_id=archive_id)
+        update_job(conn, newer["id"], status="succeeded", phase="succeeded", archive_id=archive_id)
+    conn.close()
+    client = backup_env["client"]
+    downloaded = client.post(
+        f"/backup/archives/{old}/download",
+        headers=PARENT,
+        data={"csrf": _csrf(client)},
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.content == b"tar-bytes"
+    assert "Nextcloud files are included" in client.get("/backup", headers=PARENT).text

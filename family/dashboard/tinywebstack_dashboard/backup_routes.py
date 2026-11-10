@@ -33,6 +33,7 @@ from tinywebstack_dashboard.backup import (
     update_job,
     validate_export_path,
     validate_settings,
+    has_succeeded_backup,
 )
 from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
 
@@ -114,6 +115,7 @@ def create_backup_router(cfg: DashboardConfig) -> APIRouter:
         low_space = False
         helper_ready = helper_command() is not None
         sizes: Dict[str, int] = {}
+        size_note = ""
         try:
             conn = connect()
         except OSError:
@@ -132,6 +134,7 @@ def create_backup_router(cfg: DashboardConfig) -> APIRouter:
                     free = int(payload.get("free_bytes", 0))
                     needed = int(payload.get("min_free_bytes", 0))
                     low_space = not bool(payload.get("ok"))
+                    size_note = str(payload.get("size_note") or "")
                     free_text = (
                         f"{human_bytes(free)} free on the disk that holds backups. "
                         f"A backup starts only when at least {human_bytes(needed)} is free."
@@ -178,6 +181,7 @@ def create_backup_router(cfg: DashboardConfig) -> APIRouter:
                 "jobs": view_jobs,
                 "coverage": coverage_rows(),
                 "free_text": free_text,
+                "size_note": size_note,
                 "low_space": low_space,
                 "helper_ready": helper_ready,
                 "running": running,
@@ -277,6 +281,7 @@ def create_backup_router(cfg: DashboardConfig) -> APIRouter:
             )
         except BackupError as exc:
             return page(request, user, error=str(exc), status_code=400)
+        previous = load_settings()
         if settings.frequency != "off" and helper_command() is None:
             return page(
                 request,
@@ -291,15 +296,12 @@ def create_backup_router(cfg: DashboardConfig) -> APIRouter:
             except BackupError:
                 result = None
             if result is None or result.returncode != 0:
-                reverted = load_settings()
-                reverted.frequency = "off"
-                save_settings(reverted)
-                return page(
-                    request,
-                    user,
-                    error="The schedule was not turned on. Automatic backups are off.",
-                    status_code=502,
-                )
+                save_settings(previous)
+                if settings.frequency == "off":
+                    message = "Could not turn off automatic backups. The previous schedule is unchanged."
+                else:
+                    message = "Could not turn on automatic backups. The previous schedule is unchanged."
+                return page(request, user, error=message, status_code=502)
         root = dashboard_root_path()
         return _no_store(RedirectResponse(url=dash_url("/backup", root), status_code=303))
 
@@ -317,14 +319,10 @@ def create_backup_router(cfg: DashboardConfig) -> APIRouter:
             raise HTTPException(status_code=400, detail="Unknown backup.") from exc
         conn = connect()
         try:
-            jobs = list_jobs(conn, limit=100)
+            if not has_succeeded_backup(conn, archive_id):
+                raise HTTPException(status_code=404, detail="Unknown backup.")
         finally:
             conn.close()
-        if not any(
-            job.get("archive_id") == archive_id and job.get("status") == "succeeded" and job.get("kind") == "backup"
-            for job in jobs
-        ):
-            raise HTTPException(status_code=404, detail="Unknown backup.")
         cmd = helper_command()
         if not cmd:
             raise HTTPException(status_code=503, detail="Backup tools are not installed.")
@@ -378,13 +376,7 @@ def create_backup_router(cfg: DashboardConfig) -> APIRouter:
             return page(request, user, error=str(exc), status_code=400)
         conn = connect()
         try:
-            jobs = list_jobs(conn, limit=100)
-            if not any(
-                job.get("archive_id") == archive_id
-                and job.get("status") == "succeeded"
-                and job.get("kind") == "backup"
-                for job in jobs
-            ):
+            if not has_succeeded_backup(conn, archive_id):
                 return page(request, user, error="Unknown backup.", status_code=404)
             if active_job(conn):
                 return page(request, user, error="Another backup is already running.", status_code=409)

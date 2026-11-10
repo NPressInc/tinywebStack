@@ -27,8 +27,13 @@ case "$cmd" in
   preflight|list-archives|run-scheduled|apply-schedule)
     [[ $# -eq 0 ]] || usage
     ;;
-  run-backup|cat-archive|copy-archive)
+  run-backup|copy-archive)
     [[ $# -eq 1 ]] || usage
+    [[ "$1" =~ ^[0-9a-f]{32}$ ]] || usage
+    ;;
+  cat-archive)
+    [[ $# -eq 1 ]] || usage
+    [[ "$1" =~ ^tinyweb-[0-9]{8}-[0-9]{6}$ ]] || usage
     ;;
   *)
     usage

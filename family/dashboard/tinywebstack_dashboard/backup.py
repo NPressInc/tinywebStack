@@ -17,7 +17,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 ARCHIVE_ID_RE = re.compile(r"^tinyweb-[0-9]{8}-[0-9]{6}$")
 JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
@@ -264,8 +264,12 @@ def apply_schedule(
     run: Callable[[Sequence[str]], int],
 ) -> None:
     """Enable or disable this box's TinyWeb timer. Does not touch other timers."""
+    timer_path = unit_dir / TIMER_NAME
     if settings.frequency == "off":
-        run(["systemctl", "disable", "--now", TIMER_NAME])
+        if not timer_path.is_file():
+            return
+        if run(["systemctl", "disable", "--now", TIMER_NAME]) != 0:
+            raise BackupError("Could not turn off the backup schedule.")
         return
     units = render_systemd_units(settings)
     unit_dir.mkdir(parents=True, exist_ok=True)
@@ -381,6 +385,25 @@ def human_bytes(n: Optional[int]) -> str:
 def space_ok(free_bytes: int, settings: Settings) -> bool:
     needed = max(settings.min_free_bytes, HARD_MIN_FREE_BYTES)
     return free_bytes >= needed
+
+
+def describe_space(free_bytes: int, needed: int, nextcloud_bytes: Optional[int]) -> Dict[str, Any]:
+    """Disk verdict plus a plain-language size note. Nextcloud files are included."""
+    ok = free_bytes >= needed
+    note = (
+        "Nextcloud's data folder is included, not only calendars. "
+        "Chat uploads are included too. Jellyfin movies are not."
+    )
+    if nextcloud_bytes is not None:
+        note = (
+            f"Nextcloud files are about {human_bytes(nextcloud_bytes)}. "
+            "This backup copies that folder in addition to calendars, chats, and databases. "
+            "Jellyfin movies are not included."
+        )
+        if free_bytes < nextcloud_bytes + needed:
+            ok = False
+            note += " Free space looks too small for that copy."
+    return {"ok": ok, "size_note": note}
 
 
 def coverage_rows() -> List[Dict[str, str]]:
@@ -524,23 +547,104 @@ def archive_file_ok(archive_directory: Path, archive_id: str) -> bool:
     return real.parent == root and real.is_file()
 
 
-def tinyweb_marker_present(path: Path) -> bool:
-    """True when the tar contains the TinyWeb hook manifest.
+def inspect_archive(path: Path) -> Optional[Tuple[int, int, int, bool]]:
+    """Open ``path`` with ``O_NOFOLLOW``.
 
-    YunoHost can still exit 0 when one system hook fails. A backup without
-    this manifest did not snapshot family rules or phone sign-ins.
+    Returns ``(st_dev, st_ino, has_tinyweb_manifest)`` for a regular file, or
+    ``None`` when the path is missing, a symlink, or not a regular file.
     """
     import tarfile
 
     try:
-        with tarfile.open(path, "r:*") as tar:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    try:
+        st = os.fstat(fd)
+        if not stat_is_regular(st.st_mode):
+            return None
+        fileobj = os.fdopen(fd, "rb")
+        fd = -1
+        has_marker = False
+        with tarfile.open(fileobj=fileobj, mode="r:*") as tar:
             for member in tar:
                 name = member.name.lstrip("./")
                 if name.endswith("conf/tinywebstack/manifest.json") and member.isfile():
-                    return True
+                    has_marker = True
+                    break
+        return (st.st_dev, st.st_ino, st.st_size, has_marker)
     except (tarfile.TarError, OSError):
-        return False
-    return False
+        return None
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
+def tinyweb_marker_present(path: Path) -> Optional[Tuple[int, int, int]]:
+    """Inode of a regular archive that contains the TinyWeb manifest."""
+    viewed = inspect_archive(path)
+    if viewed is None or not viewed[3]:
+        return None
+    return (viewed[0], viewed[1], viewed[2])
+
+
+def archive_inode(path: Path) -> Optional[Tuple[int, int, int]]:
+    """``(st_dev, st_ino, st_size)`` of a regular file opened with ``O_NOFOLLOW``."""
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError:
+        return None
+    try:
+        st = os.fstat(fd)
+    finally:
+        os.close(fd)
+    if not stat_is_regular(st.st_mode):
+        return None
+    return (st.st_dev, st.st_ino, st.st_size)
+
+
+def same_archive_inode(path: Path, ident: Tuple[int, int, int]) -> bool:
+    """True when ``path`` is still the same regular file (``O_NOFOLLOW``)."""
+    current = archive_inode(path)
+    return current == ident
+
+
+def open_export_dir(raw: str) -> int:
+    """Open a removable-disk directory. Refuse a symlink in any path component."""
+    import errno
+
+    text = validate_export_path(raw)
+    path = Path(text)
+    try:
+        dir_fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    except OSError as exc:
+        raise BackupError("That folder does not exist. Plug in the disk and try again.") from exc
+    try:
+        for part in path.parts[1:]:
+            try:
+                nxt = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=dir_fd)
+            except OSError as exc:
+                if exc.errno == errno.ELOOP:
+                    raise BackupError("That folder is a link. Choose the real folder on the disk.") from exc
+                raise BackupError("That folder does not exist. Plug in the disk and try again.") from exc
+            os.close(dir_fd)
+            dir_fd = nxt
+        st = os.fstat(dir_fd)
+        if not _is_dir_mode(st.st_mode):
+            raise BackupError("That folder does not exist. Plug in the disk and try again.")
+        return dir_fd
+    except BackupError:
+        os.close(dir_fd)
+        raise
+    except Exception:
+        os.close(dir_fd)
+        raise
+
+
+def _is_dir_mode(mode: int) -> bool:
+    import stat
+
+    return stat.S_ISDIR(mode)
 
 
 def stat_is_regular(mode: int) -> bool:
@@ -729,6 +833,20 @@ def list_jobs(conn: sqlite3.Connection, limit: int = 30) -> List[Dict[str, Any]]
     return [_row_dict(row) for row in rows]
 
 
+def has_succeeded_backup(conn: sqlite3.Connection, archive_id: str) -> bool:
+    """True when this tool recorded a successful backup with this exact id."""
+    require_archive_id(archive_id)
+    row = conn.execute(
+        """
+        SELECT 1 FROM jobs
+        WHERE kind = 'backup' AND status = 'succeeded' AND archive_id = ?
+        LIMIT 1
+        """,
+        (archive_id,),
+    ).fetchone()
+    return row is not None
+
+
 def update_job(conn: sqlite3.Connection, job_id: str, **fields: Any) -> Dict[str, Any]:
     require_job_id(job_id)
     allowed = {
@@ -778,9 +896,11 @@ def pid_alive(pid: Optional[int]) -> bool:
 def reconcile_jobs(conn: sqlite3.Connection, now: Optional[datetime] = None) -> None:
     """Mark jobs whose worker died so a restart cannot leave a false 'running'."""
     moment = now or utcnow()
-    for job in list_jobs(conn, limit=100):
-        if job["status"] not in {"queued", "running"}:
-            continue
+    rows = conn.execute(
+        "SELECT * FROM jobs WHERE status IN ('queued', 'running')"
+    ).fetchall()
+    for row in rows:
+        job = _row_dict(row)
         if pid_alive(job["pid"]):
             continue
         created = datetime.fromisoformat(job["created_at"])
@@ -805,10 +925,17 @@ def reconcile_jobs(conn: sqlite3.Connection, now: Optional[datetime] = None) -> 
 
 def active_job(conn: sqlite3.Connection) -> Optional[Dict[str, Any]]:
     reconcile_jobs(conn)
-    for job in list_jobs(conn, limit=20):
-        if job["status"] in {"queued", "running"}:
-            return job
-    return None
+    row = conn.execute(
+        """
+        SELECT * FROM jobs
+        WHERE status IN ('queued', 'running')
+        ORDER BY created_at DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    return _row_dict(row)
 
 
 def managed_archive_records(conn: sqlite3.Connection) -> List[ArchiveRecord]:

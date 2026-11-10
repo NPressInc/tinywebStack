@@ -660,7 +660,8 @@ Parents use **Backups** at `https://<main-domain>/family/backup`. The full cover
 Short version:
 
 - The dashboard starts `yunohost backup create` for the installed family apps (`synapse`, `element`, `nextcloud`, `mobilizon`, `owntracks` or `traccar`) and for the system pieces `conf_ldap`, `conf_ynh_settings`, `conf_ynh_certs` (if present), `conf_manually_modified_files` (if present), and `conf_tinywebstack`. It does **not** pass `jellyfin`, and it does **not** pass `data_multimedia`, `data_home`, or `data_mail`.
-- `conf_tinywebstack` (`/etc/yunohost/hooks.d/backup/99-conf_tinywebstack`) writes SQLite snapshots of `permissions.db` and `app-devices.db` plus TinyWeb settings into the YunoHost work directory. It does not pack the live database files.
+- `conf_tinywebstack` (`/etc/yunohost/hooks.d/backup/99-conf_tinywebstack`) writes SQLite snapshots of `permissions.db` and `app-devices.db` plus TinyWeb settings into the YunoHost work directory. It also stores `tinyweb_restore.py` in that directory. It does not pack the live database files.
+- The matching restore hook uses system `python3` and that script from the archive. It does not need the dashboard virtualenv. Install the dashboard only after `yunohost backup restore`. See [BACKUP.md](BACKUP.md).
 - Archives land in `/home/yunohost.backup/archives/tinyweb-YYYYMMDD-HHMMSS.tar`. Copy that file to another disk. A copy that stays on this box is not a spare copy.
 - Installing or re-running `install-family-dashboard.sh` installs the helper and the hooks. It does not enable `tinywebstack-family-backup.timer` and it does not create a backup.
 - Restore is **not** a dashboard button. On a replacement computer, skip YunoHost postinstall and run `yunohost backup restore tinyweb-YYYYMMDD-HHMMSS`, then re-run `install-family-dashboard.sh` and `family-module-post-upgrade.sh`. Steps and the smoke-test checklist are in [BACKUP.md](BACKUP.md).

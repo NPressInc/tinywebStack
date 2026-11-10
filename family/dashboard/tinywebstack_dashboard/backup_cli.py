@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 from pathlib import Path
@@ -21,7 +22,6 @@ from tinywebstack_dashboard.backup import (
     active_job,
     archive_dir,
     archive_file_ok,
-    assert_export_dir,
     build_create_command,
     build_delete_command,
     connect,
@@ -32,16 +32,20 @@ from tinywebstack_dashboard.backup import (
     load_settings,
     managed_archive_records,
     new_archive_id,
+    open_export_dir,
     redact,
     require_archive_id,
     require_job_id,
     retention_ids,
+    same_archive_inode,
     select_targets,
     space_ok,
     state_dir,
-    tinyweb_marker_present,
+    archive_inode,
+    inspect_archive,
     update_job,
     utcnow,
+    describe_space,
 )
 from tinywebstack_dashboard.backup import HOOK_FILES, apply_schedule
 
@@ -107,16 +111,65 @@ def disk_free(path: Path) -> int:
     return shutil.disk_usage(target).free
 
 
+def nextcloud_data_bytes() -> Optional[int]:
+    """Best-effort size of the Nextcloud data folder. None when it cannot be measured."""
+    candidates: List[Path] = []
+    try:
+        proc = subprocess.run(
+            ["yunohost", "app", "setting", "nextcloud", "data_dir"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=8,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        proc = None
+    if proc is not None and proc.returncode == 0:
+        text = (proc.stdout or "").strip()
+        path = Path(text)
+        if text.startswith("/") and ".." not in path.parts and "\n" not in text:
+            candidates.append(path)
+    candidates.extend(
+        [
+            Path("/home/yunohost.app/nextcloud/data"),
+            Path("/var/www/nextcloud/data"),
+        ]
+    )
+    for cand in candidates:
+        try:
+            if cand.is_symlink() or not cand.is_dir():
+                continue
+            measured = subprocess.run(
+                ["du", "-sb", str(cand)],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+        if measured.returncode != 0:
+            continue
+        token = (measured.stdout or "").split()
+        if token and token[0].isdigit():
+            return int(token[0])
+    return None
+
+
 def preflight_payload() -> dict:
     settings = load_settings()
     directory = archive_dir()
     free = disk_free(directory)
     needed = max(settings.min_free_bytes, HARD_MIN_FREE_BYTES)
+    nextcloud_bytes = nextcloud_data_bytes()
+    described = describe_space(free, needed, nextcloud_bytes)
     return {
         "free_bytes": free,
         "archive_dir": str(directory),
         "min_free_bytes": needed,
-        "ok": free >= needed,
+        "ok": described["ok"],
+        "nextcloud_bytes": nextcloud_bytes,
+        "size_note": described["size_note"],
     }
 
 
@@ -181,13 +234,25 @@ def execute_backup_job(
     if not archive_file_ok(archive_directory, archive_id):
         fail_job(conn, job_id, "The backup command finished but the archive file is missing.")
         return 1
-    if not tinyweb_marker_present(archive_directory / f"{archive_id}.tar"):
+    archive_path = archive_directory / f"{archive_id}.tar"
+    viewed = inspect_archive(archive_path)
+    if viewed is None:
+        fail_job(conn, job_id, "The backup command finished but the archive file is missing.")
+        return 1
+    dev, ino, size, has_marker = viewed
+    if not has_marker:
+        if not same_archive_inode(archive_path, (dev, ino, size)):
+            fail_job(conn, job_id, "The archive changed before it could be checked. Nothing was deleted.")
+            return 1
         run(build_delete_command(archive_id))
         fail_job(
             conn,
             job_id,
             "The backup command finished but TinyWeb's own data was not in the archive.",
         )
+        return 1
+    if not same_archive_inode(archive_path, (dev, ino, size)):
+        fail_job(conn, job_id, "The archive changed before it could be checked. Nothing was deleted.")
         return 1
     update_job(conn, job_id, phase="retention")
     notes: List[str] = []
@@ -198,8 +263,12 @@ def execute_backup_job(
         if old_id == archive_id:
             continue
         path = archive_directory / f"{old_id}.tar"
-        if path.is_symlink() or (path.exists() and not archive_file_ok(archive_directory, old_id)):
+        ident = archive_inode(path)
+        if ident is None:
             notes.append(f"Left {old_id} in place because it is not a normal archive file.")
+            continue
+        if not same_archive_inode(path, ident):
+            notes.append(f"Left {old_id} in place because it changed before it could be removed.")
             continue
         del_code, del_err = run(build_delete_command(old_id))
         if del_code != 0:
@@ -219,13 +288,19 @@ def execute_backup_job(
     return 0
 
 
-def _drop_partial(partial: Optional[Path]) -> None:
-    if partial is None:
+def _unlink_partial(dir_fd: Optional[int], name: Optional[str]) -> None:
+    if dir_fd is None or not name:
         return
     try:
-        if partial.is_symlink() or not partial.is_file():
-            return
-        partial.unlink()
+        st = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return
+    except OSError:
+        return
+    if not stat.S_ISREG(st.st_mode):
+        return
+    try:
+        os.unlink(name, dir_fd=dir_fd)
     except OSError:
         return
 
@@ -241,34 +316,39 @@ def execute_copy_job(conn, job_id: str, archive_directory: Path) -> int:
         pid=os.getpid(),
         started_at=utcnow().isoformat(),
     )
-    partial: Optional[Path] = None
+    dir_fd: Optional[int] = None
+    partial_name: Optional[str] = None
     try:
         archive_id = require_archive_id(job.get("archive_id") or "")
-        if not archive_file_ok(archive_directory, archive_id):
-            raise BackupError("That backup is not a file this page can copy.")
-        dest_dir = assert_export_dir(job.get("export_path") or "")
         src = archive_directory / f"{archive_id}.tar"
-        size = src.lstat().st_size
-        free = shutil.disk_usage(dest_dir).free
-        if free < size + HARD_MIN_FREE_BYTES:
-            raise BackupError(
-                "Not enough free space on that disk. "
-                f"The backup is {human_bytes(size)} and {human_bytes(free)} is free."
-            )
-        partial = dest_dir / f".{archive_id}.tar.partial"
-        final = dest_dir / f"{archive_id}.tar"
-        if final.exists() or final.is_symlink():
-            raise BackupError("A file with that name is already in the folder.")
-        if partial.is_symlink():
-            raise BackupError("Refusing to replace a link in that folder.")
-        if partial.exists():
-            partial.unlink()
+        src_ident = archive_inode(src)
+        if src_ident is None:
+            raise BackupError("That backup is not a file this page can copy.")
+        dir_fd = open_export_dir(job.get("export_path") or "")
+        vfs = os.fstatvfs(dir_fd)
+        free = vfs.f_bavail * vfs.f_frsize
         src_fd = os.open(src, os.O_RDONLY | os.O_NOFOLLOW)
         try:
+            src_st = os.fstat(src_fd)
+            if (src_st.st_dev, src_st.st_ino, src_st.st_size) != src_ident:
+                raise BackupError("The archive changed before it could be copied.")
+            if free < src_st.st_size + HARD_MIN_FREE_BYTES:
+                raise BackupError(
+                    "Not enough free space on that disk. "
+                    f"The backup is {human_bytes(src_st.st_size)} and {human_bytes(free)} is free."
+                )
+            partial_name = "." + archive_id + ".tar.partial"
+            final_name = archive_id + ".tar"
+            try:
+                os.stat(final_name, dir_fd=dir_fd, follow_symlinks=False)
+                raise BackupError("A file with that name is already in the folder.")
+            except FileNotFoundError:
+                pass
             dst_fd = os.open(
-                partial,
+                partial_name,
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                 0o600,
+                dir_fd=dir_fd,
             )
             try:
                 while True:
@@ -280,15 +360,21 @@ def execute_copy_job(conn, job_id: str, archive_directory: Path) -> int:
                 os.close(dst_fd)
         finally:
             os.close(src_fd)
-        os.replace(partial, final)
+        if not stat.S_ISDIR(os.fstat(dir_fd).st_mode):
+            raise BackupError("That folder is no longer a directory.")
+        os.replace(partial_name, final_name, src_dir_fd=dir_fd, dst_dir_fd=dir_fd)
+        partial_name = None
     except BackupError as exc:
-        _drop_partial(partial)
+        _unlink_partial(dir_fd, partial_name)
         fail_job(conn, job_id, str(exc))
         return 1
     except OSError as exc:
-        _drop_partial(partial)
+        _unlink_partial(dir_fd, partial_name)
         fail_job(conn, job_id, f"Could not copy the backup ({exc.errno}).")
         return 1
+    finally:
+        if dir_fd is not None:
+            os.close(dir_fd)
     update_job(
         conn,
         job_id,

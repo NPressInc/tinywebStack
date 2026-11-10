@@ -92,11 +92,11 @@ Do this on a **replacement** computer. Do not run it against the family’s live
    yunohost backup restore tinyweb-YYYYMMDD-HHMMSS
    ```
 
-   The name has no `.tar`. This restores every system part and app stored in that archive. That includes LDAP accounts, permissions, certificates, and the TinyWeb hook. The hook copies settings back and replaces `permissions.db` and `app-devices.db` from the SQLite snapshots.
+   The name has no `.tar`. This restores every system part and app stored in that archive. That includes LDAP accounts, permissions, certificates, and the TinyWeb hook. The hook runs with **system `python3`**, not the dashboard virtualenv (that virtualenv does not exist yet). It runs `tinyweb_restore.py` from inside the archive, copies allowlisted settings back, and replaces `permissions.db` and `app-devices.db` from the SQLite snapshots. It refuses a symlink in any component of a destination path and does not write anywhere outside that allowlist.
 
 5. Do not install Synapse, Nextcloud, Mobilizon, OwnTracks, or Element on the new computer first. YunoHost refuses to restore an app that is already installed.
 
-6. The family-module code and the dashboard program are not a YunoHost app of their own. After restore, from a current checkout on the new box:
+6. After that restore has finished, put the dashboard program back from a current checkout. This step is what creates `/opt/tinywebstack-family-dashboard`. It is not required for the restore hook.
 
    ```bash
    sudo bash scripts/vm/install-family-dashboard.sh <main-domain>
@@ -108,6 +108,19 @@ Do this on a **replacement** computer. Do not run it against the family’s live
 7. Sign in at `https://<main-domain>/family/` as a parent. Check one chat, one calendar event, and one event before you treat the new box as the home. Encrypted history on a new phone still needs the recovery key.
 
 8. Copy `/home/yunohost.multimedia` back yourself if this family used Jellyfin. It was not in the archive.
+
+## Restore: limits
+
+Restore is a YunoHost restore on a replacement computer. The dashboard does not start it, and this repository's tests do not run it against a live box.
+
+- The restore hook is bootstrapped from the archive. It uses system `python3` and `conf/tinywebstack/tinyweb_restore.py`. It does not use `/opt/tinywebstack-family-dashboard`, which is installed only after restore.
+- It writes only allowlisted paths: `/etc/tinywebstack/`, TinyWeb files named `tinywebstack*` under Synapse `conf.d` and nginx `conf.d`, and the two TinyWeb hook scripts. A path such as `/etc/passwd` is refused even though it sits under `/`.
+- It refuses a symlink in any component of a destination path and writes files by opening the directory with `O_NOFOLLOW` and replacing a temporary file in that directory.
+- It restores SQLite from the snapshots in the archive, not by copying a live database file back into place.
+- It does not restore Jellyfin, Immich, `/home/yunohost.multimedia`, mail, Linux home directories, or the installer password file. Those were not in the archive.
+- It does not restore Matrix recovery keys. Encrypted chat on a new phone still needs the key that was shown on the old phone.
+- YunoHost will not restore an app that is already installed. Do not install Synapse, Nextcloud, Mobilizon, OwnTracks, or Element before `yunohost backup restore`.
+- A successful hook does not mean the new box is ready to use. Install the dashboard and re-apply the family module afterward, then check a chat, a calendar event, and an event while signed in as a parent.
 
 ## Security
 

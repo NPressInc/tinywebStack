@@ -16,7 +16,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from tinywebstack_dashboard.backup import BackupError, restore_sqlite_snapshot, snapshot_sqlite
+from tinywebstack_dashboard.backup import BackupError, snapshot_sqlite
+from tinywebstack_dashboard.restore_stdlib import RestoreError
+from tinywebstack_dashboard.restore_stdlib import lexical_rel as _lexical_rel
+from tinywebstack_dashboard.restore_stdlib import restore_destination as _restore_destination
+from tinywebstack_dashboard.restore_stdlib import restore_state as _restore_state
 
 MAX_CONFIG_BYTES = 2 * 1024 * 1024
 
@@ -197,6 +201,13 @@ def snapshot_state(backup_dir: Path, layout: Optional[HookLayout] = None) -> dic
         tmp.write_bytes(data)
         os.replace(tmp, dest)
         copied.append(rel)
+    script_src = Path(__file__).with_name("restore_stdlib.py")
+    script_dest = backup_dir / "tinyweb_restore.py"
+    if script_dest.is_symlink():
+        raise BackupError("Refusing to write the restore script onto a link.")
+    script_tmp = backup_dir / ".tinyweb_restore.py.tmp"
+    script_tmp.write_bytes(script_src.read_bytes())
+    os.replace(script_tmp, script_dest)
     manifest = {
         "hook": "conf_tinywebstack",
         "sqlite_method": "backup_api",
@@ -241,74 +252,23 @@ def _archive_rel(src: Path, layout: HookLayout) -> Optional[str]:
     return None
 
 
-_RESTORE_PREFIXES = (
-    "etc/tinywebstack/",
-    "etc/matrix-synapse/conf.d/tinywebstack",
-    "etc/nginx/conf.d/",
-    "etc/yunohost/hooks.d/backup/99-conf_tinywebstack",
-    "etc/yunohost/hooks.d/restore/99-conf_tinywebstack",
-)
-
-
 def restore_destination(rel: str, root: Path) -> Path:
-    """Map a manifest path onto ``root``. Reject traversal and unexpected files."""
-    if not rel or rel.startswith("/") or "\\" in rel:
-        raise BackupError("Refusing a backup path.")
-    parts = Path(rel).parts
-    if ".." in parts or "." in parts:
-        raise BackupError("Refusing a backup path.")
-    text = Path(rel).as_posix()
-    if text.startswith("etc/nginx/conf.d/") and "tinywebstack" not in Path(text).name:
-        raise BackupError("Refusing a nginx file that is not a TinyWeb snippet.")
-    if text.startswith("etc/matrix-synapse/conf.d/") and not Path(text).name.startswith(
-        "tinywebstack"
-    ):
-        raise BackupError("Refusing a Synapse file that is not a TinyWeb snippet.")
-    if not any(text.startswith(prefix) for prefix in _RESTORE_PREFIXES):
-        raise BackupError("Refusing a file this hook does not restore.")
-    dest = (root / text).resolve()
-    base = root.resolve()
-    if dest != base and base not in dest.parents:
-        raise BackupError("Refusing a restore path that leaves the target root.")
-    return dest
+    """Map a manifest path onto ``root`` using the explicit allowlist."""
+    try:
+        _lexical_rel(rel)
+        return _restore_destination(rel, root)
+    except RestoreError as exc:
+        raise BackupError(str(exc)) from exc
 
 
 def restore_state(backup_dir: Path, layout: Optional[HookLayout] = None, *, dest_root: Optional[Path] = None) -> None:
     """Apply a hook snapshot. ``dest_root`` is ``/`` on a real restore."""
-    layout = layout or production_layout()
+    del layout
     root = dest_root if dest_root is not None else Path("/")
-    manifest_path = backup_dir / "manifest.json"
     try:
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
-        raise BackupError("TinyWeb backup manifest is missing.") from exc
-    if not isinstance(manifest, dict) or manifest.get("sqlite_method") != "backup_api":
-        raise BackupError("TinyWeb backup was not made with a database snapshot.")
-    for name in manifest.get("snapshots") or []:
-        if name not in SQLITE_NAMES:
-            raise BackupError("Refusing an unknown database snapshot.")
-        snap = backup_dir / "snapshots" / name
-        if dest_root is not None:
-            live = dest_root / "etc/tinywebstack" / name
-        elif name == "permissions.db":
-            live = layout.permissions_db
-        else:
-            live = layout.app_devices_db
-        restore_sqlite_snapshot(snap, live)
-    for rel in manifest.get("files") or []:
-        if not isinstance(rel, str):
-            raise BackupError("Refusing a backup path.")
-        src = backup_dir / "files" / rel
-        if src.is_symlink() or not src.is_file():
-            raise BackupError("A backed-up settings file is missing.")
-        dest = restore_destination(rel, root)
-        data = src.read_bytes()
-        if len(data) > MAX_CONFIG_BYTES:
-            raise BackupError("Refusing an oversized settings file.")
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_suffix(dest.suffix + ".tmp")
-        tmp.write_bytes(data)
-        os.replace(tmp, dest)
+        _restore_state(backup_dir, root)
+    except RestoreError as exc:
+        raise BackupError(str(exc)) from exc
 
 
 def assert_hook_dir(path: Path) -> Path:
