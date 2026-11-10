@@ -47,3 +47,17 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Local fastlane install. CI does not bundle this.
+.bundle/
+vendor/bundle/
+
+# Store signing output and review screenshots. Never commit secrets.
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/
+fastlane/.env
+fastlane/screenshots/
+fastlane/**/*.mobileprovision
+fastlane/**/*.p12
+fastlane/**/*.cer

@@ -114,6 +114,9 @@ if bad:
 print("  all scripts/*.sh mode 100755")
 PY
 
+echo "== store metadata =="
+python3 scripts/store/check_store_metadata.py
+
 echo "== pytest (family module + dashboard) =="
 VALIDATE_VENV="${TW_STACK_ROOT}/.tools/validate-venv"
 if [[ ! -x "${VALIDATE_VENV}/bin/python" ]]; then
@@ -125,7 +128,7 @@ if ! "${VALIDATE_VENV}/bin/pip" install -q -r "${TW_STACK_ROOT}/scripts/requirem
 else
   env -u PYTHONPATH "${VALIDATE_VENV}/bin/python" -m pytest \
     family/synapse_module/tests family/dashboard/tests family/calendar_module/tests \
-    family/permissions/tests scripts/tests -q
+    family/permissions/tests controlplane/tests scripts/tests -q
   echo "  pytest passed"
 fi
 

@@ -20,7 +20,7 @@ yunohost backup create \
   --apps synapse element nextcloud mobilizon owntracks
 ```
 
-`--apps` lists only family apps that are actually installed. `traccar` is included when that app is installed instead of OwnTracks. `jellyfin` and `immich` are never passed. An empty `--system` is never used: that would also select `data_multimedia` (`/home/yunohost.multimedia`), `data_home`, and `data_mail`.
+`--apps` lists only family apps that are actually installed. `traccar` is included when that app is installed instead of OwnTracks. `jellyfin` is never passed, so a movie library cannot fill the archive. Immich is out of scope for v1, so `immich` is not passed either. An empty `--system` is never used: that would also select `data_multimedia` (`/home/yunohost.multimedia`), `data_home`, and `data_mail`.
 
 Optional system hooks (`conf_ynh_certs`, `conf_manually_modified_files`) are passed only when that hook file exists. `conf_ldap`, `conf_ynh_settings`, and `conf_tinywebstack` are required. If one of those is missing, the job fails and no archive is kept as successful.
 
@@ -46,7 +46,7 @@ Checked against upstream YunoHost and the app backup scripts (YunoHost `dev` hoo
 | TinyWeb settings and service config | Yes | The same hook copies `/etc/tinywebstack` settings and secrets (including `dashboard.env`, `secrets/`, the Synapse admin token, and the Matrix login-ticket secret), TinyWeb nginx snippets, and TinyWeb files under `/etc/matrix-synapse/conf.d`. Paths that are symlinks pointing outside those directories are not followed. |
 | Movies, shows, Jellyfin metadata | **No** | `jellyfin` is not in `--apps`. `jellyfin_ynh` would otherwise back up `$install_dir` and `$data_dir` (metadata and `jellyfin.db` can be large). This does not depend on any open Jellyfin change. |
 | Shared media folder | **No** | System hook `data_multimedia` (`/home/yunohost.multimedia`) is not selected. A `.nobackup` file in that folder is a YunoHost feature for people who run a full system backup; TinyWeb does not rely on it because it never selects that hook. |
-| Immich or other photo libraries | **No** | `immich` is not in `--apps`. |
+| Immich or other photo libraries | **No** | Immich is out of scope for v1. `immich` is not in `--apps`. |
 | Mail and Linux home directories | **No** | `data_mail` and `data_home` are not selected. |
 | Installer password file | **No** | `~/.tinywebstack-secrets/passwords.env` on the computer that installed the box is not on the box. |
 | Dashboard program files | Not as their own archive | `/opt/tinywebstack` and `/opt/tinywebstack-family-dashboard` are reinstalled from a checkout after a restore. Synapse’s own archive includes the Synapse virtualenv as it was at backup time, which may contain the family module. Still re-apply it after restore (below). |
@@ -117,7 +117,7 @@ Restore is a YunoHost restore on a replacement computer. The dashboard does not 
 - It writes only allowlisted paths: `/etc/tinywebstack/`, TinyWeb files named `tinywebstack*` under Synapse `conf.d` and nginx `conf.d`, and the two TinyWeb hook scripts. A path such as `/etc/passwd` is refused even though it sits under `/`.
 - It refuses a symlink in any component of a destination path and writes files by opening the directory with `O_NOFOLLOW` and replacing a temporary file in that directory.
 - It restores SQLite from the snapshots in the archive, not by copying a live database file back into place.
-- It does not restore Jellyfin, Immich, `/home/yunohost.multimedia`, mail, Linux home directories, or the installer password file. Those were not in the archive.
+- It does not restore Jellyfin, `/home/yunohost.multimedia`, mail, Linux home directories, or the installer password file. Those were not in the archive. Immich is out of scope for v1.
 - It does not restore Matrix recovery keys. Encrypted chat on a new phone still needs the key that was shown on the old phone.
 - YunoHost will not restore an app that is already installed. Do not install Synapse, Nextcloud, Mobilizon, OwnTracks, or Element before `yunohost backup restore`.
 - A successful hook does not mean the new box is ready to use. Install the dashboard and re-apply the family module afterward, then check a chat, a calendar event, and an event while signed in as a parent.
@@ -145,7 +145,7 @@ Automated in CI (no YunoHost, no live restore):
 - **Back up now** returns while the helper is still running.
 - A dead worker pid is marked failed after a restart.
 - Retention deletes only managed names, keeps the newest, caps a run at 20, and does not follow a symlink onto another file.
-- The YunoHost command never includes Jellyfin, Immich, `data_multimedia`, `data_home`, or `data_mail`.
+- The YunoHost command never includes Jellyfin, `data_multimedia`, `data_home`, or `data_mail`. Immich is out of scope for v1.
 - The TinyWeb hook snapshots SQLite with the backup API, skips a settings symlink that points outside, and refuses a manifest path that escapes.
 - The default schedule is off. The install script does not enable `tinywebstack-family-backup.timer` and does not run `yunohost backup create`.
 - The privileged shell script rejects unknown commands and does not evaluate arguments.

@@ -2,7 +2,40 @@
 
 tinywebStack is a private, self-hosted app ecosystem for families that runs on hardware at home. It replaces the custom C platform in NPressInc/TinyWebC with existing, proven open-source software plus a thin family layer on top.
 
-**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Backups](docs/BACKUP.md) · [Test nodes lab](docs/test-nodes.md)
+**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Backups](docs/BACKUP.md) · [Test nodes lab](docs/test-nodes.md) · [Unboxing](docs/UNBOXING.md)
+
+## Priority 1: unboxing
+
+The number-one product priority is that buying a TinyWeb box feels like setting up a phone. A parent plugs it in and finishes in the TinyWeb app. The executable spec is [docs/UNBOXING.md](docs/UNBOXING.md).
+
+The only steps a customer should see:
+
+1. Plug in power and ethernet.
+2. Open the TinyWeb app on the phone (App Store / Play Store), on the home Wi-Fi.
+3. The phone finds the box. The card in the lid (and the sticker on the bottom) has a one-time setup QR. Scanning it opens the app, or the store first if the app is not installed, with the setup code filled in.
+4. The parent names the family and chooses the first parent password.
+5. A calm progress screen runs while the box becomes `<family>.tinyweb.win`, gets a real Let's Encrypt certificate, and finishes install.
+6. The parent adds everyone else with the existing QR / one-link enrollment at `/family/join`.
+
+The parent never sees a terminal, a router page, YunoHost, or a certificate warning. TinyWeb does not use ads. Production TLS is Let's Encrypt.
+
+Workstreams, in order:
+
+| | Workstream | Where it stands |
+| --- | --- | --- |
+| A | Pre-imaged box, plus a first-boot wizard the phone can talk to on the LAN | **Software is in this repo.** The LAN setup API, the app wizard, and `scripts/setup/pre-ship.py` are real. William runs that script on an already-imaged box to mint the setup code and print the lid and sticker QR. Building or flashing the Debian image is not in this repo. |
+| B | Control plane for family-slug reservation, DNS, and certificates | **In this repo** (`controlplane/`). It is William's service at tinyweb.win. During first boot the box calls it to reserve `<family>.tinyweb.win`, order the edge certificate, and fetch tunnel credentials. Family traffic (chat, calendars, files, location) does not pass through that server. A name is published only when Cloudflare credentials are configured on that service. |
+| C | Built-in tunnel so port forwarding is not required | **In this repo.** The setup service calls `scripts/cloudflared-apply.sh` after the tunnel handoff. The script does not start a tunnel unless the control plane says DNS was published. Cloudflare is the default edge because tinyweb.win already uses it. The tunnel carries family traffic to the edge, not through the control plane. |
+| D | TinyWeb in the Apple App Store and Google Play Store | **Packaging is in this repo** ([docs/APP_STORES.md](docs/APP_STORES.md)). Nothing is submitted. The setup QR's https link still needs the store listing, and the `https://tinyweb.win/setup` page is not hosted yet. |
+| E | Push with TinyWeb-owned APNs/FCM credentials | **In this repo** ([docs/PUSH.md](docs/PUSH.md)). Every box uses TinyWeb's own keys. A family does not upload a `.p8`. The key files are not in git. |
+
+Today an operator still follows [docs/production-setup.md](docs/production-setup.md): flash Debian/YunoHost, SSH, clone, edit `tinyweb.env`, run `scripts/install-tinyweb.sh` or `scripts/install-on-box.sh`, DNS and ports, copy secrets off the box, sideload the app, then QR enroll. That runbook stays for operators. Customers use the unboxing path.
+
+v1 assumes the box is on ethernet and the phone is on the same home Wi-Fi. Wi-Fi-only first boot for the box itself is later.
+
+Build on these pieces. Do not replace them: the one-box installer, bare family slug → `<family>.tinyweb.win`, `scripts/vm/tinyweb-subdomain-ddns.sh`, `TWS_TLS_SINGLE_SAN_CERT=1` (one SAN certificate), the parent dashboard, the health page, and QR join at `/family/join`.
+
+The setup QR carries only that unit's pairing code (`https://tinyweb.win/setup#code=…` or `tinyweb://setup#code=…`, secret in the fragment). It is not the parent password and not a chat recovery key. The same code is how the box proves itself to the control plane when claiming `<family>.tinyweb.win`. It stays valid if setup fails partway, and it is not enough to reclaim a box after the family is set up. The parent chooses the password in the app. The Matrix recovery key is generated on the first phone, shown once, and written on a blank card that ships in the box. William mints the code and prints the QR with `scripts/setup/pre-ship.py` before the box ships. He does not set the family name or the password there.
 
 ## Target hardware
 
@@ -23,7 +56,7 @@ Bare family slugs are expanded automatically in the **TinyWeb app** (enrollment 
 - **Base OS:** [YunoHost](https://yunohost.org), a Debian-based self-hosting OS with an app catalog, user accounts and groups, single sign-on (one login for every app), per-app permissions, domains, and HTTPS.
 - **Texting and calling:** Matrix on **Synapse** (homeserver). Families use the **TinyWeb app** for chat; voice/video calls land in a later app stage (Element Call on the box). Synapse uses YunoHost logins and can federate between homes.
 - **Location:** OwnTracks Recorder or Traccar on the box; kids publish from the **TinyWeb app** (not the OwnTracks app).
-- **Media:** Optional [Jellyfin](docs/JELLYFIN.md) from the official YunoHost package, off unless `TWS_JELLYFIN=1`, at `jellyfin.<family>.tinyweb.win`. Playback stays in Jellyfin’s phone and TV apps (the browser is only a fallback). People sign in again with their TinyWeb username and password. That is LDAP, not single sign-on. Children are not allowed to sign in until a parent grants it, and the packaged “all libraries” default for new accounts is turned off. Parents add folders and per-person library access in Jellyfin’s own dashboard. TinyWeb only shows the address. Quiet hours are not applied to Jellyfin. Immich and other catalog apps stay out of this integration.
+- **Media:** Optional [Jellyfin](docs/JELLYFIN.md) from the official YunoHost package, off unless `TWS_JELLYFIN=1`, at `jellyfin.<family>.tinyweb.win`. When it is on, that hostname is on the family's Cloudflare Tunnel with the other service names. Playback stays in Jellyfin’s phone and TV apps (the browser is only a fallback). People sign in again with their TinyWeb username and password. That is LDAP, not single sign-on. Children are not allowed to sign in until a parent grants it, and the packaged “all libraries” default for new accounts is turned off. Parents add folders and per-person library access in Jellyfin’s own dashboard. TinyWeb only shows the address. Quiet hours are not applied to Jellyfin. Immich is out of scope for v1.
 
 ## What we build (the family layer)
 

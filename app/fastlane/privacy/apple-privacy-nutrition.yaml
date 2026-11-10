@@ -1,0 +1,66 @@
+# Draft answers for App Store Connect > App Privacy, and the keys in
+# ios/Runner/PrivacyInfo.xcprivacy. Not submitted by CI.
+# status stays "draft" until a person has clicked these answers in App Store
+# Connect. Tracking is off. There is no advertising purpose.
+status: draft
+bundle_id: win.tinyweb.tinyweb
+team_id: RC44X9237L
+tracking: false
+tracking_domains: []
+advertising: false
+data_used_to_track_you: []
+data_not_linked_to_you: []
+linked: true
+manifest_purposes:
+  - NSPrivacyCollectedDataTypePurposeAppFunctionality
+manifest_types:
+  - NSPrivacyCollectedDataTypePreciseLocation
+  - NSPrivacyCollectedDataTypeName
+  - NSPrivacyCollectedDataTypeUserID
+  - NSPrivacyCollectedDataTypePhotosorVideos
+  - NSPrivacyCollectedDataTypeAudioData
+  - NSPrivacyCollectedDataTypeOtherUserContent
+  - NSPrivacyCollectedDataTypeDeviceID
+data_linked_to_you:
+  - label: Precise Location
+    manifest_type: NSPrivacyCollectedDataTypePreciseLocation
+    note: >
+      Shared with parents on the family's own box, including in the background
+      after the phone is enrolled to share location. Not used to track the
+      person across other companies' apps.
+  - label: Name
+    manifest_type: NSPrivacyCollectedDataTypeName
+    note: Family name and member names on the family's box.
+  - label: User ID
+    manifest_type: NSPrivacyCollectedDataTypeUserID
+    note: The account id on the family's box (the Matrix / household user).
+  - label: Photos or Videos
+    manifest_type: NSPrivacyCollectedDataTypePhotosorVideos
+    note: Pictures and video the person chooses to send in family chat.
+  - label: Audio Data
+    manifest_type: NSPrivacyCollectedDataTypeAudioData
+    note: Microphone audio when the person records a video message.
+  - label: Other User Content
+    manifest_type: NSPrivacyCollectedDataTypeOtherUserContent
+    note: Chat text, calendar events, and family events. Not SMS or email.
+  - label: Device ID
+    manifest_type: NSPrivacyCollectedDataTypeDeviceID
+    note: >
+      Push token (APNs) or UnifiedPush endpoint so the box can wake the phone.
+      Not an advertising identifier. The push payload does not include the
+      message text.
+not_collected:
+  - Contacts
+  - Email Address
+  - Phone Number
+  - Coarse Location
+  - Health
+  - Payment Info
+  - Crash Data
+  - Product Interaction
+  - Advertising Data
+notes:
+  - The phone address book is not read. Household members come from the family's box and are covered by Name and User ID.
+  - iOS location in this app is precise. Approximate location is an Android and DNS question; do not copy this form onto the Play data-safety form.
+  - No analytics SDK and no crash SDK are linked into the app. Leave Diagnostics and Product Interaction off unless that changes.
+  - Calendar events are Other User Content here. Play Console has a separate Calendar type.

@@ -12,7 +12,7 @@ Checked against the official package [YunoHost-Apps/jellyfin_ynh](https://github
 
 `https://jellyfin.<family>.tinyweb.win/`
 
-That name matches the other service hosts (`matrix.`, `nextcloud.`, `mobilizon.`). With `TWS_JELLYFIN=1` it is included in `node_all_domains`, so bootstrap, lab certs, per-domain Let’s Encrypt, and the `*.<family>.tinyweb.win` certificate link pick it up. Turning it on later still adds the domain; if the family certificate is a wildcard for the main name, the installer copies that certificate onto the Jellyfin host.
+That name matches the other service hosts (`matrix.`, `nextcloud.`, `mobilizon.`). With `TWS_JELLYFIN=1` it is included in `node_all_domains` and on the family's Cloudflare Tunnel. Bootstrap, lab certs, per-domain Let’s Encrypt, and the `*.<family>.tinyweb.win` certificate link pick it up. Turning it on later still adds the domain; if the family certificate is a wildcard for the main name, the installer copies that certificate onto the Jellyfin host. Immich is out of scope for v1.
 
 The YunoHost package already creates the shared media directory and gives Jellyfin access to it. Put files under `/home/yunohost.multimedia/share` and add libraries from Jellyfin’s dashboard. TinyWeb does not scan, import, or transcode.
 

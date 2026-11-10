@@ -374,3 +374,16 @@ def test_lib_owner_and_splits(tmp_path: Path) -> None:
     assert out.stdout.strip() == "emma"
     out = _bash(tmp_path, 'resolve_family_kids "william"', TWS_FAMILY_KIDS="")
     assert out.stdout.strip() == ""
+
+
+def test_owner_fullname_overrides_capitalized_username(tmp_path: Path) -> None:
+    out = _bash(
+        tmp_path,
+        "family_user_fullname william",
+        TWS_FAMILY_OWNER="william",
+        TWS_FAMILY_OWNER_FULLNAME="William Floyd",
+    )
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.strip() == "William Floyd"
+    out = _bash(tmp_path, "family_user_fullname parent")
+    assert out.stdout.strip() == "Parent Test"

@@ -103,6 +103,12 @@ void main() {
     expect((await store.read())?.username, 'kid1');
   });
 
+  test('bootstrap with no enrollment opens unbox', () async {
+    final session = AppSession(store: InMemoryCredentialStore());
+    await session.bootstrap();
+    expect(session.route, AppRoute.unbox);
+  });
+
   test('401 from me wipes store', () async {
     final store = InMemoryCredentialStore();
     await store.write(

@@ -148,7 +148,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Later
 
-- Media: optional **Jellyfin** ([JELLYFIN.md](JELLYFIN.md), [PLAN.md](../PLAN.md)). It stays in the official Jellyfin apps. When `jellyfin.enabled` is set in family discovery, Home shows that server address (not the family home URL), says sign-in is the same username and password and not single sign-on, and can open the site in the browser. The app does not play media and does not edit libraries. Quiet hours are not applied. **Immich** is not part of this integration.
+- Media: optional **Jellyfin** ([JELLYFIN.md](JELLYFIN.md), [PLAN.md](../PLAN.md)). It stays in the official Jellyfin apps. When `jellyfin.enabled` is set in family discovery, Home shows that server address (not the family home URL), says sign-in is the same username and password and not single sign-on, and can open the site in the browser. The app does not play media and does not edit libraries. Quiet hours are not applied. **Immich** is out of scope for v1.
 - **Parent-key oversight** for kids' encrypted rooms ([FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) P3.8, deferred).
 
 ---
@@ -187,7 +187,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Push notifications
 
-**Status (2026-10):** Box `install-push.sh` (locked-down ntfy on `push.<domain>`, Sygnal via `SYGNAL_CONF`), enrollment `push` section, app pusher with full-URL Android pushkeys + iOS APNs entitlements; see [PUSH.md](PUSH.md). APNs/FCM keys still operator-supplied.
+**Status (2026-11):** Box `install-push.sh` (locked-down ntfy on `push.<domain>`, Sygnal via `SYGNAL_CONF`), enrollment `push` section, app pusher with full-URL Android pushkeys + iOS APNs entitlements; see [PUSH.md](PUSH.md). APNs/FCM keys are TinyWeb-operated and shared by every family box. A parent does not upload a key file.
 
 ### Push notifications (design)
 
@@ -195,7 +195,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 |---------|----------|
 | **Matrix** | Self-hosted **Sygnal** on the box, or upstream-compatible gateway; register pusher per device. |
 | **Android** | **ntfy** on box as UnifiedPush distributor (no Google dependency) where possible. |
-| **iOS** | **APNs required** by Apple — payloads must be minimal (`event_id` / room id only); app fetches content from box over TLS. Cert/account held by **app publisher** (open question). |
+| **iOS** | **APNs required** by Apple — payloads must be minimal (`event_id` / room id only); app fetches content from box over TLS. The auth key is held by TinyWeb (the app publisher) and installed as an operator secret, not uploaded per family. |
 | **Calendar / events** | Local notifications scheduled from CalDAV sync; Mobilizon push via GraphQL subscriptions or polling + unified push topic. |
 
 **Privacy rule:** Notification body on vendor networks should not contain message text, location, or event titles — only opaque ids.
@@ -226,7 +226,7 @@ Same binary; **mode from LDAP groups** at enrollment (`parents` vs `kids` — `T
 | **Flutter ↔ matrix-rust-sdk** | **Resolved by spike** (Flutter chosen). Remaining cost: owning the facade as matrix-sdk 0.x changes its API. Pin versions and update deliberately. |
 | **Release builds** | Spark is ARM64, so it can't build release Android artifacts. CI on x86_64 and macOS runners is the release path. |
 | **App store publishing** | William owns the **Apple** developer account. **Google Play** ownership and **F-Droid** are still open. |
-| **iOS push** | APNs **approved** (content-free payloads). Key and cert lifecycle still to handle. |
+| **iOS push** | APNs **approved** (content-free payloads). TinyWeb holds the shared APNs key and FCM service account; see [PUSH.md](PUSH.md). William still has to supply those secrets out of band. |
 | **Mobilizon PUBLIC default** | Federated event titles visible on public URLs — app UI should not surprise parents ([EVENTS.md](EVENTS.md)). |
 | **In-app chat scope** | Stage 1 chat is text only (no media, reactions, threads or calls). Room list and timeline come from a hand-written facade over `matrix-sdk`; move to `matrix-sdk-ui` (Timeline/RoomListService) as features grow. |
 | **E2EE** | **On** from Stage 1. Risks: a lost recovery key means old messages are lost on a new phone; parents can't see content off the kid's device; server-side content filters (P3.6) can't work in encrypted rooms. Interactive SAS verification of other people is deferred. |

@@ -12,6 +12,8 @@ import 'src/enroll/secure_recovery_screen.dart';
 import 'src/enroll/setup_checklist.dart';
 import 'src/enroll/setup_ready_screen.dart';
 import 'src/location/location_explainer_screen.dart';
+import 'src/setup/setup_link.dart';
+import 'src/setup/unbox_screen.dart';
 import 'src/shell/main_shell.dart';
 
 class TinyWebApp extends StatefulWidget {
@@ -26,6 +28,8 @@ class TinyWebApp extends StatefulWidget {
 class _TinyWebAppState extends State<TinyWebApp> {
   late final AppSession _session = widget.session ?? AppSession();
   String? _enrollLink;
+  String? _setupCode;
+  String? _setupLinkError;
   StreamSubscription<Uri>? _linkSub;
 
   @override
@@ -45,13 +49,13 @@ class _TinyWebAppState extends State<TinyWebApp> {
         return;
       }
       if (initial != null) {
-        setState(() => _enrollLink = initial.toString());
+        _takeLink(initial.toString());
       }
       _linkSub = appLinks.uriLinkStream.listen((uri) {
         if (!mounted) {
           return;
         }
-        setState(() => _enrollLink = uri.toString());
+        _takeLink(uri.toString());
       });
     } catch (_) {}
   }
@@ -61,6 +65,23 @@ class _TinyWebAppState extends State<TinyWebApp> {
     _linkSub?.cancel();
     _session.removeListener(_onSessionChanged);
     super.dispose();
+  }
+
+  void _takeLink(String raw) {
+    if (looksLikeSetupLink(raw)) {
+      final parsed = parseSetupCode(raw);
+      setState(() {
+        if (parsed.code != null) {
+          _setupCode = parsed.code;
+        }
+        _setupLinkError = parsed.error;
+        _enrollLink = null;
+      });
+      _session.openUnbox();
+      return;
+    }
+    setState(() => _enrollLink = raw);
+    _session.openExistingFamilyEnroll();
   }
 
   void _onSessionChanged() => setState(() {});
@@ -79,6 +100,12 @@ class _TinyWebAppState extends State<TinyWebApp> {
       case AppRoute.loading:
         return const Scaffold(
           body: Center(child: CircularProgressIndicator()),
+        );
+      case AppRoute.unbox:
+        return UnboxScreen(
+          session: _session,
+          initialCode: _setupCode,
+          initialError: _setupLinkError,
         );
       case AppRoute.enroll:
         return EnrollScreen(

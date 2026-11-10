@@ -25,6 +25,14 @@ def push_enabled() -> bool:
     return os.environ.get("TWS_PUSH_ENABLE", "1").strip() not in ("0", "false", "no", "off")
 
 
+def credential_source() -> str:
+    """Shared TinyWeb operator keys. `override` is a lab/dev operator path, not a parent upload."""
+    raw = os.environ.get("TWS_PUSH_CREDENTIAL_SOURCE", "tinyweb").strip().lower()
+    if raw in ("override", "lab", "dev"):
+        return "override"
+    return "tinyweb"
+
+
 def ios_app_id() -> str:
     bundle = os.environ.get("TWS_APNS_BUNDLE_ID", "win.tinyweb.tinyweb").strip()
     return f"{bundle}.ios"
@@ -47,6 +55,7 @@ def enroll_push_section(server_name: str) -> Optional[Dict[str, Any]]:
         f"https://{host}"
     )
     return {
+        "credential_source": credential_source(),
         "unifiedpush": {
             "gateway_url": unified_local,
             "public_base": public_base,

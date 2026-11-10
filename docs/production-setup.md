@@ -1,5 +1,7 @@
 # Production setup runbook (S5.2)
 
+This file is the operator runbook. Customers do not follow it. The customer path is [Unboxing](UNBOXING.md) (Priority 1 in [PLAN.md](../PLAN.md)): plug in power and ethernet, then finish in the TinyWeb app. Keep this runbook for flashing, SSH, and repair.
+
 Take a fresh machine (real hardware or VPS) to a working tinyWebStack **family
 node**: YunoHost 12 + Synapse/Element + OwnTracks (or Traccar) + Nextcloud
 CalDAV + Mobilizon + the parent dashboard at `https://<main-domain>/family/`,
@@ -61,7 +63,7 @@ The **TinyWeb app** expands bare family names on enrollment (`smith` →
 | Location (default) | `owntracks.home.example.com` | OwnTracks Recorder backend; kid publish via **TinyWeb app**; set `LOCATION_APP=traccar` for catalog fallback (`traccar.` host) |
 | Nextcloud CalDAV | `nextcloud.home.example.com` | CalDAV backend; families use calendar in the **TinyWeb app** ([CALENDAR.md](CALENDAR.md)) |
 | Mobilizon events | `mobilizon.home.example.com` | SSO/LDAP ([EVENTS.md](EVENTS.md)) |
-| Push (ntfy + Sygnal) | `push.home.example.com` | Matrix push gateways; content-free payloads ([PUSH.md](PUSH.md)) |
+| Push (ntfy + Sygnal) | `push.home.example.com` | Matrix push gateways; content-free payloads ([PUSH.md](PUSH.md)). APNs/FCM keys are TinyWeb's, not a file the family uploads. |
 
 All service hostnames **must** resolve to the node (see §1.2), including `push.<main>` when push is enabled.
 
@@ -225,7 +227,11 @@ Optional: `--dry-run` (plan only), `--skip-selfcheck` (skip the final health
 table). Log file: `/var/log/tinywebstack-install.log` (root-only, no secrets).
 
 **Expected:** step banners through self-check; a PASS/FAIL table; exit 0 when
-all checks pass. YunoHost admin is `twsowner` (or `TWS_ADMIN_USER`) with a
+all checks pass. The push step exits with an error until TinyWeb's APNs and
+FCM secrets are on the box ([PUSH.md](PUSH.md)); that is a missing operator
+secret, not a parent upload. Set `TWS_PUSH_ENABLE=0` to skip push, or
+`TWS_PUSH_REQUIRE_OPERATOR_KEYS=0` to install ntfy plus a Sygnal stub that
+refuses delivery. YunoHost admin is `twsowner` (or `TWS_ADMIN_USER`) with a
 random password in `/etc/tinywebstack/secrets/install.env` — back that file up
 off-box; the installer does not print it.
 

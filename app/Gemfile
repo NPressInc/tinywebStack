@@ -1,0 +1,5 @@
+source "https://rubygems.org"
+
+# Used on a Mac when a person runs the Fastlane build lanes from app/.
+# CI does not install this gem. Metadata checks are Python and do not need it.
+gem "fastlane", "~> 2.225"

@@ -1,0 +1,10 @@
+TinyWeb is the client for a computer the family keeps at home (the home box). The phones do not get a TinyWeb cloud account by themselves.
+
+This listing is not ready for review until the person submitting it has entered, in App Store Connect only:
+
+- a demo family name that resolves to a live demo box
+- a parent username and password on that box
+
+Do not expect those secrets in the git repository.
+
+Suggested review path: install the build, open TinyWeb, enter the demo family name, sign in as the parent. Chat, calendar, events, and location are stored on the demo box. Location sharing stays off until it is turned on for a phone. The app does not show ads and does not use tracking.

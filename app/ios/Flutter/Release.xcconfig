@@ -1,1 +1,4 @@
 #include "Generated.xcconfig"
+DEVELOPMENT_TEAM = RC44X9237L
+CODE_SIGN_STYLE = Automatic
+

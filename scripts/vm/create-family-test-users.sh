@@ -64,16 +64,6 @@ add_to_group() {
   yunohost user group add "$1" "$2"
 }
 
-# Display name: lab labels for parent/kid, capitalized name otherwise.
-user_fullname() {
-  local user=$1
-  case "$user" in
-    parent) printf 'Parent Test\n' ;;
-    kid)    printf 'Kid Test\n' ;;
-    *)      printf '%s\n' "$(printf '%s' "${user:0:1}" | tr '[:lower:]' '[:upper:]')${user:1}" ;;
-  esac
-}
-
 IFS=',' read -r -a _family_users <<< "$FAMILY_USERS_CSV"
 declare -A _is_kid=()
 if [[ -n "$KID_USERS_CSV" ]]; then
@@ -88,7 +78,7 @@ for user in "${_family_users[@]}"; do
   # <USER>_PASSWORD env (dot/hyphen → underscore), extra legacy keys, then the
   # <user>_password node secret (legacy lab parent/kid secrets unchanged).
   pw="$(user_test_password "$NODE_NAME" "$user")"
-  create_user "$user" "$pw" "$(user_fullname "$user")"
+  create_user "$user" "$pw" "$(family_user_fullname "$user")"
   if [[ -n "${_is_kid[$user]:-}" ]]; then
     add_to_group "$KIDS_GROUP" "$user"
   else
