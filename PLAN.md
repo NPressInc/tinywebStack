@@ -2,7 +2,7 @@
 
 tinywebStack is a private, self-hosted app ecosystem for families that runs on hardware at home. It replaces the custom C platform in NPressInc/TinyWebC with existing, proven open-source software plus a thin family layer on top.
 
-**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Test nodes lab](docs/test-nodes.md)
+**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Backups](docs/BACKUP.md) · [Test nodes lab](docs/test-nodes.md)
 
 ## Target hardware
 
@@ -23,7 +23,7 @@ Bare family slugs are expanded automatically in the **TinyWeb app** (enrollment 
 - **Base OS:** [YunoHost](https://yunohost.org), a Debian-based self-hosting OS with an app catalog, user accounts and groups, single sign-on (one login for every app), per-app permissions, domains, and HTTPS.
 - **Texting and calling:** Matrix on **Synapse** (homeserver). Families use the **TinyWeb app** for chat; voice/video calls land in a later app stage (Element Call on the box). Synapse uses YunoHost logins and can federate between homes.
 - **Location:** OwnTracks Recorder or Traccar on the box; kids publish from the **TinyWeb app** (not the OwnTracks app).
-- **Media and apps:** Jellyfin, Immich, Nextcloud, and others from the YunoHost catalog. Complex optional media apps like **Jellyfin** stay as their own separate native apps (phone/TV) rather than being built into the TinyWeb mega-app; family members sign into them automatically using their same TinyWeb username and password via YunoHost's shared LDAP directory.
+- **Media:** Optional [Jellyfin](docs/JELLYFIN.md) from the official YunoHost package, off unless `TWS_JELLYFIN=1`, at `jellyfin.<family>.tinyweb.win`. Playback stays in Jellyfin’s phone and TV apps (the browser is only a fallback). People sign in again with their TinyWeb username and password. That is LDAP, not single sign-on. Children are not allowed to sign in until a parent grants it, and the packaged “all libraries” default for new accounts is turned off. Parents add folders and per-person library access in Jellyfin’s own dashboard. TinyWeb only shows the address. Quiet hours are not applied to Jellyfin. Immich and other catalog apps stay out of this integration.
 
 ## What we build (the family layer)
 
@@ -32,6 +32,14 @@ Bare family slugs are expanded automatically in the **TinyWeb app** (enrollment 
 3. **Parental controls.** Contact allowlists, quiet hours, and parent visibility into a kid's activity. These are enforced where the apps allow it (Matrix server modules or admin API, per-app permissions).
 4. **Location in the permission model.** Only a kid's own parents, or users the parents approve, can see that kid's location.
 5. **Setup.** Scripts and docs that turn a fresh YunoHost install into a family node with a small number of steps.
+
+## Backups
+
+Parents manage backups from the dashboard at `/family/backup`. The page can start a backup, show whether it is running or why it failed, and keep a short history. Automatic backups stay **off** until a parent turns them on. Nothing is scheduled by installing the dashboard.
+
+Backups call YunoHost’s `yunohost backup create` for family accounts (LDAP), app databases, and app files. TinyWeb’s own state — the permissions database, phone sign-in database, and `/etc/tinywebstack` — is added by a YunoHost backup hook that snapshots SQLite with the database backup API. Jellyfin and the shared media folder are not included, so a movie library cannot fill an 8 GB disk. A backup that stays on the box is not a spare copy. Restoring onto a replacement computer is a documented YunoHost restore, not a button on the page.
+
+See [docs/BACKUP.md](docs/BACKUP.md).
 
 ## Out of scope for now
 
@@ -61,5 +69,9 @@ On the phone:
 4. The app then shows **You're all set** with a checklist. Chat, calendar, events, and location are marked linked or not. Any step still left is explained in plain language: save the chat recovery key, allow location, or open Events and enter the family password once. A one-time code does not carry that password. Expired codes, already-used codes, a different family server, and an unreachable box each get their own message.
 
 Enrollment does not add permissions beyond the role the parent set, and it does not weaken password login.
+
+## Health
+
+Parents can open **Is everything working?** at `/family/health` (linked from the family home, and from **Home health** in the TinyWeb app for parents only). It says in plain language whether chat, calendars, events, location, phone notifications, the website certificate, and disk space are OK, need a look, or have a problem, plus the last check time and a short hint. Optional apps such as Jellyfin and backups show **Not installed** when they are not on the box. Checks are read-only, time-limited, and cached. The page does not show secrets, run commands a parent types, or restart anything.
 
 One **TinyWeb** mobile app (`app/`, Flutter) connects to every backend on the family box with one enrollment. **Chat is built into the app from Stage 1** (no Element X hand-off or in-app button), via **matrix-rust-sdk** through the small **`tinyweb_core` Rust bridge** (spike: PR #38). Chat is **end-to-end encrypted from Stage 1**: the box allows encrypted rooms and creates new rooms encrypted by default; the app sets up a **recovery key** and **key backup**; kid allowlists and quiet hours still apply (metadata on the server). Parent-key oversight of kid chats is **deferred**; parents read a kid's chats only on the kid's device for now. **Built-in background location** (Stage 1) posts OwnTracks-format JSON to the box’s existing Recorder HTTP endpoint; parents see traces in the app and on the dashboard map (kids do not need the OwnTracks app). **Release builds** run in CI on GitHub Actions (PR #41, `.github/workflows/app.yml`); spark (ARM64) cannot produce Android release artifacts; iOS needs macOS runners. Pin **matrix-rust-sdk** and upgrade deliberately. See [docs/TINYWEB_APP_PLAN.md](docs/TINYWEB_APP_PLAN.md).

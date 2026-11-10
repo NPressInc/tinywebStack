@@ -49,6 +49,9 @@ fi
 if [[ -f "${TW_STACK_ROOT}/vm/install-tinyweb-portal-branding.sh" ]]; then
   run_vm_script install-tinyweb-portal-branding.sh "$MAIN_DOMAIN"
 fi
+if [[ -f "${TW_STACK_ROOT}/vm/install-jellyfin.sh" ]]; then
+  run_vm_script install-jellyfin.sh "$MAIN_DOMAIN"
+fi
 
 if [[ -n "$NODE_NAME" ]]; then
   run_vm_script create-family-test-users.sh "$MAIN_DOMAIN" "$NODE_NAME" "${EXTRA_ARGS[@]}"

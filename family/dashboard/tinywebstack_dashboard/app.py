@@ -69,7 +69,10 @@ from tinywebstack_dashboard.link_invite import (
     redeem_link_invite,
     LinkInviteError,
 )
+from tinywebstack_dashboard.backup_routes import create_backup_router
 from tinywebstack_dashboard.urls import dash_url, dashboard_root_path
+from tinywebstack_dashboard.health import register_health_routes, summary_line
+from tinywebstack_dashboard.jellyfin import jellyfin_public_discovery
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "templates"))
 
@@ -178,13 +181,14 @@ def config_from_env() -> DashboardConfig:
     )
 
 
-def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
+def create_app(cfg: DashboardConfig | None = None, *, health_probes: object | None = None) -> FastAPI:
     _install_enroll_log_redaction()
     cfg = cfg or config_from_env()
     root_path = dashboard_root_path()
     TEMPLATES.env.globals["url"] = lambda path="/": dash_url(path, root_path)
     # Nginx strips /family/ before proxying; do not set FastAPI root_path (breaks static mounts).
     app = FastAPI(title="TinyWeb Family")
+    register_health_routes(app, cfg, health_probes, TEMPLATES)
     static_dir = Path(__file__).parent / "static"
     if static_dir.is_dir():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -335,6 +339,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
         )
     )
     app.include_router(create_map_router(cfg))
+    app.include_router(create_backup_router(cfg))
 
     def matrix_homeserver_public_url() -> str:
         host = (matrix_server or cfg.server_name).strip()
@@ -359,6 +364,7 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "location_url": cfg.location_base_url,
                 "push_enabled": os.environ.get("TWS_PUSH_ENABLE", "1").strip()
                 not in ("0", "false", "no", "off"),
+                "jellyfin": jellyfin_public_discovery(os.environ.get("TWS_JELLYFIN_URL")),
             }
         )
 
@@ -519,6 +525,8 @@ def create_app(cfg: DashboardConfig | None = None) -> FastAPI:
                 "location_url": cfg.location_base_url,
                 "events_url": cfg.events_base_url,
                 "member_count": len(list_members(cfg)),
+                "jellyfin": jellyfin_public_discovery(os.environ.get("TWS_JELLYFIN_URL")),
+                "health_line": summary_line(app.state.health_cache.peek()),
             },
         )
 

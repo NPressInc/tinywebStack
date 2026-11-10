@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api/lab_ca_config.dart';
+import '../api/models.dart';
 import '../app_session.dart';
 import '../brand.dart';
 import '../enroll/secure_recovery_screen.dart';
+import '../health/health_screen.dart';
 import '../location/location_service.dart';
 import '../widgets/quiet_hours_banner.dart';
 
@@ -114,12 +117,26 @@ class HomeScreen extends StatelessWidget {
                 subtitle: 'Kids: chat rules, quiet hours, events',
                 onTap: onOpenFamily!,
               ),
-            _HomeTile(
-              icon: Icons.apps_outlined,
-              title: 'Other family apps',
-              subtitle: 'Server URL & login for Jellyfin and TV apps',
-              onTap: () => _showOtherAppsSheet(context),
-            ),
+            if (isParent)
+              _HomeTile(
+                icon: Icons.health_and_safety_outlined,
+                title: 'Home health',
+                subtitle: 'Whether chat, calendars, and the rest are working',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => HealthScreen(session: session),
+                    ),
+                  );
+                },
+              ),
+            if (session.enrollment?.discovery.jellyfin?.canOpen == true)
+              _HomeTile(
+                icon: Icons.movie_outlined,
+                title: 'Jellyfin',
+                subtitle: 'Movies, music, and photos in the Jellyfin app',
+                onTap: () => _showJellyfinSheet(context),
+              ),
           ],
         ),
       ),
@@ -195,15 +212,32 @@ class HomeScreen extends StatelessWidget {
     }
   }
 
-  void _showOtherAppsSheet(BuildContext context) {
-    final profile = session.profile!;
-    final enrollment = session.enrollment;
-    var serverUrl = enrollment?.serverOrigin ?? '';
-    if (serverUrl.isEmpty &&
-        enrollment?.serverName != null &&
-        enrollment!.serverName.isNotEmpty) {
-      serverUrl = 'https://${enrollment.serverName}';
+  JellyfinDiscovery? get _jellyfin => session.enrollment?.discovery.jellyfin;
+
+  Future<void> _openJellyfin(BuildContext context, String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme != 'https') {
+      return;
     }
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Could not open Jellyfin. Copy the server address into the Jellyfin app.',
+          ),
+        ),
+      );
+    }
+  }
+
+  void _showJellyfinSheet(BuildContext context) {
+    final profile = session.profile!;
+    final jellyfin = _jellyfin;
+    if (jellyfin == null || !jellyfin.canOpen) {
+      return;
+    }
+    final serverUrl = jellyfin.url!;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -221,16 +255,20 @@ class HomeScreen extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Other family apps (Jellyfin, etc.)',
+                'Jellyfin',
                 style: Theme.of(sheetContext).textTheme.titleLarge,
               ),
               const SizedBox(height: 12),
               const Text(
-                'Optional apps like Jellyfin stay as their own separate native phone or TV apps and use your same TinyWeb login (via YunoHost).',
+                'Watch and listen in the Jellyfin app on this phone or a TV. TinyWeb does not play media. The browser is only a fallback.',
+              ),
+              const SizedBox(height: 12),
+              const Text(
+                'Jellyfin asks for your TinyWeb username and password again. That is the same family account, not single sign-on. A child cannot sign in until a parent allows that account. Libraries are chosen in Jellyfin’s own dashboard, and new accounts start with none. Quiet hours do not turn Jellyfin off.',
               ),
               const SizedBox(height: 20),
               Text(
-                'Server URL',
+                'Server address',
                 style: Theme.of(sheetContext).textTheme.titleSmall,
               ),
               const SizedBox(height: 4),
@@ -243,11 +281,15 @@ class HomeScreen extends StatelessWidget {
                   await Clipboard.setData(ClipboardData(text: serverUrl));
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Server URL copied')),
+                      const SnackBar(content: Text('Server address copied')),
                     );
                   }
                 },
-                child: const Text('Copy server URL'),
+                child: const Text('Copy server address'),
+              ),
+              TextButton(
+                onPressed: () => _openJellyfin(context, serverUrl),
+                child: const Text('Open in browser'),
               ),
               const SizedBox(height: 12),
               Text(

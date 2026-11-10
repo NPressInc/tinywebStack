@@ -143,7 +143,7 @@ Components on each node:
 
 - **Policy store:** `/etc/tinywebstack/family-policy.json` — kid MXIDs, allowlists, quiet hours, trusted domains, parent MXIDs (written by the dashboard).
 - **Synapse:** `tinywebstack_family` module — spam checker (allowlists, quiet hours), E2EE allowed and on by default ([FAMILY_MODULE.md](FAMILY_MODULE.md)).
-- **Dashboard:** FastAPI app at `/family/` — parents group via SSO ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)).
+- **Dashboard:** FastAPI app at `/family/` — parents group via SSO ([FAMILY_DASHBOARD.md](FAMILY_DASHBOARD.md)). `/family/health` is the parent-only “is everything working?” page (read-only checks, no restarts).
 - **VM scripts:** `family-groups.sh`, `install-family-module.sh`, `install-family-dashboard.sh`, `family-init.sh`.
 - **Clients (families):** **TinyWeb app** (iOS/Android) + **parent dashboard** (`/family/`). Backends stay Synapse, OwnTracks Recorder, Nextcloud, Mobilizon. **Operator/lab only:** Element Web at `element.<domain>`, curl, or legacy third-party clients — see [TINYWEB_APP_PLAN.md](TINYWEB_APP_PLAN.md) and [PHILOSOPHY.md](PHILOSOPHY.md) §5c.
 - **Parent UX:** The dashboard is the **only** required web UI for families; backend admin panels are optional ([PHILOSOPHY.md](PHILOSOPHY.md) §5b).

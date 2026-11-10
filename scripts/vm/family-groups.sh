@@ -173,6 +173,27 @@ if [[ "$EVENTS_APP" == "mobilizon" ]] && ynh_perm_exists "mobilizon.main"; then
   fi
 fi
 
+# Jellyfin is optional. When it is installed, parents may sign in. Children and
+# other households are not granted jellyfin.main, so the packaged LDAP search
+# filter rejects their native-client login. Library choices stay in Jellyfin.
+if ynh_app_installed jellyfin; then
+  if ynh_perm_exists jellyfin.main; then
+    perm_remove jellyfin.main all_users || true
+    perm_remove jellyfin.main "$KIDS_GROUP" || true
+    perm_remove jellyfin.main "$FED_TEST_GROUP" || true
+    perm_add jellyfin.main visitors || true
+    perm_add jellyfin.main "$PARENTS_GROUP"
+  fi
+  if ynh_perm_exists jellyfin.admin; then
+    perm_remove jellyfin.admin all_users || true
+    perm_remove jellyfin.admin visitors || true
+    perm_remove jellyfin.admin "$KIDS_GROUP" || true
+    perm_remove jellyfin.admin "$FED_TEST_GROUP" || true
+    perm_add jellyfin.admin "$PARENTS_GROUP"
+    hide_portal_tile jellyfin.admin || true
+  fi
+fi
+
 configure_element_tile_logo || true
 
 # Traccar is fallback-only; Owntracks map is linked from the dashboard (avoid broken portal tiles).

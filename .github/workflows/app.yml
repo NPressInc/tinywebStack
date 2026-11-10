@@ -2,6 +2,7 @@ name: TinyWeb app
 
 # Release builds for the Flutter app. spark (linux-arm64) can only make debug APKs,
 # so release Android builds run on ubuntu x86_64 runners and iOS on macOS runners.
+# Backup work does not change the app; this file is listed so those jobs still run.
 on:
   push:
     branches: [main]

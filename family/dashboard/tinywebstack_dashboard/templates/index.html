@@ -4,13 +4,24 @@
 <nav class="tw-nav">
   <a href="{{ url('/') }}">Home</a>
   <a href="{{ url('/members') }}">Family members ({{ member_count }})</a>
+  <a href="{{ url('/health') }}">Health</a>
   <a href="{{ url('/invite') }}">Link another home</a>
+  <a href="{{ url('/backup') }}">Backups</a>
 </nav>
 {% endblock %}
 {% block content %}
 <h1>Your family home</h1>
 <p class="hint">This is the only place you need for everyday family setup — adding people, chat rules, and linking another household.</p>
 <p>Signed in as <strong>{{ user }}</strong>.</p>
+<div class="card">
+  <h2>Is everything working?</h2>
+  {% if health_line %}
+  <p>{{ health_line }}</p>
+  {% else %}
+  <p class="hint">See whether chat, calendars, events, location, notifications, the website certificate, and disk space are OK.</p>
+  {% endif %}
+  <p><a href="{{ url('/health') }}">Open health</a></p>
+</div>
 <div class="card">
   <h2>Quick links</h2>
   <ul>
@@ -20,6 +31,7 @@
     <li>View locations (parents only): <a href="{{ location_url }}">open map</a></li>
     {% endif %}
     <li><a href="{{ url('/calendar') }}">Set up phone calendars (CalDAV)</a></li>
+    <li><a href="{{ url('/backup') }}">Back up this home</a></li>
     {% if events_url %}
     <li>Family events &amp; RSVPs: <a href="{{ events_url }}">open events</a>
       <span class="hint">(after the portal opens Mobilizon, sign in once with the same email and password as YunoHost/LDAP)</span></li>
@@ -27,6 +39,15 @@
     <li><a href="{{ url('/invite') }}">Invite another household</a> · <a href="{{ url('/invite/redeem') }}">Redeem an invite</a></li>
   </ul>
 </div>
+{% if jellyfin.enabled %}
+<div class="card">
+  <h2>Jellyfin</h2>
+  <p>Movies, shows, music, photos, and audiobooks stay in the Jellyfin app. TinyWeb does not play them and does not replace Jellyfin’s own screens.</p>
+  <p><a href="{{ jellyfin.url }}">Open Jellyfin</a></p>
+  <p class="hint">Address: {{ jellyfin.url }} Sign in there with your TinyWeb username and password. Jellyfin asks again — this is not single sign-on. On a phone or TV, install Jellyfin and add that address. The browser is only a fallback.</p>
+  <p class="hint">Children cannot sign in until you allow that one account. New Jellyfin accounts start with no libraries. In Jellyfin’s dashboard, add media folders (YunoHost’s shared folder is /home/yunohost.multimedia/share) and turn on only the libraries each person should see. Confirm the LDAP plugin’s “access to all libraries” box is off. Family quiet hours do not apply to Jellyfin. To let one child sign in after you have checked that: <code>yunohost user permission add jellyfin.main USERNAME</code></p>
+</div>
+{% endif %}
 <h2>Children — who they can chat with</h2>
 <p class="hint">Choose contacts and quiet hours for each child.</p>
 {% if kids %}

@@ -148,7 +148,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Later
 
-- Media (**Jellyfin**, **Immich**) from [PLAN.md](../PLAN.md). Complex optional media apps like **Jellyfin** stay as separate native apps (phone/TV) rather than being built into the TinyWeb mega-app; family members sign into them using their same TinyWeb server URL, username, and password via YunoHost's shared LDAP directory (with a helper on Home in the TinyWeb app to copy the server URL and username).
+- Media: optional **Jellyfin** ([JELLYFIN.md](JELLYFIN.md), [PLAN.md](../PLAN.md)). It stays in the official Jellyfin apps. When `jellyfin.enabled` is set in family discovery, Home shows that server address (not the family home URL), says sign-in is the same username and password and not single sign-on, and can open the site in the browser. The app does not play media and does not edit libraries. Quiet hours are not applied. **Immich** is not part of this integration.
 - **Parent-key oversight** for kids' encrypted rooms ([FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) P3.8, deferred).
 
 ---
@@ -175,6 +175,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | `GET /family/api/locations` | **Built** | Parent-only: latest position per kid (Recorder `/api/0/last` via `TWS_OWNTRACKS_API_URL`) |
 | `GET /family/api/locations/{username}/track` | **Built** | Parent-only track history (`hours` query, max 2000 points) |
 | `GET /family/api/map` | **Built** | Parent-only: self-hosted PMTiles URLs + bounds ([MAP.md](MAP.md)) |
+| `GET /family/api/health` | **Built** | Parent-only read-only service health (same report as `/family/health`). Kids get 403. No secrets, paths, or restarts. |
 
 **Existing (keep):** `GET/PUT /family/permissions/{user}`, `/family/federation/domains`, public invite verify, well-known.
 

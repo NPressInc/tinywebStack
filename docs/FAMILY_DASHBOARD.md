@@ -28,10 +28,13 @@ After install: `https://<main-domain>/family/` (proxied to `127.0.0.1:8765`).
 
 Parents see (plain language):
 
+- **Health** (`/family/health`) — whether chat, calendars, events, location, phone notifications, the website certificate, and disk space are OK, need a look, or have a problem. Optional Jellyfin and backups show **Not installed** when they are not on the box. Each row has the last check time and a short hint. Checks are read-only (loopback health pages, `systemctl show` of a fixed unit list, certificate dates, and `df` of `/`), time out after a couple of seconds, and are cached for about a minute. Nothing is restarted. Kids get **403**. `GET /family/api/health` is the same report for a parent bearer token (`Cache-Control: no-store`) and is what the TinyWeb app’s **Home health** screen uses.
 - **Family members** — add/remove parents and children, reset passwords, see chat (Matrix) status
 - **Location phone setup** — enroll the **TinyWeb app** on each child’s phone (location publishes in-app); map link for parents only
 - **Household invite** — create or redeem one-time links ([FAMILY_INVITE.md](FAMILY_INVITE.md))
+- **Backups** — start a backup, see if it worked, copy it off this computer ([BACKUP.md](BACKUP.md))
 - Per-child **contacts & quiet hours** (allowlists, bedtime rules)
+- **Jellyfin** — only when it was installed: the server address and a short note to use Jellyfin’s own dashboard for libraries. No media settings live here ([JELLYFIN.md](JELLYFIN.md)).
 
 Kids do **not** receive dashboard or OwnTracks web permissions (`family-groups.sh`).
 
@@ -104,6 +107,7 @@ Installed by `install-family-dashboard.sh`:
 |------|---------|
 | `/usr/local/sbin/tws-family-dashboard-privileged` | YunoHost user create/delete/password, Synapse user status, OwnTracks kid credentials, Nextcloud app passwords, Matrix device delete |
 | `/usr/local/sbin/tws-family-sync-federation` | Merge `trusted_domains` into Synapse allowlist |
+| `/usr/local/sbin/tws-family-backup-privileged` | Preflight, start, list, download, and copy YunoHost backups. Fixed subcommands only. Does not restore. |
 
 `www-data` may run these via `/etc/sudoers.d/tinywebstack-family-dashboard` (NOPASSWD).
 

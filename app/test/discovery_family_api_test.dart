@@ -33,6 +33,24 @@ void main() {
     expect(result.serverName, 'family.example');
     expect(result.resolveEnrollEndpoint(),
         'https://family.example/family/api/app/enroll');
+    expect(result.jellyfin?.canOpen, isFalse);
+  });
+
+  test('jellyfin discovery ignores an SSO claim and drops secrets', () {
+    final discovery = FamilyDiscovery.fromJson({
+      'jellyfin': {
+        'enabled': true,
+        'url': 'https://jellyfin.smith.tinyweb.win/',
+        'sso': true,
+        'auth': 'ldap_password',
+        'quiet_hours_enforced': true,
+        'api_key': 'nope',
+      },
+    }, 'https://smith.tinyweb.win');
+    expect(discovery.jellyfin?.canOpen, isTrue);
+    expect(discovery.jellyfin?.url, 'https://jellyfin.smith.tinyweb.win/');
+    expect(discovery.jellyfin?.sso, isFalse);
+    expect(discovery.jellyfin?.quietHoursEnforced, isFalse);
   });
 
   test('enroll success', () async {

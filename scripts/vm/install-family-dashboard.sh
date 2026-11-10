@@ -151,6 +151,7 @@ TWS_EVENTS_URL=https://${EVENTS_D}/
 TWS_EVENTS_PERMS_CMD="sudo /usr/local/sbin/tws-family-events-perms"
 TWS_CALDAV_ROOT=${CALDAV_ROOT}
 TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"
+TWS_BACKUP_HELPER="sudo /usr/local/sbin/tws-family-backup-privileged"
 TWS_OWNTRACKS_PUBLISH_URL=https://${LOC_D}/recorder/pub
 TWS_OWNTRACKS_API_URL=${OWNTRACKS_API_URL}
 TWS_OWNTRACKS_KIDS_FILE=/etc/tinywebstack/owntracks-kids.json
@@ -183,6 +184,8 @@ else
   grep -q '^TWS_YUNOHOST_PRIV_HELPER=' "$CSRF_FILE" \
     && sed -i 's|^TWS_YUNOHOST_PRIV_HELPER=.*|TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"|' "$CSRF_FILE" \
     || printf '%s\n' 'TWS_YUNOHOST_PRIV_HELPER="sudo /usr/local/sbin/tws-family-dashboard-privileged"' >>"$CSRF_FILE"
+  grep -q '^TWS_BACKUP_HELPER=' "$CSRF_FILE" \
+    || printf '%s\n' 'TWS_BACKUP_HELPER="sudo /usr/local/sbin/tws-family-backup-privileged"' >>"$CSRF_FILE"
   if grep -q '^TWS_FEDERATION_SYNC_CMD=' "$CSRF_FILE"; then
     sed -i "s|^TWS_FEDERATION_SYNC_CMD=.*|TWS_FEDERATION_SYNC_CMD=\"sudo /usr/local/sbin/tws-family-sync-federation ${MAIN_DOMAIN}\"|" "$CSRF_FILE"
   fi
@@ -213,6 +216,14 @@ fi
 
 install -d -m 775 -o root -g www-data /etc/tinywebstack
 install -d -m 755 -o root -g root /var/lib/tinywebstack/map
+install -d -m 2770 -o root -g www-data /var/lib/tinywebstack/backup
+if [[ -f "${TW_STACK_ROOT}/hooks/backup/99-conf_tinywebstack" && -d /etc/yunohost ]]; then
+  install -d -m 755 /etc/yunohost/hooks.d/backup /etc/yunohost/hooks.d/restore
+  install -m 755 "${TW_STACK_ROOT}/hooks/backup/99-conf_tinywebstack" \
+    /etc/yunohost/hooks.d/backup/99-conf_tinywebstack
+  install -m 755 "${TW_STACK_ROOT}/hooks/restore/99-conf_tinywebstack" \
+    /etc/yunohost/hooks.d/restore/99-conf_tinywebstack
+fi
 touch /etc/tinywebstack/app-devices.db
 chown www-data:www-data /etc/tinywebstack/app-devices.db
 chmod 600 /etc/tinywebstack/app-devices.db
@@ -264,6 +275,7 @@ EOF
 install_wrapper tws-family-sync-federation family-sync-federation
 install_wrapper tws-family-dashboard-privileged family-dashboard-privileged
 install_wrapper tws-family-events-perms family-events-perms
+install_wrapper tws-family-backup-privileged family-backup-privileged
 
 SUDOERS="/etc/sudoers.d/tinywebstack-family-dashboard"
 TMP_SUDO="$(mktemp)"
@@ -271,6 +283,7 @@ printf '%s\n' \
   "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-sync-federation *" \
   "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-dashboard-privileged *" \
   "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-events-perms" \
+  "www-data ALL=(root) NOPASSWD: /usr/local/sbin/tws-family-backup-privileged *" \
   >"$TMP_SUDO"
 mv "$TMP_SUDO" "$SUDOERS"
 chmod 440 "$SUDOERS"

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Health · TinyWeb{% endblock %}
+{% block nav %}
+<nav class="tw-nav">
+  <a href="{{ url('/') }}">Home</a>
+  <a href="{{ url('/health') }}">Health</a>
+</nav>
+{% endblock %}
+{% block content %}
+<h1>Is everything working?</h1>
+<p>{{ overall_label }}</p>
+<p class="hint">Checked {{ checked_label }}.{% if cached %} This is the saved check, so the page stays quick.{% endif %} Looking only — nothing is restarted from here.</p>
+<p><a class="btn" href="{{ url('/health?refresh=1') }}">Check again</a></p>
+{% for check in checks %}
+<article class="card">
+  <div class="tw-health-row">
+    <h2>{{ check.title }}</h2>
+    <span class="tw-status tw-status-{{ check.status_class }}">{{ check.status_label }}</span>
+  </div>
+  <p>{{ check.summary }}</p>
+  {% if check.hint %}
+  <p class="hint">{{ check.hint }}</p>
+  {% endif %}
+</article>
+{% endfor %}
+{% endblock %}
