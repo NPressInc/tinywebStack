@@ -63,6 +63,7 @@ void main() {
     );
     expect(find.text('Family map'), findsNothing);
     expect(find.text('Family controls'), findsNothing);
+    expect(find.text('Home health'), findsNothing);
   });
 
   testWidgets('parent sees family controls tile', (tester) async {
@@ -75,6 +76,7 @@ void main() {
       ),
     );
     expect(find.text('Family controls'), findsOneWidget);
+    expect(find.text('Home health'), findsOneWidget);
     expect(find.text('Family map'), findsNothing);
   });
 
