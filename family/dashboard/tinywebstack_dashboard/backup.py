@@ -24,8 +24,8 @@ JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 APP_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,40}$")
 PART_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
 
-# Apps whose YunoHost backup scripts cover family data. Jellyfin and Immich are
-# intentionally absent: their libraries and metadata can fill an 8 GB disk.
+# Apps whose YunoHost backup scripts cover family data. Jellyfin libraries are
+# copied separately. Immich is out of scope for v1.
 CORE_APP_IDS: tuple[str, ...] = (
     "synapse",
     "element",
@@ -465,9 +465,9 @@ def coverage_rows() -> List[Dict[str, str]]:
             "title": "Movies, shows, and photo libraries",
             "state": "left out",
             "detail": (
-                "Jellyfin and Immich are not part of this backup. The shared media folder "
-                "(/home/yunohost.multimedia) is not part of it either. Copy that folder to "
-                "another disk yourself. A movie library would fill this computer's backup."
+                "Jellyfin's movie library is not in this backup. Immich is out of scope for v1. "
+                "The shared media folder (/home/yunohost.multimedia) is not part of it either. "
+                "Copy that folder to another disk yourself. A movie library would fill this computer's backup."
             ),
         },
         {

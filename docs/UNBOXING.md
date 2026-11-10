@@ -106,7 +106,7 @@ Many home ISPs use CGNAT. The parent must not open ports 80 or 443.
 
 v1 default: a per-box Cloudflare Tunnel. The control plane issues the tunnel credentials. It does not forward family traffic through itself. Phone ↔ Cloudflare edge ↔ box.
 
-`scripts/cloudflared-apply.sh` refuses to start `cloudflared` when the token is missing or `published` is not true. Jellyfin is not placed on that HTTP proxy. The tunnel step stays blocked until apply succeeds for a published handoff.
+`scripts/cloudflared-apply.sh` refuses to start `cloudflared` when the token is missing or `published` is not true. It does not refuse because a Jellyfin hostname is present. When `TWS_JELLYFIN=1`, first boot includes `jellyfin.<family>.tinyweb.win` on the tunnel. When Jellyfin is off, that host is not added. Immich is out of scope for v1. The tunnel step stays blocked until apply succeeds for a published handoff.
 
 ### D. Stores
 

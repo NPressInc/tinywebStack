@@ -81,7 +81,7 @@ Base URL is the operator's control plane (`https://tinyweb.win` once it is place
 
 Slugs are one label, matching `scripts/lib/tinyweb-install-env.sh`: letters, digits, and hyphens, stored lowercase. `Smith` is `smith.tinyweb.win`.
 
-`POST /v1/tunnels` with `Authorization: Bearer <claim_token>`. The body may be `{}`. Optional fields: `location_app` (`owntracks` or `traccar`), `events_app` (`mobilizon` or `none`), `push` (boolean), `jellyfin` (boolean). Jellyfin is never placed on the proxy even when `jellyfin` is true; the response lists it in `excluded_from_proxy`.
+`POST /v1/tunnels` with `Authorization: Bearer <claim_token>`. The body may be `{}`. Optional fields: `location_app` (`owntracks` or `traccar`), `events_app` (`mobilizon` or `none`), `push` (boolean), `jellyfin` (boolean). When `jellyfin` is true, `jellyfin.<family>.tinyweb.win` is a proxied `CNAME` and a tunnel ingress host. When it is false, that name is not added. Immich is out of scope for v1 and is not a host.
 
 ```json
 {
@@ -126,7 +126,7 @@ Operator mint (`POST /v1/operator/units`, bearer `TWS_CONTROL_PLANE_OPERATOR_TOK
 
 ## DNS is not a second writer
 
-[`scripts/lib/domains.sh`](../scripts/lib/domains.sh) `node_all_domains` is the hostname list. The control plane shells out to it. Service hosts are explicit proxied `CNAME`s to `<tunnel-id>.cfargotunnel.com`. There is no wildcard DNS record, so a name that is not in the list (including Jellyfin) is not routed through Cloudflare.
+[`scripts/lib/domains.sh`](../scripts/lib/domains.sh) `node_all_domains` is the hostname list. The control plane shells out to it. Service hosts are explicit proxied `CNAME`s to `<tunnel-id>.cfargotunnel.com`. There is no wildcard DNS record, so a name that is not in the list is not routed through Cloudflare. `jellyfin.<family>.tinyweb.win` is in the list only when Jellyfin is enabled. Immich is out of scope for v1.
 
 [`scripts/vm/tinyweb-subdomain-ddns.sh`](../scripts/vm/tinyweb-subdomain-ddns.sh) can POST its existing webhook body to `POST /v1/ddns`:
 
@@ -152,11 +152,15 @@ A wildcard covers one more label, which is `matrix.<family>.tinyweb.win` and the
 
 Equivalent (`TWS_EDGE_CERT_METHOD=total_tls`): enable [Total TLS](https://developers.cloudflare.com/ssl/edge-certificates/total-tls/) on the zone. Total TLS issues a certificate for each proxied hostname, including nested names. It is part of Advanced Certificate Manager. `edge_certificate_ready` stays false here because issuance happens after the DNS record exists.
 
-The wildcard on an advanced pack can name `jellyfin.<family>.tinyweb.win`, but that host has no proxied DNS record and no tunnel ingress, so it is not on the HTTP proxy. Total TLS does not issue a certificate for it because it is not proxied.
+The wildcard on an advanced pack also covers `jellyfin.<family>.tinyweb.win` when that host is proxied. Total TLS issues a certificate for each proxied hostname, so an enabled Jellyfin host is included there too.
 
-## Jellyfin and the 100 MB cap
+## Jellyfin on the tunnel
 
-Ordinary Cloudflare HTTP proxy plans reject request bodies over 100 MB. Jellyfin and other large media stay off the tunnel. Playback on the home Wi-Fi does not need this path. Matrix and the other small HTTP services stay on the tunnel; uploads larger than the plan's body cap will fail until a path that is not the HTTP proxy exists.
+Optional Jellyfin uses this same per-box tunnel. First boot sends `jellyfin: true` when `TWS_JELLYFIN` is enabled, and the handoff then includes `jellyfin.<family>.tinyweb.win`. A Jellyfin name on the handoff is not a reason to refuse the tunnel. When Jellyfin is off, the host is not added.
+
+Immich is out of scope for v1. It is not an app, a DNS name, or a tunnel route.
+
+Ordinary Cloudflare HTTP proxy plans can still reject a single request body over 100 MB. That limit is a property of the plan, not a reason to leave Jellyfin off the tunnel.
 
 ## Tunnels for Platforms
 

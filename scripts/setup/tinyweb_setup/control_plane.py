@@ -72,19 +72,6 @@ def normalize_base_url(url: str) -> str:
     )
 
 
-def handoff_proxies_jellyfin(handoff: dict[str, Any]) -> bool:
-    rows = handoff.get("dns") or []
-    if not isinstance(rows, list):
-        return False
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        name = str(row.get("name") or "")
-        if name.split(".", 1)[0].lower() == "jellyfin":
-            return True
-    return False
-
-
 @dataclass(frozen=True)
 class PublishDecision:
     name_ready: bool
@@ -98,12 +85,10 @@ def evaluate_handoff(handoff: dict[str, Any] | None, apply_exit: int | None) -> 
     """Gates from a tunnel handoff. Missing or unpublished stays not ready.
 
     A certificate or a tunnel is ready only when the control plane says the
-    DNS records were published. Jellyfin on the proxy fails the whole handoff.
+    DNS records were published. A Jellyfin hostname on that list is not a failure.
     """
     if not isinstance(handoff, dict):
         return PublishDecision(False, False, False, False, "missing")
-    if handoff_proxies_jellyfin(handoff):
-        return PublishDecision(False, False, False, False, "jellyfin")
     published = handoff.get("published") is True
     cert_ready = handoff.get("edge_certificate_ready") is True
     certificate = handoff.get("certificate")

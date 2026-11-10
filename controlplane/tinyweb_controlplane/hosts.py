@@ -1,7 +1,8 @@
 """Hostnames for one family, taken from scripts/lib/domains.sh.
 
 That file is the hostname list the installer and the DDNS helper already use.
-Jellyfin is removed here so large media is not placed on the Cloudflare HTTP proxy.
+When Jellyfin is enabled there, jellyfin.<family> is part of the same list and
+is placed on the tunnel with the other service hosts. Immich is not in the list.
 """
 
 from __future__ import annotations
@@ -14,7 +15,6 @@ from pathlib import Path
 # edge certificate, not this hop. 127.0.0.1 will not match the public certificate
 # name, so the tunnel config sets noTLSVerify on the origin request.
 TUNNEL_ORIGIN_SERVICE = "https://127.0.0.1:443"
-JELLYFIN_LABEL = "jellyfin"
 
 UNIVERSAL_SSL_NOTE = (
     "Universal SSL covers the zone apex and the first label only "
@@ -61,20 +61,13 @@ def node_all_domains(
     return [line.strip() for line in proc.stdout.splitlines() if line.strip()]
 
 
-def is_jellyfin_host(hostname: str) -> bool:
-    return hostname.split(".", 1)[0].lower() == JELLYFIN_LABEL
-
-
 def split_proxy_hosts(hostnames: list[str]) -> tuple[list[str], list[str]]:
-    """Split the installer list into proxied names and names kept off the proxy."""
-    proxied: list[str] = []
-    excluded: list[str] = []
-    for host in hostnames:
-        if is_jellyfin_host(host):
-            excluded.append(host)
-        else:
-            proxied.append(host)
-    return proxied, excluded
+    """Proxy every hostname the installer listed, including Jellyfin when enabled.
+
+    The installer omits jellyfin.<family> unless TWS_JELLYFIN is on. Immich is
+    not a v1 hostname, so it is never in this list.
+    """
+    return list(hostnames), []
 
 
 def advanced_certificate_hosts(base_domain: str, family_domain: str) -> list[str]:

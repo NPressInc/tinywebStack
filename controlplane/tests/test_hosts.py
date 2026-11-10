@@ -39,10 +39,14 @@ def test_python_list_matches_domains_sh() -> None:
     with_media = node_all_domains(main, jellyfin=True)
     assert with_media == _shell_hosts(main, jellyfin=True)
     proxied, excluded = split_proxy_hosts(with_media)
-    assert excluded == ["jellyfin.smith.tinyweb.win"]
-    assert "jellyfin.smith.tinyweb.win" not in proxied
+    assert excluded == []
+    assert "jellyfin.smith.tinyweb.win" in proxied
     assert "matrix.smith.tinyweb.win" in proxied
     assert main in proxied
+    off, excluded_off = split_proxy_hosts(node_all_domains(main))
+    assert "jellyfin.smith.tinyweb.win" not in off
+    assert excluded_off == []
+    assert "immich" not in " ".join(with_media + off)
 
 
 def test_advanced_certificate_includes_the_zone_apex_and_nested_wildcard() -> None:

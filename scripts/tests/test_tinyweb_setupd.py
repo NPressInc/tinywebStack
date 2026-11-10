@@ -198,6 +198,7 @@ def test_status_waiting_and_password_round_trip(tmp_path: Path, monkeypatch: pyt
         assert "TWS_MODE=production" in env_text
         assert "TWS_TLS_SINGLE_SAN_CERT=1" in env_text
         assert "TWS_TLS_EDGE_CERT=1" in env_text
+        assert "TWS_JELLYFIN=0" in env_text
         assert "TWS_FAMILY_USERS=william" in env_text
         assert "TWS_FAMILY_PARENTS=william" in env_text
         assert "TWS_FAMILY_KIDS=" in env_text

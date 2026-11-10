@@ -180,7 +180,11 @@ def test_evaluate_handoff_never_treats_the_fake_shape_as_ready() -> None:
     assert evaluate_handoff(pending, 0).reason == "certificate_pending"
     jelly = dict(published)
     jelly["dns"] = [{"name": "jellyfin.floyd.tinyweb.win", "proxied": True}]
-    assert evaluate_handoff(jelly, 0).reason == "jellyfin"
+    assert evaluate_handoff(jelly, 0).complete is True
+    unpublished_jelly = dict(fake)
+    unpublished_jelly["dns"] = [{"name": "jellyfin.floyd.tinyweb.win", "proxied": True}]
+    assert evaluate_handoff(unpublished_jelly, 0).complete is False
+    assert evaluate_handoff(unpublished_jelly, 0).reason == "unpublished"
     assert evaluate_handoff(None, 0).complete is False
 
 
@@ -295,6 +299,56 @@ def test_setup_calls_the_fake_control_plane_and_stays_blocked(
             assert row["setup_completed_at"] is None
             slug = store.slug_row("floyd")
             assert slug is not None
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+    finally:
+        _stop(server)
+
+
+def test_enabled_jellyfin_is_on_the_handoff_and_setup_stays_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TWS_JELLYFIN", "1")
+    base, server, _store = _plane(tmp_path, FakeProvider())
+    minted = _mint(base)
+    try:
+        cfg = _config(
+            tmp_path,
+            install_cmd=["bash", str(_installer(tmp_path))],
+            control_plane_url=base,
+            cloudflared_dest=tmp_path / "cloudflared",
+        )
+        _write_code(cfg, minted["setup_code"])
+        setup = SetupStore(cfg)
+        httpd, setup_base = _start(setup)
+        try:
+            status, body = _request(
+                f"{setup_base}/v1/setup",
+                {
+                    "code": minted["setup_code"],
+                    "family_name": "Floyd",
+                    "parent_name": "William",
+                    "password": "correct-horse-battery",
+                },
+            )
+            assert status == 200, body
+            done = _wait_phase(setup_base, "blocked")
+            assert done["enroll_origin"] is None
+            assert "Jellyfin" not in (done["error"] or "")
+            handoff = json.loads(cfg.handoff_file.read_text(encoding="utf-8"))
+            assert handoff["published"] is False
+            names = [row["name"] for row in handoff["dns"]]
+            assert "jellyfin.floyd.tinyweb.win" in names
+            row = next(item for item in handoff["dns"] if item["name"] == "jellyfin.floyd.tinyweb.win")
+            assert row["proxied"] is True
+            assert row["applied"] is False
+            assert handoff["excluded_from_proxy"] == []
+            assert "immich" not in json.dumps(handoff)
+            assert "TWS_JELLYFIN=1" in cfg.env_file.read_text(encoding="utf-8")
+            assert not (tmp_path / "cloudflared" / "tunnel.env").exists()
+            assert "cloudflared-apply exited" in "\n".join(setup.logs)
+            assert cfg.code_file.is_file()
         finally:
             httpd.shutdown()
             httpd.server_close()

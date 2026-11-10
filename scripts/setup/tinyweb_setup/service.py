@@ -32,7 +32,6 @@ from tinyweb_setup.control_plane import (
     ControlPlaneError,
     PublishDecision,
     evaluate_handoff,
-    handoff_proxies_jellyfin,
 )
 from tinyweb_setup.mdns import Announcer
 
@@ -660,6 +659,7 @@ class SetupStore:
             "TWS_MODE=production",
             "TWS_TLS_SINGLE_SAN_CERT=1",
             "TWS_TLS_EDGE_CERT=1",
+            f"TWS_JELLYFIN={'1' if jellyfin_enabled() else '0'}",
             f"TWS_BASE_DOMAIN={self.config.base_domain}",
             f"TWS_FAMILY_USERS={username}",
             f"TWS_FAMILY_PARENTS={username}",
@@ -856,7 +856,7 @@ class SetupStore:
                 self._remember_secret(token)
             _atomic_write(self.config.claim_token_file, (token + "\n").encode("utf-8"), 0o600)
         try:
-            handoff = client.issue_tunnel(token, jellyfin=False)
+            handoff = client.issue_tunnel(token, jellyfin=jellyfin_enabled())
         except ControlPlaneError as exc:
             return _stopped(exc, self.domain)
         tunnel = handoff.get("tunnel")
@@ -865,11 +865,6 @@ class SetupStore:
             self._remember_secret(token)
             if tunnel_token:
                 self._remember_secret(tunnel_token)
-        if handoff_proxies_jellyfin(handoff):
-            decision = evaluate_handoff(handoff, None)
-            return decision, _blocked_details(decision, self.domain), (
-                "TinyWeb will not put Jellyfin on the internet path. No tunnel was started."
-            )
         _atomic_write(
             self.config.handoff_file,
             (json.dumps(handoff) + "\n").encode("utf-8"),
@@ -993,17 +988,13 @@ def _rejected(exc: ControlPlaneError) -> SetupRejected:
     return SetupRejected(status, _parent_message(exc))
 
 
+def jellyfin_enabled() -> bool:
+    """Same switch as scripts/lib/domains.sh jellyfin_requested."""
+    return os.environ.get("TWS_JELLYFIN", "0").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _blocked_details(decision: PublishDecision, domain: str | None) -> dict[str, str]:
     name = domain or "the family name"
-    if decision.reason == "jellyfin":
-        return {
-            "name": f"TinyWeb has not published {name}. Jellyfin is not part of that path.",
-            "certificate": (
-                f"TinyWeb will get a real Let's Encrypt certificate for {name}. "
-                "Setup stops here instead of showing a certificate warning."
-            ),
-            "tunnel": "TinyWeb did not start a tunnel. Jellyfin stays off the internet path.",
-        }
     if not decision.name_ready:
         return {
             "name": f"TinyWeb has not published {name}. No public name was published, so setup stops here.",

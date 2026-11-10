@@ -148,7 +148,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 
 ### Later
 
-- Media: optional **Jellyfin** ([JELLYFIN.md](JELLYFIN.md), [PLAN.md](../PLAN.md)). It stays in the official Jellyfin apps. When `jellyfin.enabled` is set in family discovery, Home shows that server address (not the family home URL), says sign-in is the same username and password and not single sign-on, and can open the site in the browser. The app does not play media and does not edit libraries. Quiet hours are not applied. **Immich** is not part of this integration.
+- Media: optional **Jellyfin** ([JELLYFIN.md](JELLYFIN.md), [PLAN.md](../PLAN.md)). It stays in the official Jellyfin apps. When `jellyfin.enabled` is set in family discovery, Home shows that server address (not the family home URL), says sign-in is the same username and password and not single sign-on, and can open the site in the browser. The app does not play media and does not edit libraries. Quiet hours are not applied. **Immich** is out of scope for v1.
 - **Parent-key oversight** for kids' encrypted rooms ([FAMILY_LAYER_PLAN.md](FAMILY_LAYER_PLAN.md) P3.8, deferred).
 
 ---

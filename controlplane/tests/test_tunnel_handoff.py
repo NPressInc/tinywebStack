@@ -41,8 +41,12 @@ def test_handoff_is_retryable_and_does_not_publish_from_the_fake_provider(world)
     assert "owntracks.smith.tinyweb.win" in names
     assert all(row["type"] == "CNAME" and row["proxied"] is True and row["applied"] is False for row in body["dns"])
     assert all(row["content"].endswith(".cfargotunnel.com") for row in body["dns"])
-    assert not any(name.startswith("jellyfin.") for name in names)
-    assert body["excluded_from_proxy"] == ["jellyfin.smith.tinyweb.win"]
+    assert "jellyfin.smith.tinyweb.win" in names
+    assert body["excluded_from_proxy"] == []
+    jellyfin_row = next(row for row in body["dns"] if row["name"] == "jellyfin.smith.tinyweb.win")
+    assert jellyfin_row["proxied"] is True
+    assert jellyfin_row["type"] == "CNAME"
+    assert jellyfin_row["applied"] is False
     assert body["certificate"]["method"] == "advanced_certificate_manager"
     assert body["certificate"]["hosts"] == [
         "tinyweb.win",
@@ -53,7 +57,7 @@ def test_handoff_is_retryable_and_does_not_publish_from_the_fake_provider(world)
     assert world.provider.create_calls == 1
 
     rules = next(iter(world.provider.tunnels.values()))["rules"]
-    assert not any(rule.hostname.startswith("jellyfin.") for rule in rules)
+    assert any(rule.hostname == "jellyfin.smith.tinyweb.win" for rule in rules)
 
     retry = world.client.post("/v1/tunnels", headers={"Authorization": f"Bearer {token}"}, json={})
     assert retry.status_code == 200
@@ -199,7 +203,8 @@ def test_total_tls_requests_coverage_for_proxied_nested_names(tmp_path) -> None:
     hosts = issued.json()["certificate"]["hosts"]
     assert issued.json()["certificate"]["method"] == "total_tls"
     assert "matrix.smith.tinyweb.win" in hosts
-    assert "jellyfin.smith.tinyweb.win" not in hosts
+    assert "jellyfin.smith.tinyweb.win" in hosts
+    assert "immich" not in " ".join(hosts)
     assert issued.json()["published"] is False
 
 
