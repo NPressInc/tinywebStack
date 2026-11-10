@@ -310,6 +310,11 @@ class _EnrollScreenState extends State<EnrollScreen> {
             Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
           ],
           const SizedBox(height: 20),
+          TextButton(
+            onPressed: _busy ? null : () => widget.session.openUnbox(),
+            child: const Text('Set up a new TinyWeb'),
+          ),
+          const SizedBox(height: 8),
           FilledButton(
             onPressed: _busy ? null : _submit,
             child: _busy

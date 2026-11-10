@@ -1,5 +1,7 @@
 # Production setup runbook (S5.2)
 
+This file is the operator runbook. Customers do not follow it. The customer path is [Unboxing](UNBOXING.md) (Priority 1 in [PLAN.md](../PLAN.md)): plug in power and ethernet, then finish in the TinyWeb app. Keep this runbook for flashing, SSH, and repair.
+
 Take a fresh machine (real hardware or VPS) to a working tinyWebStack **family
 node**: YunoHost 12 + Synapse/Element + OwnTracks (or Traccar) + Nextcloud
 CalDAV + Mobilizon + the parent dashboard at `https://<main-domain>/family/`,

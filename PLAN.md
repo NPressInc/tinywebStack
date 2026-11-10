@@ -2,7 +2,40 @@
 
 tinywebStack is a private, self-hosted app ecosystem for families that runs on hardware at home. It replaces the custom C platform in NPressInc/TinyWebC with existing, proven open-source software plus a thin family layer on top.
 
-**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Backups](docs/BACKUP.md) · [Test nodes lab](docs/test-nodes.md)
+**Related docs:** [Design philosophy](docs/PHILOSOPHY.md) (principles adapted from TinyWebC) · [Family layer feature plan](docs/FAMILY_LAYER_PLAN.md) (v1 gaps and ordering) · [TinyWeb mobile app plan](docs/TINYWEB_APP_PLAN.md) · [Backups](docs/BACKUP.md) · [Test nodes lab](docs/test-nodes.md) · [Unboxing](docs/UNBOXING.md)
+
+## Priority 1: unboxing
+
+The number-one product priority is that buying a TinyWeb box feels like setting up a phone. A parent plugs it in and finishes in the TinyWeb app. The executable spec is [docs/UNBOXING.md](docs/UNBOXING.md).
+
+The only steps a customer should see:
+
+1. Plug in power and ethernet.
+2. Open the TinyWeb app on the phone (App Store / Play Store), on the home Wi-Fi.
+3. The phone finds the box. The card in the lid (and the sticker on the bottom) has a one-time setup QR. Scanning it opens the app, or the store first if the app is not installed, with the setup code filled in.
+4. The parent names the family and chooses the first parent password.
+5. A calm progress screen runs while the box becomes `<family>.tinyweb.win`, gets a real Let's Encrypt certificate, and finishes install.
+6. The parent adds everyone else with the existing QR / one-link enrollment at `/family/join`.
+
+The parent never sees a terminal, a router page, YunoHost, or a certificate warning. TinyWeb does not use ads. Production TLS is Let's Encrypt.
+
+Workstreams, in order:
+
+| | Workstream | Where it stands |
+| --- | --- | --- |
+| A | Pre-imaged box, plus a first-boot wizard the phone can talk to on the LAN | **This repo starts the software slice:** mDNS (and a LAN beacon), a local setup API, and the app wizard with progress. The setup code can be scanned or typed. A shippable disk image is specified in the unboxing doc and is not built here. |
+| B | Control plane for family-slug reservation, DNS, and certificates | **Later.** Runs on William's service at tinyweb.win (vivo). It publishes `<family>.tinyweb.win` and `*.<family>.tinyweb.win` and obtains real Let's Encrypt certificates. Family traffic (chat, calendars, files, location) does not pass through that server. |
+| C | Built-in tunnel so port forwarding is not required | **Later.** v1 default is a per-box tunnel to an edge. Cloudflare is the pragmatic default because tinyweb.win already uses it. vivo only issues tunnel credentials. The tunnel carries family traffic to the edge, not through vivo. |
+| D | TinyWeb in the Apple App Store and Google Play Store | **Later.** Listing assets are not shipped. The setup QR's https link depends on this so a phone without the app can reach a store. |
+| E | Push with TinyWeb-owned APNs/FCM credentials | **Later.** A family does not upload a `.p8` or a key file. |
+
+Today an operator still follows [docs/production-setup.md](docs/production-setup.md): flash Debian/YunoHost, SSH, clone, edit `tinyweb.env`, run `scripts/install-tinyweb.sh` or `scripts/install-on-box.sh`, DNS and ports, copy secrets off the box, sideload the app, then QR enroll. That runbook stays for operators. Customers use the unboxing path.
+
+v1 assumes the box is on ethernet and the phone is on the same home Wi-Fi. Wi-Fi-only first boot for the box itself is later.
+
+Build on these pieces. Do not replace them: the one-box installer, bare family slug → `<family>.tinyweb.win`, `scripts/vm/tinyweb-subdomain-ddns.sh`, `TWS_TLS_SINGLE_SAN_CERT=1` (one SAN certificate), the parent dashboard, the health page, and QR join at `/family/join`.
+
+The setup QR carries only that unit's pairing code (`https://tinyweb.win/setup#code=…` or `tinyweb://setup#code=…`, secret in the fragment). It is not the parent password and not a chat recovery key. The same code is how the box will prove itself to the control plane when claiming `<family>.tinyweb.win`. It stays valid if setup fails partway, and it is not enough to reclaim a box after the family is set up. The parent chooses the password in the app. The Matrix recovery key is generated on the first phone, shown once, and written on a blank card that ships in the box.
 
 ## Target hardware
 

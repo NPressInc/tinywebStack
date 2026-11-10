@@ -333,6 +333,9 @@ EOF
   if [[ -n "${TWS_FAMILY_OWNER:-}" ]]; then
     printf 'TWS_FAMILY_OWNER=%s\n' "$TWS_FAMILY_OWNER" >>"$dest"
   fi
+  if [[ -n "${TWS_FAMILY_OWNER_FULLNAME:-}" ]]; then
+    printf 'TWS_FAMILY_OWNER_FULLNAME=%q\n' "$TWS_FAMILY_OWNER_FULLNAME" >>"$dest"
+  fi
   chmod 644 "$dest"
 }
 

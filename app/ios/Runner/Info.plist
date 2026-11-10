@@ -28,6 +28,17 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>TinyWeb uses the camera to scan enrollment QR codes and to take photos and videos in family chat.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TinyWeb looks for a new box on your home Wi-Fi so you can name your family.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_tinyweb-setup._tcp</string>
+	</array>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>TinyWeb lets you pick photos and videos from your library to share in family chat.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

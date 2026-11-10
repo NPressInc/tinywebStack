@@ -145,6 +145,23 @@ assert_family_roles_configured() {
   done
 }
 
+# Display name for a family user. The unboxing flow sets TWS_FAMILY_OWNER_FULLNAME
+# for the first parent. Lab parent/kid labels stay unchanged.
+family_user_fullname() {
+  local user=$1
+  if [[ -n "${TWS_FAMILY_OWNER_FULLNAME:-}" && "$user" == "${TWS_FAMILY_OWNER:-}" ]]; then
+    printf '%s\n' "$TWS_FAMILY_OWNER_FULLNAME"
+    return 0
+  fi
+  case "$user" in
+    parent) printf 'Parent Test\n' ;;
+    kid) printf 'Kid Test\n' ;;
+    *)
+      printf '%s\n' "$(printf '%s' "${user:0:1}" | tr '[:lower:]' '[:upper:]')${user:1}"
+      ;;
+  esac
+}
+
 # Print kid users as CSV (may be empty). Args: normalized list CSV.
 resolve_family_kids() {
   local users_csv=$1

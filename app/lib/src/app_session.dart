@@ -12,7 +12,7 @@ import 'location/location_service.dart';
 import 'push/push_service.dart';
 import 'storage/credential_store.dart';
 
-enum AppRoute { loading, enroll, setupReady, secureChats, locationExplainer, home }
+enum AppRoute { loading, unbox, enroll, setupReady, secureChats, locationExplainer, home }
 
 class AppSession extends ChangeNotifier {
   AppSession({
@@ -63,7 +63,9 @@ class AppSession extends ChangeNotifier {
     enrollment = await _store.read();
     _syncLocationCredentials();
     if (enrollment == null) {
-      route = AppRoute.enroll;
+      if (route == AppRoute.loading) {
+        route = AppRoute.unbox;
+      }
       notifyListeners();
       return;
     }
@@ -183,6 +185,24 @@ class AppSession extends ChangeNotifier {
       );
     }
     return _familyApi.fetchHealth(bundle);
+  }
+
+  /// First-run setup for a box that is not a family yet.
+  void openUnbox() {
+    if (enrollment != null) {
+      return;
+    }
+    route = AppRoute.unbox;
+    notifyListeners();
+  }
+
+  /// Join a family that is already set up (QR or one-time code).
+  void openExistingFamilyEnroll() {
+    if (enrollment != null) {
+      return;
+    }
+    route = AppRoute.enroll;
+    notifyListeners();
   }
 
   Future<void> removeDevice() async {

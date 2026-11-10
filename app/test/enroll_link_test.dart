@@ -61,6 +61,12 @@ void main() {
     expect(data.toString(), isNot(contains('secret-token')));
   });
 
+  test('setup link is not treated as family enrollment', () {
+    final data = parseEnrollLink('https://tinyweb.win/setup#code=box-setup-code-22');
+    expect(data.code, isNull);
+    expect(data.serverOrigin, isNull);
+  });
+
   test('parses bare enroll code', () {
     final data = parseEnrollLink('XYZZY99');
     expect(data.code, 'XYZZY99');
