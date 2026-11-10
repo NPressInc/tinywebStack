@@ -6,6 +6,7 @@ import os
 
 from tinywebstack_dashboard.push_config import (
     android_app_id,
+    credential_source,
     enroll_push_section,
     ios_app_id,
     push_enabled,
@@ -20,6 +21,7 @@ def test_push_enabled_default() -> None:
 
 
 def test_enroll_push_section_urls() -> None:
+    os.environ.pop("TWS_PUSH_CREDENTIAL_SOURCE", None)
     os.environ["TWS_PUSH_ENABLE"] = "1"
     os.environ["TWS_NTFY_PORT"] = "8090"
     os.environ["TWS_SYGNAL_PORT"] = "5000"
@@ -35,7 +37,27 @@ def test_enroll_push_section_urls() -> None:
     assert section["sygnal"]["ios_app_id"] == ios_app_id()
     assert section["sygnal"]["android_app_id"] == android_app_id()
     assert section["unifiedpush"]["public_base"] == "https://push.family.test"
-    assert "password" not in str(section).lower()
+    assert section["credential_source"] == "tinyweb"
+    assert credential_source() == "tinyweb"
+    blob = str(section).lower()
+    assert "password" not in blob
+    assert "private_key" not in blob
+    assert "authkey" not in blob
+
+
+def test_enroll_push_does_not_echo_operator_secrets() -> None:
+    os.environ["TWS_PUSH_ENABLE"] = "1"
+    os.environ["TWS_APNS_KEY"] = "CANARY-PRIVATE-KEY-MATERIAL"
+    os.environ["TWS_FCM_SERVICE_ACCOUNT_JSON"] = '{"private_key":"CANARY-PRIVATE-KEY-MATERIAL"}'
+    os.environ["TWS_PUSH_CREDENTIAL_SOURCE"] = "override"
+    section = enroll_push_section("family.test")
+    assert section is not None
+    assert section["credential_source"] == "override"
+    rendered = str(section)
+    assert "CANARY-PRIVATE-KEY-MATERIAL" not in rendered
+    os.environ.pop("TWS_APNS_KEY", None)
+    os.environ.pop("TWS_FCM_SERVICE_ACCOUNT_JSON", None)
+    os.environ.pop("TWS_PUSH_CREDENTIAL_SOURCE", None)
 
 
 def test_push_disabled_returns_none() -> None:

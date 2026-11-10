@@ -16,6 +16,14 @@ def test_install_push_script_exists() -> None:
     assert "tinywebstack-sygnal" in text
     assert "auth-default-access: deny-all" in text
     assert "SYGNAL_CONF=" in text
+    assert "configure-push-credentials.sh" in text
+    assert "TWS_PUSH_CREDENTIAL_SOURCE:-tinyweb" in text
+    assert "sygnal_apns_enabled" not in text
+    hook = ROOT / "scripts" / "vm" / "configure-push-credentials.sh"
+    assert hook.is_file()
+    hook_text = hook.read_text(encoding="utf-8")
+    assert "push_operator_config.py" in hook_text
+    assert "Delivery is not configured" in hook_text or "exit 2" in hook_text
 
 
 def test_install_tinyweb_calls_push_step() -> None:
