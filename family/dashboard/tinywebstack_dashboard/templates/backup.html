@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Backups · TinyWeb{% endblock %}
+{% block extra_head %}
+{% if running %}<meta http-equiv="refresh" content="10">{% endif %}
+{% endblock %}
+{% block nav %}
+<nav class="tw-nav">
+  <a href="{{ url('/') }}">Home</a>
+</nav>
+{% endblock %}
+{% block content %}
+<h1>Backups</h1>
+<p class="hint">Signed in as <strong>{{ user }}</strong>. Only parents can open this page.</p>
+
+<div class="card">
+  <p class="danger"><strong>A backup that stays on this same computer is not a spare copy.</strong>
+  If this box breaks, is stolen, or its disk dies, that backup dies with it.
+  Download it or copy it to another disk.</p>
+</div>
+
+{% if error %}
+<div class="card"><p class="danger">{{ error }}</p></div>
+{% endif %}
+
+<div class="card">
+  <h2>Back up now</h2>
+  <p>{{ free_text }}</p>
+  {% if not helper_ready %}
+  <p>Backup tools are not installed on this box yet. Nothing is scheduled and nothing has been copied. Updating this home installs the tools. Until then this page only explains what a backup covers.</p>
+  {% elif running %}
+  <p>A backup is already running. This page refreshes on its own. You can leave and come back.</p>
+  {% else %}
+  <form method="post" action="{{ url('/backup/now') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <button type="submit" {% if low_space %}disabled{% endif %}>Back up now</button>
+  </form>
+  {% if low_space %}<p class="danger">Not enough free space, so a backup cannot start.</p>{% endif %}
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Recent backups</h2>
+  {% if jobs %}
+  <ul class="members">
+    {% for job in jobs %}
+    <li>
+      <strong>{{ job.phase_label }}</strong>
+      {% if job.archive_id %} · {{ job.archive_id }}{% endif %}
+      {% if job.size_text %} · {{ job.size_text }}{% endif %}
+      <br><span class="hint">{{ job.created_at }} · {{ job.kind }} · started by {{ job.actor }}</span>
+      {% if job.summary_text %}<br>{{ job.summary_text }}{% endif %}
+      {% if job.detail %}<br><span class="danger">{{ job.detail }}</span>{% endif %}
+      {% if job.downloadable %}
+      <form method="post" action="{{ url('/backup/archives/' ~ job.archive_id ~ '/download') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button type="submit">Download</button>
+      </form>
+      <form method="post" action="{{ url('/backup/archives/' ~ job.archive_id ~ '/copy') }}">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <label>Folder on a disk plugged into this box
+          <input name="destination" placeholder="/media/usb/tinyweb-backups" autocomplete="off">
+        </label>
+        <button type="submit">Copy to that folder</button>
+      </form>
+      <p class="hint">From another computer, using an admin login (not a child’s):</p>
+      <p><code>scp USER@{{ server_name }}:/home/yunohost.backup/archives/{{ job.archive_id }}.tar .</code></p>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p>No backups yet.</p>
+  {% endif %}
+  <p class="hint">Downloads go through this page while you are signed in as a parent. There is no public link to the files.</p>
+</div>
+
+<div class="card">
+  <h2>Automatic backups</h2>
+  <p>Automatic backups are <strong>{% if settings.frequency == 'off' %}off{% else %}on ({{ settings.frequency }}){% endif %}</strong>.
+  They stay off until you save a schedule here. Saving “off” does not start a backup. Turning a schedule on does not start one immediately; the next one waits for the time you pick.</p>
+  <form method="post" action="{{ url('/backup/settings') }}">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label>When
+      <select name="frequency">
+        <option value="off" {% if settings.frequency == 'off' %}selected{% endif %}>Off</option>
+        <option value="daily" {% if settings.frequency == 'daily' %}selected{% endif %}>Every day</option>
+        <option value="weekly" {% if settings.frequency == 'weekly' %}selected{% endif %}>Every week</option>
+      </select>
+    </label>
+    <label>Day (weekly)
+      <select name="weekday">
+        {% for value, label in [(0, 'Monday'), (1, 'Tuesday'), (2, 'Wednesday'), (3, 'Thursday'), (4, 'Friday'), (5, 'Saturday'), (6, 'Sunday')] %}
+        <option value="{{ value }}" {% if settings.weekday == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>Hour (0–23)
+      <input name="hour" inputmode="numeric" value="{{ settings.hour }}">
+    </label>
+    <label>Minute
+      <input name="minute" inputmode="numeric" value="{{ settings.minute }}">
+    </label>
+    <label>Keep this many backups
+      <input name="keep_last" inputmode="numeric" value="{{ settings.keep_last }}">
+    </label>
+    <label>Also remove backups older than this many days (0 keeps them until the count above)
+      <input name="max_age_days" inputmode="numeric" value="{{ settings.max_age_days }}">
+    </label>
+    <label>Do not start a backup unless this many GB are free
+      <input name="min_free_gb" inputmode="numeric" value="{{ min_free_gb }}">
+    </label>
+    <button type="submit">Save backup settings</button>
+  </form>
+  <p class="hint">Old backups removed from here are only ones this page created. Other backups on the box are left alone. At most 20 are removed after each successful backup, and the newest one is always kept.</p>
+</div>
+
+<div class="card">
+  <h2>What is included</h2>
+  <ul>
+    {% for row in coverage if row.state == 'included' %}
+    <li><strong>{{ row.title }}.</strong> {{ row.detail }}</li>
+    {% endfor %}
+  </ul>
+  <h2>What is left out</h2>
+  <ul>
+    {% for row in coverage if row.state == 'left out' %}
+    <li><strong>{{ row.title }}.</strong> {{ row.detail }}</li>
+    {% endfor %}
+  </ul>
+  <p>To copy movies and shows yourself, plug in another disk and copy <code>/home/yunohost.multimedia/</code> onto it. This page does not do that copy, and it does not delete that folder.</p>
+</div>
+
+<div class="card">
+  <h2>If this computer is lost</h2>
+  <p class="danger"><strong>This page does not start a restore.</strong> There is no restore button. Restoring replaces family logins, chat, calendars, events, location history, family rules, and home settings on the computer you restore onto. People will need to sign in again. Encrypted chat on a new phone still needs the recovery key from the old phone.</p>
+  <p>YunoHost will not restore an app that is already installed, and restoring over this running page would be the wrong tool. Use a replacement computer:</p>
+  <ol>
+    <li>If the old box still turns on, copy the archive off it first. A file that is still only on the broken disk is not a recovery copy.</li>
+    <li>Install Debian and YunoHost on the replacement computer. Do not run YunoHost’s first-time setup (postinstall). YunoHost’s own restore takes the place of that step.</li>
+    <li>Put the archive at <code>/home/yunohost.backup/archives/</code> on the new computer. The file name ends in <code>.tar</code>.</li>
+    <li>As root on the new computer, restore that archive and nothing else. For a backup named below, the command is the name without <code>.tar</code>.</li>
+    <li>Do not install chat, calendars, or events on the new computer before that restore.</li>
+    <li>After it finishes, sign in at <code>/family/</code> as a parent and check one chat, one calendar event, and one family event before you trust the new box. Then re-apply the TinyWeb family module if chat rules are missing. The steps for the person who maintains the box are in the operations guide.</li>
+  </ol>
+  {% for job in jobs if job.status == 'succeeded' and job.kind == 'backup' and job.archive_id %}
+  <p><code>yunohost backup restore {{ job.archive_id }}</code></p>
+  {% endfor %}
+  <p class="hint">Seeing that command here does not run it.</p>
+</div>
+{% endblock %}

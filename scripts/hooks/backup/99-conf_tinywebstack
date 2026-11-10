@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# YunoHost system backup hook (conf_tinywebstack).
+# Writes SQLite snapshots and config copies into the backup work directory.
+# YunoHost packs conf/ afterwards. This hook does not pack live database files.
+set -eu
+
+if [[ $# -lt 1 || -z "${1:-}" ]]; then
+  echo "TinyWeb backup hook: missing work directory" >&2
+  exit 1
+fi
+
+work_dir=$1
+backup_dir="${work_dir}/conf/tinywebstack"
+mkdir -p "$backup_dir"
+
+py="${TWS_DASHBOARD_PYTHON:-/opt/tinywebstack-family-dashboard/venv/bin/python}"
+if [[ ! -x "$py" ]]; then
+  echo "TinyWeb backup hook: dashboard Python is missing (${py})" >&2
+  exit 1
+fi
+
+exec "$py" -m tinywebstack_dashboard.backup_hook snapshot "$backup_dir"

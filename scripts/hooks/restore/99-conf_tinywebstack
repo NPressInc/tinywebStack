@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# YunoHost system restore hook (conf_tinywebstack).
+# Runs only when an operator restores an archive. The dashboard never calls it.
+set -eu
+
+if [[ $# -lt 1 || -z "${1:-}" ]]; then
+  echo "TinyWeb restore hook: missing work directory" >&2
+  exit 1
+fi
+
+work_dir=$1
+backup_dir="${work_dir}/conf/tinywebstack"
+
+py="${TWS_DASHBOARD_PYTHON:-/opt/tinywebstack-family-dashboard/venv/bin/python}"
+if [[ ! -x "$py" ]]; then
+  echo "TinyWeb restore hook: dashboard Python is missing (${py})" >&2
+  exit 1
+fi
+
+exec "$py" -m tinywebstack_dashboard.backup_hook restore "$backup_dir"
