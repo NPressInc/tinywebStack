@@ -125,7 +125,7 @@ if ! "${VALIDATE_VENV}/bin/pip" install -q -r "${TW_STACK_ROOT}/scripts/requirem
 else
   env -u PYTHONPATH "${VALIDATE_VENV}/bin/python" -m pytest \
     family/synapse_module/tests family/dashboard/tests family/calendar_module/tests \
-    family/permissions/tests scripts/tests -q
+    family/permissions/tests controlplane/tests scripts/tests -q
   echo "  pytest passed"
 fi
 

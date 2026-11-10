@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinyweb-controlplane"
+version = "0.1.0"
+description = "tinyweb.win control plane: family slugs, DNS, certificates, and Cloudflare Tunnel credentials"
+requires-python = ">=3.9"
+dependencies = [
+  "fastapi>=0.100",
+  "uvicorn>=0.22",
+  "httpx>=0.24",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7.0", "httpx>=0.24"]
+
+[project.scripts]
+tinyweb-controlplane = "tinyweb_controlplane.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tinyweb_controlplane*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
