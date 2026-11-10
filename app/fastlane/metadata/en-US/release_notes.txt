@@ -1,0 +1,1 @@
+First release of the TinyWeb phone app for a family's home box. Name the family and add phones. Chat, calendar, events, and location stay on the box.

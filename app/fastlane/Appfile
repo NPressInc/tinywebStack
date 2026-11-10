@@ -1,0 +1,9 @@
+# Identifiers only. The Apple ID email and any Play service-account JSON
+# stay in the environment or the keychain. Do not commit them here.
+
+app_identifier("win.tinyweb.tinyweb")
+team_id("RC44X9237L")
+
+package_name("win.tinyweb.tinyweb")
+
+apple_id(ENV["FASTLANE_APPLE_ID"]) if ENV["FASTLANE_APPLE_ID"] && !ENV["FASTLANE_APPLE_ID"].empty?

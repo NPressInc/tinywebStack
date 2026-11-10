@@ -9,3 +9,8 @@ __pycache__/
 .pytest_cache/
 .tools/validate-ssh/
 build/
+*.p12
+*.pfx
+*.mobileprovision
+AuthKey*.p8
+play-service-account.json

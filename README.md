@@ -2,6 +2,8 @@
 
 A self-hosted family app ecosystem built on YunoHost and Matrix (Synapse), with a thin family layer on top. Families use the **TinyWeb app** and **parent dashboard** (`/family/`); open-source backends (Synapse, OwnTracks Recorder, Nextcloud, Mobilizon) stay on the box. See [PLAN.md](PLAN.md).
 
+Store packaging for the phone app is in [docs/APP_STORES.md](docs/APP_STORES.md). The app is not submitted to the App Store or Google Play.
+
 ## Install on a single machine
 
 Production and lab nodes can be provisioned on the box itself (no control machine):

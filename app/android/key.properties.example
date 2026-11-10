@@ -1,0 +1,6 @@
+# Copy to android/key.properties (gitignored). Never commit the copy or the keystore.
+# storeFile is relative to android/app/, which is where CI writes upload-keystore.jks.
+storeFile=upload-keystore.jks
+storePassword=
+keyAlias=upload
+keyPassword=

@@ -114,6 +114,9 @@ if bad:
 print("  all scripts/*.sh mode 100755")
 PY
 
+echo "== store metadata =="
+python3 scripts/store/check_store_metadata.py
+
 echo "== pytest (family module + dashboard) =="
 VALIDATE_VENV="${TW_STACK_ROOT}/.tools/validate-venv"
 if [[ ! -x "${VALIDATE_VENV}/bin/python" ]]; then
