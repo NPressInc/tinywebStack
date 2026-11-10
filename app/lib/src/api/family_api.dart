@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 
 import 'tls_http_client.dart';
 
+import '../enroll/enroll_link.dart';
 import 'models.dart';
 
 String enrollPlatformLabel() {
@@ -519,6 +520,37 @@ class FamilyApiClient {
       }
     } catch (_) {}
 
+    final code = json?['error'] as String?;
+    final message = json?['message'] as String?;
+    switch (code) {
+      case 'code_expired':
+        throw EnrollException(
+          EnrollErrorKind.codeExpired,
+          message ?? expiredCodeMessage(),
+        );
+      case 'code_used':
+        throw EnrollException(
+          EnrollErrorKind.codeUsed,
+          message ?? usedCodeMessage(),
+        );
+      case 'invalid_code':
+        throw EnrollException(
+          EnrollErrorKind.invalidCode,
+          message ?? invalidCodeMessage(),
+        );
+      case 'wrong_server':
+        throw EnrollException(
+          EnrollErrorKind.wrongServer,
+          message ?? 'This phone reached a different family server.',
+        );
+      case 'invalid_credentials':
+        throw EnrollException(
+          EnrollErrorKind.invalidCredentials,
+          message,
+        );
+      case 'rate_limited':
+        throw EnrollException(EnrollErrorKind.rateLimited, message);
+    }
     if (response.statusCode == 401) {
       throw EnrollException(EnrollErrorKind.invalidCredentials);
     }

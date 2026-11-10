@@ -12,7 +12,7 @@ import 'location/location_service.dart';
 import 'push/push_service.dart';
 import 'storage/credential_store.dart';
 
-enum AppRoute { loading, enroll, secureChats, locationExplainer, home }
+enum AppRoute { loading, enroll, setupReady, secureChats, locationExplainer, home }
 
 class AppSession extends ChangeNotifier {
   AppSession({
@@ -121,14 +121,24 @@ class AppSession extends ChangeNotifier {
     _syncLocationCredentials();
     pendingEnrollPassword = enrollPassword;
     enrollBannerMessage = null;
-    if (bundle.matrixEnrollment.isOk) {
-      route = AppRoute.secureChats;
-    } else if (await _needsLocationExplainer()) {
-      route = AppRoute.locationExplainer;
-    } else {
-      await _refreshMe(clearOnUnauthorized: false);
-    }
+    route = AppRoute.setupReady;
     notifyListeners();
+  }
+
+  /// Leaves the "you're all set" checklist for the next real step.
+  Future<void> continueFromSetupChecklist() async {
+    if (enrollment?.matrixEnrollment.isOk == true &&
+        !(await _store.isMatrixE2eeSetupComplete())) {
+      route = AppRoute.secureChats;
+      notifyListeners();
+      return;
+    }
+    if (await _needsLocationExplainer()) {
+      route = AppRoute.locationExplainer;
+      notifyListeners();
+      return;
+    }
+    await _refreshMe(clearOnUnauthorized: false);
   }
 
   Future<void> finishE2eeSetup({bool skipped = false}) async {

@@ -121,6 +121,7 @@ def test_well_known_fields(app_env):
     assert data["app_api_version"] == 1
     assert data["dashboard_base"] == "/family"
     assert data["enroll_url"] == "/family/api/app/enroll"
+    assert data["phone_join_path"] == "/family/join"
     assert data["matrix_homeserver_url"].startswith("https://")
     assert data["caldav_root"]
 
@@ -152,7 +153,11 @@ def test_code_create_parent_only(app_env):
     assert r.status_code == 200
     body = r.json()
     assert len(body["code"]) == 8
-    assert body["qr_payload"].startswith("tinyweb://enroll?")
+    assert body["qr_payload"] == f"https://family-a.test/family/join#code={body['code']}"
+    assert body["deep_link"] == f"tinyweb://enroll?server=family-a.test&code={body['code']}"
+    assert "password" not in body["qr_payload"]
+    assert "password" not in body["deep_link"]
+    assert body["code"] not in body["deep_link"].split("code=", 1)[0]
 
 
 def test_enroll_by_code_single_use_and_expiry(app_env, monkeypatch):
@@ -171,7 +176,9 @@ def test_enroll_by_code_single_use_and_expiry(app_env, monkeypatch):
     assert r.json()["matrix"]["status"] == "unavailable"
     r2 = client.post("/api/app/enroll", json=payload)
     assert r2.status_code == 401
-    assert r2.json()["error"] == "invalid_credentials"
+    assert r2.json()["error"] == "code_used"
+    assert "already used" in r2.json()["message"]
+    assert code not in r2.text
 
     code2 = _enroll_code(client)
     import hashlib
@@ -193,10 +200,45 @@ def test_enroll_by_code_single_use_and_expiry(app_env, monkeypatch):
         },
     )
     assert r3.status_code == 401
+    assert r3.json()["error"] == "code_expired"
+    assert "expired" in r3.json()["message"]
+    assert code2 not in r3.text
+    with _connect(devices_db) as conn:
+        row = conn.execute(
+            "SELECT used_at FROM enroll_codes WHERE code_hash = ?",
+            (ch2,),
+        ).fetchone()
+    assert row["used_at"] is None
+
+
+def test_phone_join_page_keeps_code_off_the_server(app_env):
+    client, _, _ = app_env
+    page = client.get("/join")
+    assert page.status_code == 200
+    assert "Open TinyWeb" in page.text
+    assert "tinyweb://enroll" in page.text
+    assert "install" in page.text.lower()
+    leaked = client.get("/join", params={"code": "LEAKME"})
+    assert leaked.status_code == 200
+    assert "LEAKME" not in leaked.text
+
+
+def test_access_log_redacts_enroll_code():
+    import logging
+
+    from tinywebstack_dashboard.app import _RedactEnrollCodeLogFilter
+
+    record = logging.makeLogRecord(
+        {"msg": "GET /join?code=ABCD2345 HTTP/1.1", "args": ()}
+    )
+    assert _RedactEnrollCodeLogFilter().filter(record)
+    rendered = record.getMessage()
+    assert "ABCD2345" not in rendered
+    assert "code=REDACTED" in rendered
 
 
 def test_enroll_rate_limit(app_env):
-    client, _, _ = app_env
+    client, devices_db, _ = app_env
     ip = "203.0.113.9"
     for _ in range(5):
         client.post(
@@ -220,6 +262,14 @@ def test_enroll_rate_limit(app_env):
         headers={"X-Real-IP": ip},
     )
     assert r.status_code == 429
+    import sqlite3
+
+    conn = sqlite3.connect(devices_db)
+    keys = [row[0] for row in conn.execute("SELECT key FROM enroll_attempts")]
+    blob = " ".join(keys)
+    assert "BADCODE1" not in blob
+    assert "BADCODE2" not in blob
+    assert any(key.startswith("user:code:") for key in keys)
 
 
 def test_enroll_rate_limit_ignores_spoofed_x_forwarded_for(app_env):

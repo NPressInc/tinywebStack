@@ -157,7 +157,72 @@ String normalizeEnteredMxid(
   return '$localpart:$domainPart';
 }
 
-/// Parses `tinyweb://enroll?...`, bare codes, or full HTTPS URLs with code query params.
+/// Code from `?code=` or `#code=`. Passwords and other query keys are ignored.
+String? codeFromEnrollUri(Uri uri) {
+  final queryCode = uri.queryParameters['code']?.trim();
+  if (queryCode != null && queryCode.isNotEmpty) {
+    return queryCode;
+  }
+  if (uri.fragment.isEmpty) {
+    return null;
+  }
+  final fragmentCode = Uri.splitQueryString(uri.fragment)['code']?.trim();
+  if (fragmentCode != null && fragmentCode.isNotEmpty) {
+    return fragmentCode;
+  }
+  return null;
+}
+
+bool isPhoneJoinPath(Uri uri) {
+  var path = uri.path;
+  if (path.length > 1 && path.endsWith('/')) {
+    path = path.substring(0, path.length - 1);
+  }
+  return path == '/family/join' || path.endsWith('/family/join');
+}
+
+String hostOf(String value) {
+  final trimmed = value.trim().toLowerCase();
+  if (trimmed.isEmpty) {
+    return '';
+  }
+  final withScheme = trimmed.contains('://') ? trimmed : 'https://$trimmed';
+  return Uri.tryParse(withScheme)?.host.toLowerCase() ?? '';
+}
+
+bool familyHostsMatch(String left, String right) {
+  final a = hostOf(left);
+  final b = hostOf(right);
+  return a.isNotEmpty && a == b;
+}
+
+String unreachableBoxMessage(String hostOrInput) {
+  final host = hostOf(hostOrInput);
+  final shown = host.isNotEmpty
+      ? host
+      : (hostOrInput.trim().isEmpty ? 'that address' : hostOrInput.trim());
+  return "Can't reach the family box at $shown. Check the family name "
+      '(for example smith.tinyweb.win) and that this phone is online.';
+}
+
+String wrongServerMessage({required String askedFor, required String reached}) {
+  return 'This code is for $askedFor, but this phone reached $reached. '
+      "Check the family name on the parent's screen.";
+}
+
+String expiredCodeMessage() =>
+    'This code has expired. Ask a parent for a new one. Codes last about 10 minutes.';
+
+String usedCodeMessage() =>
+    'This code was already used. Ask a parent for a new one.';
+
+String invalidCodeMessage() =>
+    "This code doesn't work on this family server. Check the family name "
+    "matches the parent's screen, or ask for a new code.";
+
+/// Parses `tinyweb://enroll?...`, `https://<family>/family/join#code=...`, or a typed code.
+///
+/// Only the one-time code is read. A `password` parameter is ignored.
 EnrollLinkData parseEnrollLink(String raw) {
   final trimmed = raw.trim();
   if (trimmed.isEmpty) {
@@ -181,8 +246,9 @@ EnrollLinkData parseEnrollLink(String raw) {
           (kDebugMode &&
               uri.scheme == 'http' &&
               isAllowedServerOrigin(uri.origin, allowInsecureLocalhost: true)))) {
-    final code = uri.queryParameters['code'];
-    if (code != null && code.isNotEmpty) {
+    final code = codeFromEnrollUri(uri);
+    final joinLink = isPhoneJoinPath(uri);
+    if (code != null && code.isNotEmpty && (joinLink || uri.queryParameters.containsKey('code'))) {
       final origin = Uri(
         scheme: uri.scheme,
         host: uri.host,

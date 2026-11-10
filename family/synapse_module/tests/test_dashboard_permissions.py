@@ -83,6 +83,7 @@ def test_setup_with_main_domain_uses_absolute_urls_on_create():
     assert pub["additional_urls"] == [
         "home.example.com/.well-known/tinywebstack-family.json",
         "home.example.com/family/api/app/enroll",
+        "home.example.com/family/join",
         "home.example.com/family/api/",
         "home.example.com/family/tiles/",
     ]
@@ -128,6 +129,7 @@ def test_setup_with_main_domain_uses_absolute_urls_on_update():
     assert pub["set_url"] == [
         "home.example.com/.well-known/tinywebstack-family.json",
         "home.example.com/family/api/app/enroll",
+        "home.example.com/family/join",
         "home.example.com/family/api/",
         "home.example.com/family/tiles/",
     ]

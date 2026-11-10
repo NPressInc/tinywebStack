@@ -1,10 +1,16 @@
+import 'dart:async';
+
+import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 
 import 'src/api/lab_ca_config.dart';
+import 'src/api/models.dart';
 import 'src/app_session.dart';
 import 'src/brand.dart';
 import 'src/enroll/enroll_screen.dart';
 import 'src/enroll/secure_recovery_screen.dart';
+import 'src/enroll/setup_checklist.dart';
+import 'src/enroll/setup_ready_screen.dart';
 import 'src/location/location_explainer_screen.dart';
 import 'src/shell/main_shell.dart';
 
@@ -19,16 +25,40 @@ class TinyWebApp extends StatefulWidget {
 
 class _TinyWebAppState extends State<TinyWebApp> {
   late final AppSession _session = widget.session ?? AppSession();
+  String? _enrollLink;
+  StreamSubscription<Uri>? _linkSub;
 
   @override
   void initState() {
     super.initState();
     _session.addListener(_onSessionChanged);
     _session.bootstrap();
+    _listenForEnrollLinks();
+  }
+
+  /// OS links are optional. If the plugin is missing, the enroll form still works.
+  Future<void> _listenForEnrollLinks() async {
+    try {
+      final appLinks = AppLinks();
+      final initial = await appLinks.getInitialLink();
+      if (!mounted) {
+        return;
+      }
+      if (initial != null) {
+        setState(() => _enrollLink = initial.toString());
+      }
+      _linkSub = appLinks.uriLinkStream.listen((uri) {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _enrollLink = uri.toString());
+      });
+    } catch (_) {}
   }
 
   @override
   void dispose() {
+    _linkSub?.cancel();
     _session.removeListener(_onSessionChanged);
     super.dispose();
   }
@@ -54,6 +84,27 @@ class _TinyWebAppState extends State<TinyWebApp> {
         return EnrollScreen(
           session: _session,
           bannerMessage: _session.enrollBannerMessage,
+          initialLink: _enrollLink,
+        );
+      case AppRoute.setupReady:
+        final bundle = _session.enrollment;
+        if (bundle == null) {
+          return EnrollScreen(
+            session: _session,
+            bannerMessage: _session.enrollBannerMessage,
+            initialLink: _enrollLink,
+          );
+        }
+        return SetupReadyScreen(
+          checklist: describeSetup(
+            bundle,
+            needsRecovery: bundle.matrixEnrollment.isOk,
+            needsLocation:
+                bundle.isKid && bundle.owntracksCredentials != null,
+          ),
+          onContinue: () {
+            _session.continueFromSetupChecklist();
+          },
         );
       case AppRoute.secureChats:
         return SecureRecoveryScreen(

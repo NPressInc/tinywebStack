@@ -1030,6 +1030,10 @@ enum EnrollErrorKind {
   network,
   server,
   needsUpdate,
+  codeExpired,
+  codeUsed,
+  invalidCode,
+  wrongServer,
 }
 
 class EnrollException implements Exception {

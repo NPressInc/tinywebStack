@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Set up TinyWeb{% endblock %}
+{% block content %}
+<h1>Set up TinyWeb on this phone</h1>
+<p>This page opens the TinyWeb app and signs you in. If the app is not installed yet, install it, then come back here or type the family server and code below.</p>
+<div class="card">
+  <p><strong>Family server:</strong> <code id="join-server">{{ server_name }}</code></p>
+  <p><strong>One-time code:</strong> <code id="join-code">Looking for the code in this link…</code></p>
+  <p><a id="join-open" href="#">Open TinyWeb</a></p>
+</div>
+<p class="hint" id="join-hint">The code works once and lasts about 10 minutes. It is not your password. A parent can show a new code from Family members.</p>
+<noscript>
+  <p>This phone did not run the page script. Open the TinyWeb app, enter family server <strong>{{ server_name }}</strong>, and type the one-time code the parent can see on their screen.</p>
+</noscript>
+<script>
+(function () {
+  var params = new URLSearchParams((location.hash || "").replace(/^#/, ""));
+  var code = (params.get("code") || "").trim();
+  if (!code && location.search) {
+    var query = new URLSearchParams(location.search);
+    code = (query.get("code") || "").trim();
+    if (code && window.history && history.replaceState) {
+      history.replaceState(null, "", location.pathname + "#code=" + encodeURIComponent(code));
+    }
+  }
+  var serverEl = document.getElementById("join-server");
+  var codeEl = document.getElementById("join-code");
+  var openEl = document.getElementById("join-open");
+  var hintEl = document.getElementById("join-hint");
+  if (serverEl && location.host) {
+    serverEl.textContent = location.host;
+  }
+  if (!code) {
+    if (codeEl) {
+      codeEl.textContent = "No code in this link. Ask a parent to show the setup code again.";
+    }
+    if (openEl) {
+      openEl.hidden = true;
+    }
+    return;
+  }
+  if (codeEl) {
+    codeEl.textContent = code;
+  }
+  var deep = "tinyweb://enroll?server=" + encodeURIComponent(location.host) +
+    "&code=" + encodeURIComponent(code);
+  if (openEl) {
+    openEl.href = deep;
+  }
+  if (hintEl) {
+    hintEl.textContent = "If TinyWeb does not open, install the app, then tap Open TinyWeb or type this code in the app. The family server is filled in for you when the link opens the app.";
+  }
+  window.setTimeout(function () {
+    window.location.href = deep;
+  }, 400);
+})();
+</script>
+{% endblock %}

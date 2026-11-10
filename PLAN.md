@@ -49,4 +49,17 @@ Bare family slugs are expanded automatically in the **TinyWeb app** (enrollment 
 
 **Backends can be open-source apps; the frontend is unified.** Families use only the **TinyWeb app** (iOS/Android) and the **parent dashboard** (`/family/`) for everyday life — not Element X, the OwnTracks app, DAVx5, Nextcloud mobile apps, Mobilizon web, or Traccar web.
 
+## Phone onboarding
+
+A parent adds a person on the **family dashboard** or in the TinyWeb app. The box creates the account with the role the parent chose (a child only receives that role and the permissions the parent sets) and shows **one QR code**. The code encodes `https://<family>.tinyweb.win/family/join#code=…` (custom domains use the same `/family/join` path). The one-time code is in the URL **fragment**, so the family server does not receive it and does not write it to access logs. The link and QR do not contain the account password or any session token. Codes are **single-use**, last about **10 minutes** (`TWS_APP_CODE_TTL_S`, default 600), and failed attempts are rate-limited. Only a parent can create a code.
+
+On the phone:
+
+1. The camera opens the link. The page is public (no parent login).
+2. If TinyWeb is installed, the page opens `tinyweb://enroll` and the app fills the family server (a bare name such as `smith` still means `smith.tinyweb.win`), enrolls with the code, and stores the chat, calendar, and location credentials the box already issues.
+3. If TinyWeb is not installed, or the phone does not hand the link to the app, the page stays open with install instructions, the family server, and the code to type. The enroll screen always has those fields.
+4. The app then shows **You're all set** with a checklist. Chat, calendar, events, and location are marked linked or not. Any step still left is explained in plain language: save the chat recovery key, allow location, or open Events and enter the family password once. A one-time code does not carry that password. Expired codes, already-used codes, a different family server, and an unreachable box each get their own message.
+
+Enrollment does not add permissions beyond the role the parent set, and it does not weaken password login.
+
 One **TinyWeb** mobile app (`app/`, Flutter) connects to every backend on the family box with one enrollment. **Chat is built into the app from Stage 1** (no Element X hand-off or in-app button), via **matrix-rust-sdk** through the small **`tinyweb_core` Rust bridge** (spike: PR #38). Chat is **end-to-end encrypted from Stage 1**: the box allows encrypted rooms and creates new rooms encrypted by default; the app sets up a **recovery key** and **key backup**; kid allowlists and quiet hours still apply (metadata on the server). Parent-key oversight of kid chats is **deferred**; parents read a kid's chats only on the kid's device for now. **Built-in background location** (Stage 1) posts OwnTracks-format JSON to the box’s existing Recorder HTTP endpoint; parents see traces in the app and on the dashboard map (kids do not need the OwnTracks app). **Release builds** run in CI on GitHub Actions (PR #41, `.github/workflows/app.yml`); spark (ARM64) cannot produce Android release artifacts; iOS needs macOS runners. Pin **matrix-rust-sdk** and upgrade deliberately. See [docs/TINYWEB_APP_PLAN.md](docs/TINYWEB_APP_PLAN.md).

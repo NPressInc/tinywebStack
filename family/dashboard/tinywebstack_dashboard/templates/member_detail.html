@@ -17,12 +17,16 @@
 {% endif %}
 <div class="card">
   <h2>Set up the TinyWeb app</h2>
-  <p class="hint">Generate a one-time code for {{ username }} to enter on their phone (valid about 10 minutes).</p>
+  <p class="hint">One code for {{ username }}'s phone. It works once and lasts about 10 minutes. Their camera opens TinyWeb, or a page that explains how to install it and type the code.</p>
   {% if app_code %}
-  <p><strong>Enrollment code:</strong> <code>{{ app_code }}</code></p>
-  <p class="hint">Expires: {{ app_expires }}</p>
-  {% if app_qr_img_url %}
-  <p><img src="{{ app_qr_img_url }}" alt="QR code for TinyWeb enrollment" width="200" height="200"></p>
+  <p><strong>Family server:</strong> <code>{{ server_name }}</code></p>
+  <p><strong>One-time code:</strong> <code>{{ app_code }}</code></p>
+  <p class="hint">Expires: {{ app_expires }}. This code is not the account password.</p>
+  {% if app_qr_data_uri %}
+  <p><img src="{{ app_qr_data_uri }}" alt="QR code to set up TinyWeb" width="200" height="200"></p>
+  {% endif %}
+  {% if app_qr_payload %}
+  <p class="hint">Or send this link: <code>{{ app_qr_payload }}</code></p>
   {% endif %}
   {% endif %}
   <form method="post" action="{{ url('/members/' ~ username ~ '/app-enroll-code') }}">

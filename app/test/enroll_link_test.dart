@@ -43,6 +43,24 @@ void main() {
     );
   });
 
+  test('parses https join link with the code in the fragment', () {
+    final data = parseEnrollLink(
+      'https://smith.tinyweb.win/family/join#code=ABCD2345',
+    );
+    expect(data.serverOrigin, 'https://smith.tinyweb.win');
+    expect(data.serverHost, 'smith.tinyweb.win');
+    expect(data.code, 'ABCD2345');
+  });
+
+  test('parses https join link with a query code and ignores a password', () {
+    final data = parseEnrollLink(
+      'https://family.example/family/join?code=ABCD2345&password=secret-token',
+    );
+    expect(data.serverOrigin, 'https://family.example');
+    expect(data.code, 'ABCD2345');
+    expect(data.toString(), isNot(contains('secret-token')));
+  });
+
   test('parses bare enroll code', () {
     final data = parseEnrollLink('XYZZY99');
     expect(data.code, 'XYZZY99');

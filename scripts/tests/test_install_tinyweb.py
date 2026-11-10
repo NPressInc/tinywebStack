@@ -601,4 +601,6 @@ def test_selfcheck_includes_family_public_nginx_checks() -> None:
     assert "--resolve" in text
     block = text[text.find("step_selfcheck()") : text.find("print_dry_run_plan()")]
     assert "/family/api/invite/verify" in block
+    assert "/family/join" in block
+    assert "family phone join HTTP 200" in block
     assert "POST" in block

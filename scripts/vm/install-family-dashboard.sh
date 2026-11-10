@@ -307,6 +307,15 @@ location /.well-known/tinywebstack-family.json {
     proxy_set_header Host \$host;
     proxy_set_header Remote-User "";
 }
+location = /family/join {
+    access_log off;
+    proxy_pass http://127.0.0.1:8765/join;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_set_header Remote-User "";
+    proxy_set_header YNH_USER "";
+}
 location /family/api/invite/verify {
     proxy_pass http://127.0.0.1:8765/api/invite/verify;
     proxy_set_header Host \$host;

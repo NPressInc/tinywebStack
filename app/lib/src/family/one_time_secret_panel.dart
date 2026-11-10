@@ -13,6 +13,7 @@ class OneTimeSecretPanel extends StatelessWidget {
     this.qrPayload,
     this.secondaryLabel,
     this.secondarySecret,
+    this.secondaryCopyLabel = 'Copy link',
   });
 
   final String title;
@@ -21,6 +22,7 @@ class OneTimeSecretPanel extends StatelessWidget {
   final String? qrPayload;
   final String? secondaryLabel;
   final String? secondarySecret;
+  final String secondaryCopyLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -70,7 +72,7 @@ class OneTimeSecretPanel extends StatelessWidget {
                   );
                 },
                 icon: const Icon(Icons.copy),
-                label: const Text('Copy link'),
+                label: Text(secondaryCopyLabel),
               ),
             ],
             if (qrPayload != null && qrPayload!.isNotEmpty) ...[

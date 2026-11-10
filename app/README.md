@@ -4,7 +4,7 @@ Stage 1 shell: enroll against your family box, home shortcuts, and **in-app Matr
 
 ## What Stage 1 includes
 
-- QR / manual enrollment (`tinyweb://enroll`, one-time code, or username + password)
+- Phone setup from one QR or link (`https://<family>/family/join#code=…`, or `tinyweb://enroll`). The app fills the family server and signs in. Typing the family name and code still works if the link cannot open the app.
 - Discovery via `/.well-known/tinywebstack-family.json`
 - Secure storage of the enrollment bundle (Keychain / Keystore)
 - Home: greeting, quiet-hours banner, shortcuts (parents: **Family controls** tile)
