@@ -4,6 +4,7 @@
 <nav class="tw-nav">
   <a href="{{ url('/') }}">Home</a>
   <a href="{{ url('/members') }}">Family members ({{ member_count }})</a>
+  <a href="{{ url('/health') }}">Health</a>
   <a href="{{ url('/invite') }}">Link another home</a>
   <a href="{{ url('/backup') }}">Backups</a>
 </nav>
@@ -12,6 +13,15 @@
 <h1>Your family home</h1>
 <p class="hint">This is the only place you need for everyday family setup — adding people, chat rules, and linking another household.</p>
 <p>Signed in as <strong>{{ user }}</strong>.</p>
+<div class="card">
+  <h2>Is everything working?</h2>
+  {% if health_line %}
+  <p>{{ health_line }}</p>
+  {% else %}
+  <p class="hint">See whether chat, calendars, events, location, notifications, the website certificate, and disk space are OK.</p>
+  {% endif %}
+  <p><a href="{{ url('/health') }}">Open health</a></p>
+</div>
 <div class="card">
   <h2>Quick links</h2>
   <ul>

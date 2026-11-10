@@ -7,6 +7,7 @@ import '../api/models.dart';
 import '../app_session.dart';
 import '../brand.dart';
 import '../enroll/secure_recovery_screen.dart';
+import '../health/health_screen.dart';
 import '../location/location_service.dart';
 import '../widgets/quiet_hours_banner.dart';
 
@@ -115,6 +116,19 @@ class HomeScreen extends StatelessWidget {
                 title: 'Family controls',
                 subtitle: 'Kids: chat rules, quiet hours, events',
                 onTap: onOpenFamily!,
+              ),
+            if (isParent)
+              _HomeTile(
+                icon: Icons.health_and_safety_outlined,
+                title: 'Home health',
+                subtitle: 'Whether chat, calendars, and the rest are working',
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => HealthScreen(session: session),
+                    ),
+                  );
+                },
               ),
             if (session.enrollment?.discovery.jellyfin?.canOpen == true)
               _HomeTile(

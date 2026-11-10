@@ -468,6 +468,17 @@ class FamilyApiClient {
     _throwForStatus(response);
   }
 
+  Future<HealthReport> fetchHealth(EnrollmentBundle bundle) async {
+    final response = await _client.get(
+      Uri.parse(_apiUrl(bundle, '/health')),
+      headers: {'Authorization': 'Bearer ${bundle.dashboardToken}'},
+    );
+    if (response.statusCode == 200) {
+      return HealthReport.fromJson(_jsonMapFromResponse(response));
+    }
+    _throwForStatus(response);
+  }
+
   Future<AppMeProfile> fetchMe(EnrollmentBundle bundle) async {
     final url = bundle.meUrl(bundle.serverOrigin);
     final response = await _client.get(

@@ -444,7 +444,9 @@ additionally runs `create-family-test-users.sh` and `setup-family-calendars.sh`
 
 **Expected:** `[tinywebstack] Family layer init complete for home.example.com`,
 and `https://home.example.com/family/` → YunoHost SSO login → parents see the
-dashboard.
+dashboard. Parents can open `https://home.example.com/family/health` for a
+plain-language check of chat, calendars, events, location, notifications,
+certificates, and disk space. A child account should get “not allowed” (403).
 *If this fails:*
 - Mobilizon is the slow/heavy one (Elixir migration, ~10 min). If
   `install-mobilizon.sh` dies mid-install, `yunohost app remove mobilizon`

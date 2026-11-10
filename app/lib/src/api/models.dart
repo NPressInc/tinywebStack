@@ -1081,3 +1081,108 @@ class EnrollException implements Exception {
   @override
   String toString() => message ?? kind.name;
 }
+
+final RegExp _healthLeak = RegExp(
+  r'(bearer\s+\S+|tws_[A-Za-z0-9]+|/(?:etc|var|home|opt|usr|root)/\S+|127\.0\.0\.1|\blocalhost\b)',
+  caseSensitive: false,
+);
+
+/// Parent-facing health copy. Drops tokens and internal paths if a response
+/// ever includes them.
+String publicHealthLine(String raw) {
+  if (_healthLeak.hasMatch(raw)) {
+    return 'Details are hidden.';
+  }
+  if (raw.length > 400) {
+    return raw.substring(0, 400);
+  }
+  return raw;
+}
+
+class HealthCheck {
+  HealthCheck({
+    required this.id,
+    required this.title,
+    required this.status,
+    required this.summary,
+    required this.hint,
+    required this.checkedAt,
+  });
+
+  final String id;
+  final String title;
+  final String status;
+  final String summary;
+  final String hint;
+  final String checkedAt;
+
+  String get statusLabel {
+    switch (status) {
+      case 'ok':
+        return 'OK';
+      case 'warning':
+        return 'Warning';
+      case 'problem':
+        return 'Problem';
+      case 'not_installed':
+        return 'Not installed';
+      default:
+        return 'Problem';
+    }
+  }
+
+  factory HealthCheck.fromJson(Map<String, dynamic> json) {
+    const allowed = {'ok', 'warning', 'problem', 'not_installed'};
+    final status = json['status'] as String? ?? '';
+    return HealthCheck(
+      id: json['id'] as String? ?? '',
+      title: publicHealthLine(json['title'] as String? ?? ''),
+      status: allowed.contains(status) ? status : 'problem',
+      summary: publicHealthLine(json['summary'] as String? ?? ''),
+      hint: publicHealthLine(json['hint'] as String? ?? ''),
+      checkedAt: json['checked_at'] as String? ?? '',
+    );
+  }
+}
+
+class HealthReport {
+  HealthReport({
+    required this.overall,
+    required this.checkedAt,
+    required this.cached,
+    required this.checks,
+  });
+
+  final String overall;
+  final String checkedAt;
+  final bool cached;
+  final List<HealthCheck> checks;
+
+  String get overallLabel {
+    switch (overall) {
+      case 'ok':
+        return 'Everything checked is working.';
+      case 'warning':
+        return 'Some services need a look.';
+      case 'problem':
+        return 'Something needs attention.';
+      default:
+        return 'Something needs attention.';
+    }
+  }
+
+  factory HealthReport.fromJson(Map<String, dynamic> json) {
+    final rows = json['checks'] as List<dynamic>? ?? [];
+    const allowed = {'ok', 'warning', 'problem'};
+    final overall = json['overall'] as String? ?? '';
+    return HealthReport(
+      overall: allowed.contains(overall) ? overall : 'problem',
+      checkedAt: json['checked_at'] as String? ?? '',
+      cached: json['cached'] as bool? ?? false,
+      checks: rows
+          .whereType<Map<String, dynamic>>()
+          .map(HealthCheck.fromJson)
+          .toList(),
+    );
+  }
+}

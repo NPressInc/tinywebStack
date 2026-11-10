@@ -164,6 +164,17 @@ class AppSession extends ChangeNotifier {
     await _refreshMe(clearOnUnauthorized: true);
   }
 
+  Future<HealthReport> fetchHealth() {
+    final bundle = enrollment;
+    if (bundle == null) {
+      throw EnrollException(
+        EnrollErrorKind.needsUpdate,
+        'Enroll this phone first',
+      );
+    }
+    return _familyApi.fetchHealth(bundle);
+  }
+
   Future<void> removeDevice() async {
     await pushService.unregisterPusher();
     await locationService.stop();

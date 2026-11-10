@@ -175,6 +175,7 @@ Lab: two-family spark VMs ([test-nodes.md](test-nodes.md)); style checks like [`
 | `GET /family/api/locations` | **Built** | Parent-only: latest position per kid (Recorder `/api/0/last` via `TWS_OWNTRACKS_API_URL`) |
 | `GET /family/api/locations/{username}/track` | **Built** | Parent-only track history (`hours` query, max 2000 points) |
 | `GET /family/api/map` | **Built** | Parent-only: self-hosted PMTiles URLs + bounds ([MAP.md](MAP.md)) |
+| `GET /family/api/health` | **Built** | Parent-only read-only service health (same report as `/family/health`). Kids get 403. No secrets, paths, or restarts. |
 
 **Existing (keep):** `GET/PUT /family/permissions/{user}`, `/family/federation/domains`, public invite verify, well-known.
 
