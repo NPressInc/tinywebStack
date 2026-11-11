@@ -92,6 +92,8 @@ class ControlProvider(Protocol):
 
     def delete_cname(self, name: str) -> None: ...
 
+    def update_ingress(self, tunnel_id: str, spec: TunnelSpec) -> None: ...
+
     def ensure_edge_certificate(self, request: CertRequest) -> EdgeCertificate: ...
 
 
@@ -108,6 +110,7 @@ class FakeProvider:
     deleted_names: list[str] = field(default_factory=list)
     create_calls: int = 0
     fail_certificate: bool = False
+    fail_ingress: bool = False
 
     def create_tunnel(self, spec: TunnelSpec) -> IssuedTunnel:
         self.create_calls += 1
@@ -151,6 +154,14 @@ class FakeProvider:
         self.deleted_names.append(name)
         self.records.pop(name, None)
 
+    def update_ingress(self, tunnel_id: str, spec: TunnelSpec) -> None:
+        if self.fail_ingress:
+            raise ProviderError("fake ingress update failed")
+        row = self.tunnels.get(tunnel_id)
+        if row is None or row.get("deleted"):
+            raise ProviderError("No active tunnel to update")
+        row["rules"] = list(spec.rules)
+
     def ensure_edge_certificate(self, request: CertRequest) -> EdgeCertificate:
         if self.fail_certificate:
             raise ProviderError("fake certificate order failed")
@@ -187,6 +198,9 @@ class UnconfiguredProvider:
         self._fail()
 
     def delete_cname(self, name: str) -> None:
+        self._fail()
+
+    def update_ingress(self, tunnel_id: str, spec: TunnelSpec) -> None:
         self._fail()
 
     def ensure_edge_certificate(self, request: CertRequest) -> EdgeCertificate:
@@ -407,6 +421,9 @@ class CloudflareProvider:
             self._request("PUT", f"zones/{self.zone_id}/dns_records/{cname_id}", body)
         else:
             self._request("POST", f"zones/{self.zone_id}/dns_records", body)
+
+    def update_ingress(self, tunnel_id: str, spec: TunnelSpec) -> None:
+        self._put_ingress(tunnel_id, spec)
 
     def delete_cname(self, name: str) -> None:
         for row in self._list_records(name):

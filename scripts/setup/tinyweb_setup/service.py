@@ -36,6 +36,12 @@ from tinyweb_setup.control_plane import (
 from tinyweb_setup.mdns import Announcer
 
 SETUP_PORT = 4734
+# ACM and Total TLS issuance is asynchronous. 24 polls of 10 seconds is about
+# four minutes, which is long enough for a typical edge certificate and short
+# enough that a parent can retry with the same setup code if it is still pending.
+DEFAULT_CERT_POLLS = 24
+DEFAULT_CERT_POLL_SECONDS = 10.0
+CERT_WAIT_DETAIL = "Still setting up your secure connection."
 _TOKEN_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 _RESERVED_SLUGS = {
     "admin",
@@ -361,8 +367,10 @@ class SetupConfig:
             gate_tunnel=os.environ.get("TWS_SETUP_GATE_TUNNEL") or None,
             control_plane_url=plane or None,
             cloudflared_dest=Path(dest) if dest else None,
-            cert_polls=int(os.environ.get("TWS_SETUP_CERT_POLLS", "4")),
-            cert_poll_seconds=float(os.environ.get("TWS_SETUP_CERT_POLL_SECONDS", "2")),
+            cert_polls=int(os.environ.get("TWS_SETUP_CERT_POLLS", str(DEFAULT_CERT_POLLS))),
+            cert_poll_seconds=float(
+                os.environ.get("TWS_SETUP_CERT_POLL_SECONDS", str(DEFAULT_CERT_POLL_SECONDS))
+            ),
             post_limit=int(os.environ.get("TWS_SETUP_POST_LIMIT", "10")),
             post_window_s=float(os.environ.get("TWS_SETUP_POST_WINDOW_S", "600")),
         )
@@ -502,7 +510,10 @@ class SetupStore:
         phase = self.phase
         domain = self.domain or "<family>.tinyweb.win"
         account = "done" if phase != "waiting" else "current"
-        if phase == "installing":
+        waiting_for_cert = phase == "installing" and self.gates.get("certificate") == "waiting"
+        if phase == "installing" and waiting_for_cert:
+            install = "done"
+        elif phase == "installing":
             install = "current"
         elif phase in {"blocked", "ready"}:
             install = "done"
@@ -527,15 +538,21 @@ class SetupStore:
             or f"TinyWeb will publish {domain}. That step is not running yet, so setup stops here.",
             f"{domain} is published.",
         )
-        cert_state, cert_detail = gated(
-            certificate,
-            self.gate_details.get("certificate")
-            or (
-                f"TinyWeb will get a real Let's Encrypt certificate for {domain}. "
-                "That step is not running yet, so setup stops here instead of showing a certificate warning."
-            ),
-            "Let's Encrypt certificate is in place.",
-        )
+        if waiting_for_cert:
+            cert_state, cert_detail = (
+                "current",
+                self.gate_details.get("certificate") or CERT_WAIT_DETAIL,
+            )
+        else:
+            cert_state, cert_detail = gated(
+                certificate,
+                self.gate_details.get("certificate")
+                or (
+                    f"TinyWeb will get a real Let's Encrypt certificate for {domain}. "
+                    "That step is not running yet, so setup stops here instead of showing a certificate warning."
+                ),
+                "Let's Encrypt certificate is in place.",
+            )
         tunnel_state, tunnel_detail = gated(
             tunnel,
             self.gate_details.get("tunnel")
@@ -794,9 +811,7 @@ class SetupStore:
                 502,
                 "TinyWeb could not reserve the family name. No public name was published.",
             )
-        with self._lock:
-            self._remember_secret(token)
-        _atomic_write(self.config.claim_token_file, (token + "\n").encode("utf-8"), 0o600)
+        self._write_claim_token(token)
         self.note(f"reserved {slug} with the control plane")
 
     def _read_claim_token(self) -> str | None:
@@ -822,9 +837,44 @@ class SetupStore:
             and self.config.cert_poll_seconds > 0
         ):
             polls += 1
-            time.sleep(self.config.cert_poll_seconds)
+            self._show_certificate_wait()
+            _cert_wait_sleep(self.config.cert_poll_seconds)
             decision, details, error = self._publish_once()
         self._record_publish(decision, details, error)
+
+    def _write_claim_token(self, token: str) -> None:
+        with self._lock:
+            self._remember_secret(token)
+        _atomic_write(self.config.claim_token_file, (token + "\n").encode("utf-8"), 0o600)
+        url = self.config.control_plane_url
+        if url:
+            _atomic_write(
+                self.config.etc_dir / "cloudflared" / "control-plane.url",
+                (url.rstrip("/") + "\n").encode("utf-8"),
+                0o644,
+            )
+
+    def _show_certificate_wait(self) -> None:
+        """Tell the wizard the edge certificate is still being issued.
+
+        The phase stays installing, so this does not look like a failure and
+        does not mark setup ready. The setup code stays on disk.
+        """
+        with self._lock:
+            domain = self.domain or "the family name"
+            self.gates = {
+                "control_plane": "ready",
+                "certificate": "waiting",
+                "tunnel": "missing",
+            }
+            self.gate_details = {
+                "name": f"{domain} is published.",
+                "certificate": CERT_WAIT_DETAIL,
+                "tunnel": "TinyWeb will open its path to the internet after the secure connection is ready.",
+            }
+            self.install_detail = ""
+            self.error = None
+            self._persist()
 
     def _publish_once(self) -> tuple[PublishDecision, dict[str, str], str | None]:
         client = ControlPlaneClient(self.config.control_plane_url or "")
@@ -852,9 +902,7 @@ class SetupStore:
                 return decision, _blocked_details(decision, self.domain), (
                     "TinyWeb could not reserve the family name. No public name was published."
                 )
-            with self._lock:
-                self._remember_secret(token)
-            _atomic_write(self.config.claim_token_file, (token + "\n").encode("utf-8"), 0o600)
+            self._write_claim_token(token)
         try:
             handoff = client.issue_tunnel(token, jellyfin=jellyfin_enabled())
         except ControlPlaneError as exc:
@@ -1008,7 +1056,8 @@ def _blocked_details(decision: PublishDecision, domain: str | None) -> dict[str,
         "name": f"{name} is published.",
         "certificate": (
             f"TinyWeb does not have a real Let's Encrypt certificate for {name} yet, "
-            "so setup stops here instead of showing a certificate warning."
+            "so setup stops here instead of showing a certificate warning. "
+            "You can try again with the same setup code."
         ),
         "tunnel": "TinyWeb could not open its path to the internet, so setup stops here.",
     }
@@ -1020,6 +1069,11 @@ def _stopped(
 ) -> tuple[PublishDecision, dict[str, str], str]:
     decision = PublishDecision(False, False, False, False, exc.code or "unreachable")
     return decision, _blocked_details(decision, domain), _parent_message(exc)
+
+
+def _cert_wait_sleep(seconds: float) -> None:
+    """Sleep between edge-certificate checks. Tests patch this instead of waiting."""
+    time.sleep(seconds)
 
 
 def _step_title(line: str) -> str | None:

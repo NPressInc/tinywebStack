@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Optional Jellyfin from the official YunoHost app. No-op unless TWS_JELLYFIN=1.
 # Does not create libraries, import media, or call the Jellyfin admin API.
+# After setup, a saved tunnel handoff is updated (claim token, not the setup
+# code) so jellyfin.<family> is added or removed, then cloudflared-apply.sh runs.
 set -euo pipefail
 
 TW_STACK_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -10,6 +12,30 @@ source "${TW_STACK_ROOT}/lib/common.sh"
 source "${TW_STACK_ROOT}/lib/domains.sh"
 # shellcheck source=scripts/lib/portal_tiles.sh
 source "${TW_STACK_ROOT}/lib/portal_tiles.sh"
+
+# The environment wins. Otherwise the one TWS_JELLYFIN line in tinyweb.env is
+# the box setting. An unset variable must not look like "turn Jellyfin off":
+# family-init defaults it to 0, and that must not delete a host.
+JELLYFIN_EXPLICIT=0
+if [[ -n "${TWS_JELLYFIN+x}" ]]; then
+  JELLYFIN_EXPLICIT=1
+else
+  _jellyfin_env_file="${TWS_ETC_DIR:-/etc/tinywebstack}/tinyweb.env"
+  if [[ -f "$_jellyfin_env_file" ]]; then
+    while IFS= read -r _line || [[ -n "${_line-}" ]]; do
+      _line="${_line%%#*}"
+      _line="${_line#"${_line%%[![:space:]]*}"}"
+      case "$_line" in
+        TWS_JELLYFIN=*)
+          TWS_JELLYFIN="${_line#TWS_JELLYFIN=}"
+          export TWS_JELLYFIN
+          JELLYFIN_EXPLICIT=1
+          ;;
+      esac
+    done <"$_jellyfin_env_file"
+  fi
+  unset _jellyfin_env_file _line
+fi
 load_config
 
 usage() {
@@ -20,7 +46,45 @@ usage() {
 [[ $# -ge 1 ]] || usage
 MAIN_DOMAIN=$1
 
+handoff_ready() {
+  [[ -f "${TWS_ETC_DIR:-/etc/tinywebstack}/cloudflared/handoff.json" ]]
+}
+
+handoff_has_jellyfin() {
+  local file="${TWS_ETC_DIR:-/etc/tinywebstack}/cloudflared/handoff.json"
+  [[ -f "$file" ]] || return 1
+  python3 - "$file" <<'PY'
+import json, sys
+try:
+    with open(sys.argv[1], encoding="utf-8") as handle:
+        data = json.load(handle)
+except (OSError, json.JSONDecodeError):
+    sys.exit(1)
+if not isinstance(data, dict):
+    sys.exit(1)
+for row in data.get("dns") or []:
+    name = row.get("name") if isinstance(row, dict) else ""
+    if isinstance(name, str) and name.startswith("jellyfin."):
+        sys.exit(0)
+sys.exit(1)
+PY
+}
+
+# First boot has no handoff yet; POST /v1/tunnels includes Jellyfin then.
+# A later run uses the claim token already stored beside that handoff.
+sync_jellyfin_tunnel() {
+  local enabled=$1
+  local script="${TW_STACK_ROOT}/cloudflared-hosts.sh"
+  [[ -f "$script" ]] || die "Missing cloudflared-hosts.sh"
+  bash "$script" --jellyfin "$enabled"
+}
+
 if ! jellyfin_requested; then
+  # Only an explicit off removes the host. A default of 0, with no Jellyfin
+  # name on the saved handoff, does not call the control plane.
+  if [[ "$JELLYFIN_EXPLICIT" == "1" ]] && handoff_has_jellyfin; then
+    sync_jellyfin_tunnel 0
+  fi
   log "TWS_JELLYFIN is off — Jellyfin install skipped"
   exit 0
 fi
@@ -148,6 +212,10 @@ if [[ -f "$ENV_FILE" ]]; then
   fi
 else
   log "WARN: ${ENV_FILE} missing — re-run install-jellyfin.sh after the family dashboard"
+fi
+
+if handoff_ready; then
+  sync_jellyfin_tunnel 1
 fi
 
 log "Jellyfin ready at ${JELLYFIN_URL} (sign-in is LDAP username and password, not single sign-on)"

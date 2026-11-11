@@ -98,6 +98,8 @@ The box presents its setup token when it claims the name. The control plane does
 
 During setup the box calls, in order: `GET /v1/slugs/{slug}`, `POST /v1/setup/claim`, `POST /v1/tunnels`, `scripts/cloudflared-apply.sh`, and, only when DNS is published and the edge certificate is ready, `POST /v1/setup/complete`. The installer sets `TWS_TLS_SINGLE_SAN_CERT=1` and `TWS_TLS_EDGE_CERT=1`. The edge flag skips on-box Let's Encrypt, because the box does not open port 80. The certificate the phone sees is the edge certificate. The name, certificate, and tunnel steps stay blocked when the control plane is missing, Cloudflare credentials are missing, or the handoff says DNS was not published. The API does not report those steps done, and it does not report `ready`, in that case.
 
+Edge certificates often take a few minutes. While DNS is already published and the certificate is still pending, the wizard stays on the certificate step and says "Still setting up your secure connection." That is not a failure, and setup is not marked ready. The default wait is `TWS_SETUP_CERT_POLLS` (24) times `TWS_SETUP_CERT_POLL_SECONDS` (10), about four minutes. If it is still pending, setup stays blocked, the setup code is still valid, and the parent can try again with that same code. The code is removed only after DNS is published, the edge certificate is ready, and `cloudflared-apply.sh` succeeds.
+
 `TWS_SETUP_ALLOW_GATE_OVERRIDE=1` is a test switch for a box that is not talking to the control plane. Do not set it on an image. When `TWS_CONTROL_PLANE_URL` is set, the control plane's answer wins.
 
 ### C. Tunnel
@@ -106,7 +108,7 @@ Many home ISPs use CGNAT. The parent must not open ports 80 or 443.
 
 v1 default: a per-box Cloudflare Tunnel. The control plane issues the tunnel credentials. It does not forward family traffic through itself. Phone ↔ Cloudflare edge ↔ box.
 
-`scripts/cloudflared-apply.sh` refuses to start `cloudflared` when the token is missing or `published` is not true. It does not refuse because a Jellyfin hostname is present. When `TWS_JELLYFIN=1`, first boot includes `jellyfin.<family>.tinyweb.win` on the tunnel. When Jellyfin is off, that host is not added. Immich is out of scope for v1. The tunnel step stays blocked until apply succeeds for a published handoff.
+`scripts/cloudflared-apply.sh` refuses to start `cloudflared` when the token is missing or `published` is not true. It does not refuse because a Jellyfin hostname is present. When `TWS_JELLYFIN=1`, first boot includes `jellyfin.<family>.tinyweb.win` on the tunnel. When Jellyfin is off, that host is not added. Enabling or disabling Jellyfin after setup updates that one host with the claim token and runs apply again. See [JELLYFIN.md](JELLYFIN.md). Immich is out of scope for v1. The tunnel step stays blocked until apply succeeds for a published handoff.
 
 ### D. Stores
 
@@ -166,7 +168,9 @@ Useful environment (none of these are the parent password):
 | `TWS_SETUP_INSTALL_CMD` | Replacement for `install-on-box.sh` (tests). The family slug is appended. |
 | `TWS_YUNOHOST_INSTALLED_FILE` | Default `/etc/yunohost/installed`. If this file exists and setup is not in progress, the service does not listen. |
 | `TWS_CONTROL_PLANE_URL` | Control plane base URL. The setup unit sets `https://tinyweb.win`. Empty means the name and tunnel stay blocked. |
-| `TWS_SETUP_CLOUDFLARED_DEST` | Stage `cloudflared-apply.sh` here instead of installing the system unit. Tests only. |
+| `TWS_SETUP_CLOUDFLARED_DEST` | Stage `cloudflared-apply.sh` here instead of installing the system unit. Tests only. `cloudflared-hosts.sh` passes it through. |
+| `TWS_SETUP_CERT_POLLS` | How many times to re-check a pending edge certificate. Default `24`. |
+| `TWS_SETUP_CERT_POLL_SECONDS` | Seconds between those checks. Default `10`. Together with the poll count, about four minutes. |
 
 ## Tests
 

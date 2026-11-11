@@ -12,7 +12,7 @@ Checked against the official package [YunoHost-Apps/jellyfin_ynh](https://github
 
 `https://jellyfin.<family>.tinyweb.win/`
 
-That name matches the other service hosts (`matrix.`, `nextcloud.`, `mobilizon.`). With `TWS_JELLYFIN=1` it is included in `node_all_domains` and on the family's Cloudflare Tunnel. Bootstrap, lab certs, per-domain Let’s Encrypt, and the `*.<family>.tinyweb.win` certificate link pick it up. Turning it on later still adds the domain; if the family certificate is a wildcard for the main name, the installer copies that certificate onto the Jellyfin host. Immich is out of scope for v1.
+That name matches the other service hosts (`matrix.`, `nextcloud.`, `mobilizon.`). With `TWS_JELLYFIN=1` it is included in `node_all_domains` and on the family's Cloudflare Tunnel. Bootstrap, lab certs, per-domain Let’s Encrypt, and the `*.<family>.tinyweb.win` certificate link pick it up. If the family certificate is a wildcard for the main name, the installer copies that certificate onto the Jellyfin host. Immich is out of scope for v1. Large Jellyfin media stays out of the core family backup; `jellyfin` is not passed to `yunohost backup create`. See [BACKUP.md](BACKUP.md).
 
 The YunoHost package already creates the shared media directory and gives Jellyfin access to it. Put files under `/home/yunohost.multimedia/share` and add libraries from Jellyfin’s dashboard. TinyWeb does not scan, import, or transcode.
 
@@ -66,7 +66,15 @@ On a box you mean to use for media, before or after the rest of TinyWeb:
 TWS_JELLYFIN=1
 ```
 
-Then `scripts/vm/install-jellyfin.sh <family>.tinyweb.win` as root, or a fresh `install-tinyweb.sh` / `family-init.sh` with that setting. Re-running is safe. `TWS_JELLYFIN=0` (the default) returns immediately and does not call `yunohost`.
+Then `scripts/vm/install-jellyfin.sh <family>.tinyweb.win` as root, or a fresh `install-tinyweb.sh` / `family-init.sh` with that setting. Re-running is safe. `TWS_JELLYFIN=0` (the default) does not call `yunohost`.
+
+The installer reads `TWS_JELLYFIN` from the environment. If it is unset, it reads the `TWS_JELLYFIN=` line in `/etc/tinywebstack/tinyweb.env`. An exported value wins over the file.
+
+First boot sends `jellyfin: true` on `POST /v1/tunnels` only when `TWS_JELLYFIN` is already set. The parent dashboard does not edit DNS. It shows the Jellyfin card after this installer writes `TWS_JELLYFIN_URL`.
+
+Turning Jellyfin on after setup is the same installer command. If `cloudflared/handoff.json` is already on the box, `scripts/cloudflared-hosts.sh` asks the control plane to add `jellyfin.<family>.tinyweb.win` (proxied `CNAME` and tunnel ingress) and then runs `scripts/cloudflared-apply.sh`. The call uses the claim token stored at setup (`cloudflared/claim-token`). It does not send the setup code, which was consumed when setup finished. Apply refuses unless the handoff says `published` is exactly true. The `fake` provider never says that.
+
+Turning it off is `TWS_JELLYFIN=0` in the environment, or that line in `tinyweb.env`, and the same installer command. When the saved handoff already has the Jellyfin host, that removes it and re-runs apply. It still does not call `yunohost`, and it does not uninstall the app. A box with no handoff yet (first boot, or a lab box that is not on the tunnel) leaves the tunnel unchanged. So does a run where `TWS_JELLYFIN` was never set and the handoff has no Jellyfin host: the default of 0 is not a request to delete DNS.
 
 Jellyfin is not a required service. The package’s own runtime note is about 100 MB before playback; transcoding is configured in Jellyfin and can be much heavier on an 8 GB NAS or mini PC. Leave it off on boxes that should not spend that memory.
 

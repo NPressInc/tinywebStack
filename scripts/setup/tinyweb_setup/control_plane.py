@@ -134,6 +134,18 @@ class ControlPlaneClient:
             bearer=claim_token,
         )
 
+    def update_hosts(self, claim_token: str, *, jellyfin: bool) -> dict[str, Any]:
+        """Add or remove the Jellyfin host on a tunnel that already exists.
+
+        Uses the claim token from setup. The setup code is not sent.
+        """
+        return self._request(
+            "POST",
+            "/v1/tunnels/hosts",
+            body={"jellyfin": jellyfin},
+            bearer=claim_token,
+        )
+
     def complete(self, claim_token: str) -> dict[str, Any]:
         return self._request("POST", "/v1/setup/complete", body={}, bearer=claim_token)
 

@@ -290,6 +290,13 @@ class Store:
                 (cert_json, tunnel_row_id),
             )
 
+    def update_tunnel_dns(self, tunnel_row_id: int, dns_json: str) -> None:
+        with self._lock:
+            self._conn.execute(
+                "UPDATE tunnels SET dns_json = ? WHERE id = ?",
+                (dns_json, tunnel_row_id),
+            )
+
     def active_tunnel(self, unit_id: str) -> sqlite3.Row | None:
         with self._lock:
             return self._conn.execute(

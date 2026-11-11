@@ -150,6 +150,9 @@ def test_installer_leaves_jellyfin_off_the_default_domain_list() -> None:
     assert "jellyfin_requested" in text
     install = (ROOT / "scripts" / "vm" / "install-jellyfin.sh").read_text(encoding="utf-8")
     assert "TWS_JELLYFIN is off" in install
+    assert "cloudflared-hosts.sh" in install
+    assert "sync_jellyfin_tunnel 0" in install
+    assert "sync_jellyfin_tunnel 1" in install
     assert "init_main_permission=visitors" in install
     assert "path=/" in install
     assert "init_admin_permission=" in install

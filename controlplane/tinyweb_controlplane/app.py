@@ -166,6 +166,34 @@ def create_app(
         )
         return service.issue_tunnel(token, options)
 
+    @app.post("/v1/tunnels/hosts")
+    async def update_hosts(request: Request) -> dict[str, Any]:
+        token, _unit = box_unit(request)
+        try:
+            payload = await request.json()
+        except Exception as exc:
+            raise ApiError(
+                400,
+                "invalid_body",
+                "Send a JSON object with jellyfin set to true or false.",
+            ) from exc
+        if not isinstance(payload, dict):
+            raise ApiError(
+                400,
+                "invalid_body",
+                "Send a JSON object with jellyfin set to true or false.",
+            )
+        unknown = set(payload) - {"jellyfin"}
+        if unknown:
+            raise ApiError(
+                400,
+                "invalid_host",
+                "Only the Jellyfin host can be changed here. Immich is out of scope for v1.",
+            )
+        if not isinstance(payload.get("jellyfin"), bool):
+            raise ApiError(400, "invalid_body", "jellyfin must be true or false.")
+        return service.update_hosts(token, jellyfin=payload["jellyfin"])
+
     @app.post("/v1/tunnels/revoke")
     def revoke(body: RevokeIn, request: Request) -> dict[str, Any]:
         slug = validate_slug(body.slug)

@@ -143,6 +143,91 @@ void main() {
     expect(find.text('You\'re all set'), findsNothing);
   });
 
+  testWidgets('certificate wait says the secure connection is still being set up', (
+    tester,
+  ) async {
+    _tallSurface(tester);
+    final setupHttp = MockClient((request) async {
+      return http.Response(
+        jsonEncode(
+          _status(
+            phase: 'installing',
+            certificateState: 'current',
+            certificateDetail: 'Still setting up your secure connection.',
+          ),
+        ),
+        200,
+      );
+    });
+    final session = AppSession(store: InMemoryCredentialStore());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnboxScreen(
+          session: session,
+          client: SetupClient(
+            baseUri: Uri.parse('http://tinyweb.local:4734'),
+            client: setupHttp,
+          ),
+          pollInterval: const Duration(days: 1),
+        ),
+      ),
+    );
+    await _fillForm(tester);
+    await tester.tap(find.byKey(const Key('unbox-submit')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('Still setting up your secure connection.'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsWidgets);
+    expect(find.text('Try again'), findsNothing);
+    expect(find.text('You\'re all set'), findsNothing);
+    expect(session.route, isNot(AppRoute.home));
+    expect(session.enrollment, isNull);
+  });
+
+  testWidgets('a blocked certificate can be tried again with the same code', (
+    tester,
+  ) async {
+    _tallSurface(tester);
+    final session = AppSession(store: InMemoryCredentialStore());
+    await tester.pumpWidget(
+      MaterialApp(
+        home: UnboxScreen(
+          session: session,
+          client: SetupClient(
+            baseUri: Uri.parse('http://tinyweb.local:4734'),
+            client: MockClient((request) async {
+              return http.Response(
+                jsonEncode(
+                  _status(
+                    phase: 'blocked',
+                    certificateState: 'blocked',
+                    certificateDetail:
+                        'TinyWeb does not have a real Let\'s Encrypt certificate for floyd.tinyweb.win yet, so setup stops here instead of showing a certificate warning. You can try again with the same setup code.',
+                  ),
+                ),
+                200,
+              );
+            }),
+          ),
+          pollInterval: const Duration(days: 1),
+        ),
+      ),
+    );
+    await _fillForm(tester);
+    await tester.tap(find.byKey(const Key('unbox-submit')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.textContaining('same setup code'), findsOneWidget);
+    expect(session.enrollment, isNull);
+    await tester.tap(find.text('Try again'));
+    await tester.pump();
+    expect(find.byKey(const Key('unbox-setup-code')), findsOneWidget);
+    expect(find.text('You\'re all set'), findsNothing);
+    expect(session.route, isNot(AppRoute.home));
+  });
+
   testWidgets('ready box signs the parent in with the password they chose', (tester) async {
     _tallSurface(tester);
     final familyHttp = MockClient((request) async {

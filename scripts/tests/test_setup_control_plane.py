@@ -510,3 +510,222 @@ def test_pre_ship_mints_with_the_fake_provider_and_does_not_log_the_code(tmp_pat
     joined = " ".join(proc.args) if isinstance(proc.args, list) else str(proc.args)
     assert token not in joined
     assert OPERATOR not in joined
+
+
+class _PublishingCert:
+    """Publishes DNS, and reports the edge certificate ready after N reads."""
+
+    publishes = True
+    name = "cloudflare"
+
+    def __init__(self, ready_after: int) -> None:
+        self.ready_after = ready_after
+        self.cert_calls = 0
+        self.create_calls = 0
+
+    def create_tunnel(self, spec):
+        from tinyweb_controlplane.providers import IssuedTunnel
+
+        self.create_calls += 1
+        return IssuedTunnel(
+            tunnel_id="00000000-0000-4000-8000-0000000000aa",
+            account_tag="account",
+            token="live-tunnel-token-example",
+            credentials_file={"TunnelID": "00000000-0000-4000-8000-0000000000aa"},
+            name=spec.name,
+        )
+
+    def delete_tunnel(self, tunnel_id: str) -> None:
+        return None
+
+    def upsert_cname(self, record) -> None:
+        return None
+
+    def delete_cname(self, name: str) -> None:
+        return None
+
+    def ensure_edge_certificate(self, request):
+        from tinyweb_controlplane.providers import EdgeCertificate
+
+        self.cert_calls += 1
+        ready = self.cert_calls >= self.ready_after
+        return EdgeCertificate(
+            method=request.method,
+            hosts=list(request.hosts),
+            status="active" if ready else "pending_validation",
+            pack_id="pack",
+            ready=ready,
+        )
+
+
+def test_cert_wait_defaults_cover_minutes_and_env_still_overrides(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("TWS_SETUP_CERT_POLLS", raising=False)
+    monkeypatch.delenv("TWS_SETUP_CERT_POLL_SECONDS", raising=False)
+    monkeypatch.setenv("TWS_ETC_DIR", "/tmp/tinyweb-cert-defaults")
+    monkeypatch.setenv("TWS_SETUP_BIND", "127.0.0.1")
+    monkeypatch.setenv("TWS_SETUP_ANNOUNCE", "0")
+    cfg = SetupConfig.from_env()
+    assert cfg.cert_polls == 24
+    assert cfg.cert_poll_seconds == 10
+    assert 180 <= cfg.cert_polls * cfg.cert_poll_seconds <= 300
+    monkeypatch.setenv("TWS_SETUP_CERT_POLLS", "2")
+    monkeypatch.setenv("TWS_SETUP_CERT_POLL_SECONDS", "0.01")
+    overridden = SetupConfig.from_env()
+    assert overridden.cert_polls == 2
+    assert overridden.cert_poll_seconds == 0.01
+
+
+def _patch_cert_sleep(monkeypatch: pytest.MonkeyPatch, sleeps: list[float], seen: list[dict], store_box: dict):
+    def fake_sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+        seen.append(store_box["store"].public_status())
+
+    monkeypatch.setattr("tinyweb_setup.service._cert_wait_sleep", fake_sleep)
+
+
+def test_certificate_wait_is_visible_and_ready_only_when_the_cert_is_ready(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = _PublishingCert(ready_after=2)
+    base, server, cp_store = _plane(tmp_path, provider)
+    minted = _mint(base)
+    code = minted["setup_code"]
+    sleeps: list[float] = []
+    seen: list[dict] = []
+    store_box: dict = {}
+    _patch_cert_sleep(monkeypatch, sleeps, seen, store_box)
+    try:
+        cfg = _config(
+            tmp_path,
+            install_cmd=["bash", str(_installer(tmp_path))],
+            control_plane_url=base,
+            cloudflared_dest=tmp_path / "cloudflared",
+            cert_polls=4,
+            cert_poll_seconds=90,
+        )
+        _write_code(cfg, code)
+        setup = SetupStore(cfg)
+        store_box["store"] = setup
+        httpd, setup_base = _start(setup)
+        try:
+            status, body = _request(
+                f"{setup_base}/v1/setup",
+                {
+                    "code": code,
+                    "family_name": "Floyd",
+                    "parent_name": "William",
+                    "password": "correct-horse-battery",
+                },
+            )
+            assert status == 200, body
+            ready = _wait_phase(setup_base, "ready")
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+    finally:
+        _stop(server)
+    assert sleeps == [90]
+    assert seen, "certificate wait did not publish a status"
+    waiting = seen[0]
+    labels = {step["id"]: step for step in waiting["steps"]}
+    assert waiting["phase"] == "installing"
+    assert waiting["provisioned"] is False
+    assert waiting["enroll_origin"] is None
+    assert labels["certificate"]["state"] == "current"
+    assert labels["certificate"]["detail"] == "Still setting up your secure connection."
+    assert labels["install"]["state"] == "done"
+    assert labels["ready"]["state"] != "done"
+    assert "Try again" not in json.dumps(waiting)
+    assert ready["phase"] == "ready"
+    assert ready["provisioned"] is True
+    assert ready["enroll_origin"] == "https://floyd.tinyweb.win"
+    assert all(step["state"] == "done" for step in ready["steps"])
+    assert not cfg.code_file.exists()
+    assert cfg.marker_file.is_file()
+    assert cp_store._conn.execute("SELECT setup_completed_at FROM units").fetchone()["setup_completed_at"]
+    blob = json.dumps(waiting) + "\n" + json.dumps(ready) + "\n" + "\n".join(setup.logs)
+    assert code not in blob
+    assert "correct-horse-battery" not in blob
+    assert "live-tunnel-token-example" not in blob
+    claim_token = cfg.claim_token_file.read_text(encoding="utf-8").strip()
+    assert claim_token not in blob
+
+
+def test_certificate_timeout_keeps_the_setup_code_for_a_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    provider = _PublishingCert(ready_after=99)
+    base, server, cp_store = _plane(tmp_path, provider)
+    minted = _mint(base)
+    code = minted["setup_code"]
+    sleeps: list[float] = []
+    seen: list[dict] = []
+    store_box: dict = {}
+    _patch_cert_sleep(monkeypatch, sleeps, seen, store_box)
+    try:
+        cfg = _config(
+            tmp_path,
+            install_cmd=["bash", str(_installer(tmp_path))],
+            control_plane_url=base,
+            cloudflared_dest=tmp_path / "cloudflared",
+            cert_polls=2,
+            cert_poll_seconds=30,
+        )
+        _write_code(cfg, code)
+        setup = SetupStore(cfg)
+        store_box["store"] = setup
+        httpd, setup_base = _start(setup)
+        try:
+            status, body = _request(
+                f"{setup_base}/v1/setup",
+                {
+                    "code": code,
+                    "family_name": "Floyd",
+                    "parent_name": "William",
+                    "password": "correct-horse-battery",
+                },
+            )
+            assert status == 200, body
+            blocked = _wait_phase(setup_base, "blocked")
+            assert sleeps == [30, 30]
+            assert blocked["provisioned"] is False
+            assert blocked["enroll_origin"] is None
+            labels = {step["id"]: step for step in blocked["steps"]}
+            assert labels["certificate"]["state"] == "blocked"
+            assert "same setup code" in labels["certificate"]["detail"]
+            assert labels["ready"]["state"] != "done"
+            assert cfg.code_file.is_file()
+            assert not cfg.marker_file.exists()
+            assert cp_store._conn.execute("SELECT setup_completed_at FROM units").fetchone()["setup_completed_at"] is None
+            for snapshot in seen:
+                assert snapshot["phase"] == "installing"
+                assert snapshot["provisioned"] is False
+                cert = next(step for step in snapshot["steps"] if step["id"] == "certificate")
+                assert cert["detail"] == "Still setting up your secure connection."
+                assert code not in json.dumps(snapshot)
+
+            provider.ready_after = 1
+            retry, retried = _request(
+                f"{setup_base}/v1/setup",
+                {
+                    "code": code,
+                    "family_name": "Floyd",
+                    "parent_name": "William",
+                    "password": "correct-horse-battery",
+                },
+            )
+            assert retry == 200, retried
+            assert retried["phase"] == "ready"
+            assert retried["enroll_origin"] == "https://floyd.tinyweb.win"
+            assert not cfg.code_file.exists()
+            assert cfg.marker_file.is_file()
+            assert "live-tunnel-token-example" not in json.dumps(retried)
+            assert code not in json.dumps(retried)
+            assert cp_store._conn.execute("SELECT setup_completed_at FROM units").fetchone()["setup_completed_at"]
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+    finally:
+        _stop(server)

@@ -397,7 +397,7 @@ class _UnboxScreenState extends State<UnboxScreen> {
         const SizedBox(height: 12),
         Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
       ],
-      if (status.phase == 'failed') ...[
+      if (status.phase == 'failed' || status.phase == 'blocked') ...[
         const SizedBox(height: 12),
         FilledButton(
           onPressed: _tryAgain,
