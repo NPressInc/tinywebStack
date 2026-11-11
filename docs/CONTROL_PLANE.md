@@ -43,8 +43,9 @@ Base URL is the operator's control plane (`https://tinyweb.win` once it is place
 | --- | --- | --- |
 | Mint a unit and the sticker secret | `POST /v1/operator/units` | Operator |
 | Check a name while the parent types | `GET /v1/slugs/{slug}` | Box |
-| Reserve the name and consume the setup code | `POST /v1/setup/claim` | Box |
+| Reserve the name with the setup code | `POST /v1/setup/claim` | Box |
 | Fetch tunnel credentials | `POST /v1/tunnels` | Box, with the claim token |
+| Add or remove the Jellyfin host later | `POST /v1/tunnels/hosts` | Box, with the claim token |
 | Install `cloudflared` | [`scripts/cloudflared-apply.sh`](../scripts/cloudflared-apply.sh) | Box |
 | Parent sets a password locally | not this API | App |
 | Mark setup finished | `POST /v1/setup/complete` | Box, with the claim token |
@@ -116,7 +117,9 @@ Slugs are one label, matching `scripts/lib/tinyweb-install-env.sh`: letters, dig
 }
 ```
 
-`published: true` means the `CNAME` records were written. `applied: false` means that row was not written. The `fake` provider always returns `published: false` so a dev process cannot look like a public hostname. A certificate warning can remain until `edge_certificate_ready` is true, because issuance is asynchronous. A retry before revoke returns the same tunnel (`replayed: true`) and does not create a second tunnel.
+`published: true` means the `CNAME` records were written. `applied: false` means that row was not written. The `fake` provider always returns `published: false` so a dev process cannot look like a public hostname. A certificate warning can remain until `edge_certificate_ready` is true, because issuance is asynchronous. A retry before revoke returns the same tunnel (`replayed: true`) and does not create a second tunnel. That retry does not add or remove hosts. Changing Jellyfin after the tunnel exists is `POST /v1/tunnels/hosts`.
+
+`POST /v1/tunnels/hosts` with `Authorization: Bearer <claim_token>` and `{ "jellyfin": true }` or `{ "jellyfin": false }`. The claim token is the one stored on the box at setup. It still works after `POST /v1/setup/complete` spends the setup code. The setup code is not accepted. `jellyfin: true` adds `jellyfin.<family>.tinyweb.win` as a proxied `CNAME` to `<tunnel-id>.cfargotunnel.com` and as a tunnel ingress host. `jellyfin: false` removes that host. Other hosts stay. This does not create a second tunnel. Any other field, including Immich, is rejected. The `fake` provider still returns `published: false`. The box runs [`scripts/cloudflared-hosts.sh`](../scripts/cloudflared-hosts.sh), which saves that response over the handoff file and re-runs `cloudflared-apply.sh`. Apply refuses unless `published` is exactly true.
 
 `POST /v1/tunnels/revoke` with `{ "slug": "smith" }` deletes the DNS `CNAME`s and the Cloudflare tunnel. The slug stays reserved. The setup code stays spent once setup was completed. The box can call `POST /v1/tunnels` again with the claim token it already holds.
 
@@ -156,7 +159,7 @@ The wildcard on an advanced pack also covers `jellyfin.<family>.tinyweb.win` whe
 
 ## Jellyfin on the tunnel
 
-Optional Jellyfin uses this same per-box tunnel. First boot sends `jellyfin: true` when `TWS_JELLYFIN` is enabled, and the handoff then includes `jellyfin.<family>.tinyweb.win`. A Jellyfin name on the handoff is not a reason to refuse the tunnel. When Jellyfin is off, the host is not added.
+Optional Jellyfin uses this same per-box tunnel. First boot sends `jellyfin: true` when `TWS_JELLYFIN` is enabled, and the handoff then includes `jellyfin.<family>.tinyweb.win`. A Jellyfin name on the handoff is not a reason to refuse the tunnel. When Jellyfin is off at first boot, the host is not added. Turning Jellyfin on or off after setup calls `POST /v1/tunnels/hosts` with the claim token, then `scripts/cloudflared-apply.sh`. See [JELLYFIN.md](JELLYFIN.md).
 
 Immich is out of scope for v1. It is not an app, a DNS name, or a tunnel route.
 

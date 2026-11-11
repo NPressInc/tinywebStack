@@ -286,6 +286,101 @@ class Service:
             )
         return self._handoff_from_row(saved, replayed=False)
 
+    def update_hosts(self, claim_token: str, *, jellyfin: bool) -> dict[str, Any]:
+        """Add or remove jellyfin.<family> on the tunnel this box already has.
+
+        The caller is the claim token from setup. The setup code is not accepted.
+        This does not create a second tunnel. published stays false unless the
+        provider actually publishes; the fake provider never does.
+        """
+        unit = self._unit_for_claim(claim_token)
+        unit_id = str(unit["unit_id"])
+        slug = str(unit["slug"])
+        row = self.store.active_tunnel(unit_id)
+        if row is None:
+            raise ApiError(
+                409,
+                "tunnel_not_issued",
+                "This box has no tunnel yet. Finish setup before changing hosts.",
+            )
+        domain = family_domain(slug, self.settings.base_domain)
+        jellyfin_host = f"jellyfin.{domain}"
+        dns = json.loads(row["dns_json"])
+        if not isinstance(dns, list):
+            dns = []
+        names = [item.get("name") for item in dns if isinstance(item, dict)]
+        content = f"{row['cf_tunnel_id']}.cfargotunnel.com"
+        published = self._row_published(row)
+        added = False
+        removed = False
+        try:
+            if jellyfin and jellyfin_host not in names:
+                record = DnsRecord(
+                    name=jellyfin_host,
+                    type="CNAME",
+                    content=content,
+                    proxied=True,
+                )
+                self.provider.upsert_cname(record)
+                dns.append(record.as_dict(applied=published))
+                added = True
+            elif not jellyfin and jellyfin_host in names:
+                self.provider.delete_cname(jellyfin_host)
+                dns = [
+                    item
+                    for item in dns
+                    if not (isinstance(item, dict) and item.get("name") == jellyfin_host)
+                ]
+                removed = True
+            rules = [
+                IngressRule(
+                    hostname=str(item["name"]),
+                    service=TUNNEL_ORIGIN_SERVICE,
+                    http_host_header=str(item["name"]),
+                )
+                for item in dns
+                if isinstance(item, dict) and item.get("name")
+            ]
+            self.provider.update_ingress(
+                str(row["cf_tunnel_id"]),
+                TunnelSpec(name=f"tinyweb-{slug}-{unit_id}", rules=rules),
+            )
+        except ProviderNotConfigured as exc:
+            self._rollback_host_edit(
+                jellyfin_host,
+                content,
+                added=added,
+                removed=removed,
+            )
+            raise ApiError(
+                503,
+                "cloudflare_not_configured",
+                "Set " + ", ".join(exc.missing) + " on the control plane. No public hostname was published.",
+            ) from None
+        except ProviderError as exc:
+            self._rollback_host_edit(
+                jellyfin_host,
+                content,
+                added=added,
+                removed=removed,
+            )
+            raise ApiError(
+                502,
+                "provider_failed",
+                f"{exc} No public hostname was published.",
+            ) from None
+        self.store.update_tunnel_dns(int(row["id"]), json.dumps(dns))
+        updated = self.store.active_tunnel(unit_id)
+        if updated is None:
+            raise ApiError(
+                500,
+                "tunnel_not_stored",
+                "Tunnel credentials were not stored. No public hostname was published.",
+            )
+        handoff = self._handoff_from_row(updated, replayed=True)
+        handoff["status"] = "updated"
+        return handoff
+
     def revoke(self, *, unit_id: str) -> dict[str, Any]:
         row = self.store.active_tunnel(unit_id)
         if row is None:
@@ -342,7 +437,7 @@ class Service:
             "domain": domain,
             "setup_complete": self._setup_complete(reserved["unit_id"]),
             "tunnel": {"tunnel_id": tunnel["cf_tunnel_id"], "status": tunnel["status"]},
-            "published": bool(tunnel["published"]),
+            "published": self._row_published(tunnel),
             "edge_certificate_ready": bool(cert.get("ready")),
             "dns_hostnames": [item["name"] for item in dns],
             "excluded_from_proxy": json.loads(tunnel["excluded_json"]),
@@ -433,9 +528,40 @@ class Service:
         row = self.store.unit_by_id(unit_id)
         return bool(row and row["setup_completed_at"])
 
+    def _rollback_host_edit(
+        self,
+        host: str,
+        content: str,
+        *,
+        added: bool,
+        removed: bool,
+    ) -> None:
+        try:
+            if added:
+                self.provider.delete_cname(host)
+            elif removed:
+                self.provider.upsert_cname(
+                    DnsRecord(name=host, type="CNAME", content=content, proxied=True)
+                )
+        except (ProviderError, ProviderNotConfigured):
+            return
+
+    def _row_published(self, row) -> bool:
+        """A hostname is published only when the provider says it writes DNS.
+
+        The fake provider's publishes flag is false, so a stored 1 cannot make
+        a dev process look like a public hostname.
+        """
+        return bool(row["published"]) and bool(self.provider.publishes)
+
     def _handoff_from_row(self, row, *, replayed: bool) -> dict[str, Any]:
         dns = json.loads(row["dns_json"])
         cert = json.loads(row["cert_json"])
+        published = self._row_published(row)
+        if not published and isinstance(dns, list):
+            for item in dns:
+                if isinstance(item, dict):
+                    item["applied"] = False
         return {
             "status": "issued",
             "replayed": replayed,
@@ -443,7 +569,7 @@ class Service:
             "slug": row["slug"],
             "domain": family_domain(row["slug"], self.settings.base_domain),
             "provider": row["provider"],
-            "published": bool(row["published"]),
+            "published": published,
             "edge_certificate_ready": bool(cert.get("ready")),
             "tunnel": {
                 "tunnel_id": row["cf_tunnel_id"],

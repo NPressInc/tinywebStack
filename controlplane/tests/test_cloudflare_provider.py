@@ -172,6 +172,31 @@ def test_create_tunnel_is_remote_managed_and_idempotent() -> None:
     assert "test-api-token" not in json.dumps(posts)
 
 
+def test_update_ingress_replaces_the_hostname_list() -> None:
+    api = Api()
+    provider = _provider(api)
+    issued = provider.create_tunnel(_spec())
+    provider.update_ingress(
+        issued.tunnel_id,
+        TunnelSpec(
+            name="tinyweb-smith",
+            rules=[
+                IngressRule(
+                    hostname="jellyfin.smith.tinyweb.win",
+                    service=TUNNEL_ORIGIN_SERVICE,
+                    http_host_header="jellyfin.smith.tinyweb.win",
+                )
+            ],
+        ),
+    )
+    puts = [call for call in api.calls if call[1].endswith("/configurations")]
+    ingress = puts[-1][2]["config"]["ingress"]
+    assert ingress[0]["hostname"] == "jellyfin.smith.tinyweb.win"
+    assert ingress[0]["originRequest"]["noTLSVerify"] is True
+    assert ingress[-1] == {"service": "http_status:404"}
+    assert "test-api-token" not in json.dumps(puts[-1])
+
+
 def test_cname_replaces_a_record_from_the_ddns_helper() -> None:
     api = Api()
     provider = _provider(api)
